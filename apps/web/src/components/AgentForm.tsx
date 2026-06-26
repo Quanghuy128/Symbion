@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import type { CanonicalArtifact, CustomField } from "@symbion/core";
+import { generateDescription } from "@symbion/core";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { GenerateDescriptionButton } from "@/components/GenerateDescriptionButton";
 
 const KNOWN_TOOLS = ["Read", "Write", "Edit", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "Task"];
 
@@ -48,11 +50,27 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
 
       <div>
         <label className="mb-1 block text-sm font-medium">description *</label>
-        <Input
-          value={artifact.description}
-          onChange={(e) => update("description", e.target.value)}
-          placeholder="Independent reviewer…"
-        />
+        <div className="flex gap-2">
+          <Input
+            className="flex-1"
+            value={artifact.description}
+            onChange={(e) => update("description", e.target.value)}
+            placeholder="Independent reviewer…"
+          />
+          <GenerateDescriptionButton
+            currentDescription={artifact.description}
+            onGenerate={() =>
+              generateDescription({
+                kind: "agent",
+                name: artifact.name,
+                body: artifact.body,
+                tools: artifact.tools,
+                customFields: artifact.customFields,
+              })
+            }
+            onApply={(value) => update("description", value)}
+          />
+        </div>
       </div>
 
       <div>

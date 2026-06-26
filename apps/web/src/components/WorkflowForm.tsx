@@ -1,9 +1,10 @@
 "use client";
 
 import type { CanonicalArtifact } from "@symbion/core";
-import { extractAgentMentions } from "@symbion/core";
+import { extractAgentMentions, generateDescription } from "@symbion/core";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { GenerateDescriptionButton } from "@/components/GenerateDescriptionButton";
 
 export interface WorkflowFormProps {
   artifact: CanonicalArtifact;
@@ -34,11 +35,25 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       <div>
         <label className="mb-1 block text-sm font-medium">description *</label>
-        <Input
-          value={artifact.description}
-          onChange={(e) => update("description", e.target.value)}
-          placeholder="3 BA agents research requirements, then synthesize"
-        />
+        <div className="flex gap-2">
+          <Input
+            className="flex-1"
+            value={artifact.description}
+            onChange={(e) => update("description", e.target.value)}
+            placeholder="3 BA agents research requirements, then synthesize"
+          />
+          <GenerateDescriptionButton
+            currentDescription={artifact.description}
+            onGenerate={() =>
+              generateDescription({
+                kind: "command",
+                name: artifact.name,
+                body: artifact.body,
+              })
+            }
+            onApply={(value) => update("description", value)}
+          />
+        </div>
       </div>
 
       <div>

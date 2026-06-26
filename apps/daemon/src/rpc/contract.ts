@@ -1,0 +1,46 @@
+/**
+ * Shared RPC request/response types — the contract between apps/daemon and apps/web.
+ * The actual shapes live in the type-only `@symbion/rpc-types` package so both
+ * the daemon (Node) and the web client (browser bundle) consume the exact
+ * same definitions with no hand-mirroring / drift risk. This file just
+ * re-exports them for daemon-local call sites that import from
+ * "./contract" (or "../rpc/contract").
+ */
+export type {
+  PingParams,
+  PingResult,
+  BrowseFolderParams,
+  BrowseFolderResult,
+  ValidatePathParams,
+  ValidatePathResult,
+  ListProjectsParams,
+  ListProjectsResult,
+  CreateProjectParams,
+  CreateProjectResult,
+  LoadProjectParams,
+  LoadProjectResult,
+  SaveArtifactParams,
+  SaveArtifactResult,
+  DeleteArtifactParams,
+  DeleteArtifactResult,
+  UpdateSettingsParams,
+  UpdateSettingsResult,
+  ScanClaudeDirParams,
+  ScanClaudeDirResult,
+  ImportArtifactsParams,
+  ImportArtifactsResult,
+  RenderParams,
+  RenderResult,
+  ComputeDiffParams,
+  ComputeDiffResult,
+  WriteFileSelection,
+  WriteParams,
+  WriteResult,
+  GitStatusParams,
+  GitStatusResult,
+  RenderRunCommandParams,
+  RenderRunCommandResult,
+  RpcMethod,
+  RpcRequest,
+  RpcErrorBody,
+} from "@symbion/rpc-types";

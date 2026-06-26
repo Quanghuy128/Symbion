@@ -1,0 +1,52 @@
+/**
+ * Re-exports the shared RPC request/response shapes from the type-only
+ * `@symbion/rpc-types` package — the same definitions apps/daemon's
+ * rpc/contract.ts re-exports. No hand-duplication; both sides import the
+ * one source of truth, so web ↔ daemon can never drift (STATE §1.1 / §8
+ * assumption #5).
+ */
+export type {
+  PingParams,
+  PingResult,
+  BrowseFolderParams,
+  BrowseFolderResult,
+  ValidatePathParams,
+  ValidatePathResult,
+  ListProjectsParams,
+  ListProjectsResult,
+  CreateProjectParams,
+  CreateProjectResult,
+  LoadProjectParams,
+  LoadProjectResult,
+  SaveArtifactParams,
+  SaveArtifactResult,
+  DeleteArtifactParams,
+  DeleteArtifactResult,
+  UpdateSettingsParams,
+  UpdateSettingsResult,
+  ScanClaudeDirParams,
+  ScanClaudeDirResult,
+  ImportArtifactsParams,
+  ImportArtifactsResult,
+  RenderParams,
+  RenderResult,
+  ComputeDiffParams,
+  ComputeDiffResult,
+  WriteFileSelection,
+  WriteParams,
+  WriteResult,
+  GitStatusParams,
+  GitStatusResult,
+  RenderRunCommandParams,
+  RenderRunCommandResult,
+  RpcMethod,
+  RpcRequest,
+  RpcErrorBody,
+  CanonicalArtifact,
+  DiffFile,
+  ProjectSettings,
+  ProjectStore,
+  PublishResult,
+  RenderedFile,
+  TargetId,
+} from "@symbion/rpc-types";

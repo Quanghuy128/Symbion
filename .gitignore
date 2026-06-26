@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+out/
+*.log
+.symbion/
+coverage/
+.DS_Store
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

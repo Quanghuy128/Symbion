@@ -1,0 +1,25 @@
+// Public barrel — the only surface @symbion/daemon (and web, via type-only imports) should import.
+
+export * from "./ir/types.js";
+export * from "./ir/validate.js";
+export * from "./ir/refs.js";
+
+export * from "./adapters/types.js";
+export { claudeAdapter } from "./adapters/claude.js";
+export { codexAdapter } from "./adapters/codex.js";
+export { ADAPTERS, getAdapter } from "./adapters/registry.js";
+
+export * from "./render/frontmatter.js";
+export * from "./render/marker.js";
+export * from "./render/render.js";
+
+export * from "./parse/scan.js";
+
+export * from "./diff/diff.js";
+export * from "./diff/conflict.js";
+
+export * from "./version/semver.js";
+
+export * from "./runcommand/render.js";
+
+export { sha256Hex } from "./util/sha256.js";

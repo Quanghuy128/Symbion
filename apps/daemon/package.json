@@ -1,0 +1,22 @@
+{
+  "name": "@symbion/daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@symbion/core": "*",
+    "@symbion/rpc-types": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5",
+    "tsx": "^4.16.2",
+    "@types/node": "^20.14.10"
+  }
+}

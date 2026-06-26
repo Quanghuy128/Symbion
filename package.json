@@ -1,0 +1,29 @@
+{
+  "name": "symbion",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -ws --if-present",
+    "test": "vitest run",
+    "test:core": "vitest run --project core",
+    "test:daemon": "vitest run --project daemon",
+    "test:e2e": "npm run build && playwright test",
+    "start": "npm run build -w @symbion/daemon && node apps/daemon/dist/index.js",
+    "dev:daemon": "npm run dev -w @symbion/daemon",
+    "dev:web": "npm run dev -w @symbion/web"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5",
+    "@types/node": "^20.14.10",
+    "@playwright/test": "^1.47.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

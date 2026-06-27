@@ -31,6 +31,9 @@ import {
   readTargetFiles,
 } from "../fs/readTargetFiles.js";
 import { writeFiles, type WriteFileTask } from "../fs/writeFiles.js";
+import { buildBodyGenerationPrompt } from "@symbion/core";
+import { getProvider } from "../llm/registry.js";
+import { LlmError, type LlmErrorCode } from "../llm/types.js";
 import type * as contract from "./contract.js";
 
 function randomId(): string {
@@ -53,6 +56,32 @@ function findProjectPath(projectId: string): string {
 export class RpcError extends Error {
   constructor(public code: string, message: string) {
     super(message);
+  }
+}
+
+/**
+ * Runtime guards for the LLM RPC surface (generateBody/listModels). TypeScript's
+ * `"agent" | "command"` / `"ollama" | "remote"` unions give zero enforcement once
+ * JSON is parsed off the wire — an unrecognized value must fail cleanly with
+ * RpcError("invalid-params", ...) BEFORE reaching the prompt builder or provider
+ * registry, never fall through to the generic 500/internal-error catch-all (see
+ * docs/loops/auto-generate-body-STATE.md §13, MEDIUM finding).
+ */
+const VALID_KINDS = new Set(["agent", "command"]);
+const VALID_PROVIDER_IDS = new Set(["ollama", "remote"]);
+
+function assertValidKind(kind: unknown): asserts kind is "agent" | "command" {
+  if (typeof kind !== "string" || !VALID_KINDS.has(kind)) {
+    throw new RpcError("invalid-params", `Tham số "kind" không hợp lệ: phải là "agent" hoặc "command".`);
+  }
+}
+
+function assertValidProviderId(providerId: unknown): asserts providerId is "ollama" | "remote" {
+  if (typeof providerId !== "string" || !VALID_PROVIDER_IDS.has(providerId)) {
+    throw new RpcError(
+      "invalid-params",
+      `Tham số "providerId" không hợp lệ: phải là "ollama" hoặc "remote".`
+    );
   }
 }
 
@@ -338,6 +367,95 @@ export const handlers = {
   renderRunCommand(params: contract.RenderRunCommandParams): contract.RenderRunCommandResult {
     return { prompt: coreRenderRunCommand(params) };
   },
+
+  /**
+   * listModels — synchronous, zero network calls, instant response. Single source
+   * of truth for the 3 fixed model ids/labels per provider, so apps/web never
+   * hand-duplicates the daemon's hardcoded list (resolves STATE §10.7 Risk R1
+   * per the user's amendment: add a listModels RPC instead of duplicating the
+   * constant by hand in both apps/web and apps/daemon).
+   */
+  listModels(params: contract.ListModelsParams): contract.ListModelsResult {
+    assertValidProviderId(params.providerId);
+    const provider = getProvider(params.providerId);
+    return { models: provider.listModels() };
+  },
+
+  /**
+   * generateBody — the first async, slow, externally-fallible RPC handler in the
+   * codebase (STATE §10.1/§10.2). Touches neither disk nor git: pure inference in,
+   * text out. Deliberately does NOT call findProjectPath/loadProjectStore — the
+   * request already carries all needed context inline (STATE §10.2).
+   */
+  async generateBody(params: contract.GenerateBodyParams): Promise<contract.GenerateBodyResult> {
+    // Runtime-validate the two "TS union, zero runtime enforcement" fields BEFORE
+    // touching the prompt builder or provider registry (STATE §13 MEDIUM finding) —
+    // an unrecognized kind/providerId must fail as a clean invalid-params RpcError,
+    // not a bare Error that falls through to the generic 500/internal-error path.
+    assertValidKind(params.kind);
+    assertValidProviderId(params.providerId);
+
+    // Defensive input-size cap (no daemon crash / runaway prompt on malformed/huge input —
+    // there is no pre-existing size-cap precedent elsewhere in the RPC surface to match,
+    // so this is a new, narrowly-scoped guard for this handler only).
+    const MAX_FIELD_LEN = 50_000;
+    for (const field of ["name", "description", "existingBody"] as const) {
+      const value = params[field];
+      if (typeof value !== "string" || value.length > MAX_FIELD_LEN) {
+        throw new RpcError("invalid-params", `Trường "${field}" không hợp lệ hoặc quá lớn.`);
+      }
+    }
+    if (typeof params.modelId !== "string" || params.modelId.length === 0 || params.modelId.length > 200) {
+      throw new RpcError("invalid-params", "modelId không hợp lệ.");
+    }
+
+    const { system, user } = buildBodyGenerationPrompt({
+      kind: params.kind,
+      name: params.name,
+      description: params.description,
+      existingBody: params.existingBody,
+    });
+    try {
+      // getProvider/the provider constructor can itself throw an LlmError (e.g. an
+      // env-var-sourced Ollama base URL that fails the loopback check — STATE §13 HIGH
+      // finding) — kept inside this try so any LlmError, whether thrown at construction
+      // time or during generate(), maps through the same clean RpcError taxonomy below
+      // instead of leaking via the generic 500/internal-error path.
+      const provider = getProvider(params.providerId);
+      const result = await provider.generate({
+        systemPrompt: system,
+        userPrompt: user,
+        model: params.modelId,
+        timeoutMs: 45_000,
+      });
+      return { body: result.text };
+    } catch (err) {
+      if (err instanceof LlmError) {
+        throw new RpcError(`llm-${err.code}`, humanMessageForLlmError(err.code));
+      }
+      throw new RpcError("llm-unknown", "Lỗi không xác định khi gọi mô hình AI.");
+    }
+  },
 };
+
+/** EC-4's exact error-code -> human-readable-Vietnamese-message taxonomy (STATE §10.5). */
+function humanMessageForLlmError(code: LlmErrorCode): string {
+  switch (code) {
+    case "provider-not-running":
+      return "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy.";
+    case "timeout":
+      return "Quá thời gian chờ (45s) — thử lại.";
+    case "auth":
+      return "Thiếu hoặc sai cấu hình API key cho remote provider.";
+    case "rate-limit":
+      return "Bị giới hạn tần suất gọi — thử lại sau.";
+    case "invalid-response":
+      return "Phản hồi không hợp lệ từ mô hình.";
+    case "network":
+    case "unknown":
+    default:
+      return "Lỗi không xác định, thử lại.";
+  }
+}
 
 export { validateAllArtifacts };

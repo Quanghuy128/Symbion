@@ -2,6 +2,18 @@ import { expect, test } from "@playwright/test";
 import { bootDaemon, type DaemonHandle } from "./daemon-fixture";
 
 /**
+ * RETIRED (.spec.ts -> .spec.ts.retired, so Playwright's testDir glob no longer
+ * picks this file up) per docs/loops/auto-generate-body-STATE.md FR-1 (LOCKED):
+ * GenerateDescriptionButton is removed from beside `description` on both
+ * AgentForm/WorkflowForm — this entire suite exercises a UI affordance that no
+ * longer exists in the rendered form, so every test here would now fail
+ * (confirmed: all 8 failed against the FR-1 change with "button not found"
+ * timeouts). generateDescription() itself is intentionally left as unused dead
+ * code (STATE §9 Q6) — only the *button* wiring was removed, so this file is
+ * kept (not deleted) for history/Checker reference, just renamed out of the
+ * active test glob. If a future ticket resurrects a description-regenerate
+ * affordance (§9 Q6 option (c)), this file is the starting point.
+ *
  * Auto-generate description e2e (testplan §2, T1-T8). Covers the
  * GenerateDescriptionButton wired into AgentForm (S7) and WorkflowForm (S8).
  * No daemon RPC is involved in the generation itself (STATE §9/§10) — this

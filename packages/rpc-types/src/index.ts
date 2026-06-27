@@ -163,6 +163,37 @@ export interface RenderRunCommandResult {
   prompt: string;
 }
 
+/** One of the 3 fixed, hardcoded (no dynamic-fetch) model choices for a given LLM provider.
+ * Source of truth is apps/daemon (see apps/daemon/src/llm/*Provider.ts); apps/web fetches this
+ * list via the `listModels` RPC instead of hand-duplicating it (resolves STATE §10.7 Risk R1). */
+export interface LlmModelOption {
+  id: string;
+  label: string;
+  tier: "fast" | "balanced" | "best";
+}
+
+export interface ListModelsParams {
+  providerId: "ollama" | "remote";
+}
+export interface ListModelsResult {
+  models: LlmModelOption[];
+}
+
+export interface GenerateBodyParams {
+  kind: "agent" | "command";
+  name: string;
+  description: string;
+  existingBody: string;
+  /** which of the fixed model ids the user picked this click; required, no server default guess. */
+  modelId: string;
+  /** "ollama" is the only value the v1 UI ever actually sends; "remote" is accepted by the
+   *  contract/handler (seam exercised by unit tests) but no web control sends it yet. */
+  providerId: "ollama" | "remote";
+}
+export interface GenerateBodyResult {
+  body: string;
+}
+
 export type RpcMethod =
   | "ping"
   | "browseFolder"
@@ -179,7 +210,9 @@ export type RpcMethod =
   | "computeDiff"
   | "write"
   | "gitStatus"
-  | "renderRunCommand";
+  | "renderRunCommand"
+  | "listModels"
+  | "generateBody";
 
 export interface RpcRequest<M extends RpcMethod = RpcMethod, P = unknown> {
   method: M;

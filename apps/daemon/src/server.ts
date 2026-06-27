@@ -56,6 +56,14 @@ const READ_ONLY_METHODS = new Set<RpcMethod>([
   "computeDiff",
   "gitStatus",
   "renderRunCommand",
+  // listModels does not write to the project's managed files (no fs mutation) — it is a
+  // synchronous, instant, zero-network-call lookup of the daemon's hardcoded model list.
+  "listModels",
+  // generateBody is deliberately NOT in this set: it performs an outbound network call
+  // (real-world side effect with cost), even though it does not touch the filesystem.
+  // This only affects which methods are conceptually labeled "read-only" for future use,
+  // not auth — every non-ping method already requires the token regardless of this set's
+  // membership (see the `method !== "ping"` check below). STATE §10.1.
 ]);
 
 export interface DaemonServerOptions {

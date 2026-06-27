@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer as createFakeOllamaServer, type Server as HttpServer } from "node:http";
 import { startServer, type DaemonServerHandle } from "../src/server.js";
 
 let handle: DaemonServerHandle;
 let configDir: string;
+let fakeOllama: HttpServer | undefined;
+const originalOllamaUrl = process.env["SYMBION_OLLAMA_BASE_URL"];
 
 beforeEach(async () => {
   configDir = mkdtempSync(join(tmpdir(), "symbion-config-"));
@@ -19,7 +22,31 @@ afterEach(async () => {
   await handle.close();
   rmSync(configDir, { recursive: true, force: true });
   delete process.env["SYMBION_CONFIG_DIR"];
+  if (fakeOllama) {
+    await new Promise<void>((resolve) => fakeOllama!.close(() => resolve()));
+    fakeOllama = undefined;
+  }
+  if (originalOllamaUrl === undefined) {
+    delete process.env["SYMBION_OLLAMA_BASE_URL"];
+  } else {
+    process.env["SYMBION_OLLAMA_BASE_URL"] = originalOllamaUrl;
+  }
 });
+
+function startFakeOllama(): Promise<string> {
+  return new Promise((resolve) => {
+    const s = createFakeOllamaServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ response: "fake generated body" }));
+    });
+    fakeOllama = s;
+    s.listen(0, "127.0.0.1", () => {
+      const addr = s.address();
+      const port = typeof addr === "object" && addr ? addr.port : 0;
+      resolve(`http://127.0.0.1:${port}`);
+    });
+  });
+}
 
 async function rpc(method: string, params: unknown, opts: { token?: string; host?: string; origin?: string } = {}) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -96,5 +123,67 @@ describe("T15 security — raw socket request with spoofed Host header", () => {
     });
 
     expect(responseText).toMatch(/^HTTP\/1\.1 403/);
+  });
+});
+
+describe("generateBody transport (TC-S1..TC-S4)", () => {
+  it("TC-S1: POST /rpc generateBody with a valid token -> 200 with the generated body", async () => {
+    const baseUrl = await startFakeOllama();
+    process.env["SYMBION_OLLAMA_BASE_URL"] = baseUrl;
+
+    const res = await rpc(
+      "generateBody",
+      { kind: "agent", name: "x", description: "", existingBody: "", modelId: "m", providerId: "ollama" },
+      { token: handle.token }
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.body).toBe("fake generated body");
+  });
+
+  it("TC-S2: POST /rpc generateBody with no token -> 401 (not added to any no-auth allowlist)", async () => {
+    const res = await rpc("generateBody", {
+      kind: "agent",
+      name: "x",
+      description: "",
+      existingBody: "",
+      modelId: "m",
+      providerId: "ollama",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("TC-S3: POST /rpc generateBody with a disallowed Origin -> 403 (same DNS-rebinding defense, no special-casing)", async () => {
+    const res = await rpc(
+      "generateBody",
+      { kind: "agent", name: "x", description: "", existingBody: "", modelId: "m", providerId: "ollama" },
+      { token: handle.token, origin: "http://evil.example.com" }
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("TC-S4: two back-to-back generateBody POSTs are both independently processed (no daemon-side concurrency guard)", async () => {
+    const baseUrl = await startFakeOllama();
+    process.env["SYMBION_OLLAMA_BASE_URL"] = baseUrl;
+
+    const params = { kind: "agent", name: "x", description: "", existingBody: "", modelId: "m", providerId: "ollama" };
+    const [res1, res2] = await Promise.all([
+      rpc("generateBody", params, { token: handle.token }),
+      rpc("generateBody", params, { token: handle.token }),
+    ]);
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+  });
+});
+
+describe("listModels transport", () => {
+  it("POST /rpc listModels with a valid token -> 200 with 3 models", async () => {
+    const res = await rpc("listModels", { providerId: "ollama" }, { token: handle.token });
+    expect(res.status).toBe(200);
+    expect(res.body.models).toHaveLength(3);
+  });
+
+  it("POST /rpc listModels with no token -> 401", async () => {
+    const res = await rpc("listModels", { providerId: "ollama" });
+    expect(res.status).toBe(401);
   });
 });

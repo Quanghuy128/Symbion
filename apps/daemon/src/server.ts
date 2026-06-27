@@ -65,6 +65,10 @@ const READ_ONLY_METHODS = new Set<RpcMethod>([
   // This only affects which methods are conceptually labeled "read-only" for future use,
   // not auth — every non-ping method already requires the token regardless of this set's
   // membership (see the `method !== "ping"` check below). STATE §10.1.
+  // checkProviderStatus also performs an outbound network call (a liveness ping to
+  // Ollama's loopback port), same rationale as generateBody — labeled here as
+  // conceptually read-only (no fs mutation) even though it's not "free" like listModels.
+  "checkProviderStatus",
 ]);
 
 export interface DaemonServerOptions {

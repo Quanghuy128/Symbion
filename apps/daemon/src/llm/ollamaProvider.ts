@@ -46,6 +46,37 @@ function isLoopbackUrl(value: string): boolean {
   }
 }
 
+/**
+ * resolveOllamaBaseUrl — the env-var/loopback-guard/default resolution logic that used to
+ * live inline in `OllamaProvider`'s constructor (extracted per
+ * docs/loops/connect-providers-STATE.md §10.3, a structure-only refactor, no behavior
+ * change). Exported so `providerStatus.ts`'s reachability check reuses the exact same
+ * SSRF-guarded resolution instead of re-implementing it — one implementation, not two.
+ *
+ * Throws `LlmError("provider-not-running", ...)` if `SYMBION_OLLAMA_BASE_URL` is set to a
+ * non-loopback host (see `isLoopbackUrl` doc comment for the threat this guards against).
+ */
+export function resolveOllamaBaseUrl(): string {
+  // Env override (SYMBION_OLLAMA_BASE_URL) lets tests/dev tooling point this at a fake
+  // server without needing to thread a constructor param through the registry factory.
+  // Because this path is influenceable by anything that can set the daemon process's
+  // environment (poisoned .env, malicious postinstall, misconfigured deploy), it MUST be
+  // restricted to loopback hosts — never silently fall back to OLLAMA_DEFAULT_BASE_URL,
+  // since that would mask a misconfiguration as "everything's fine, just using localhost."
+  const envBaseUrl = process.env["SYMBION_OLLAMA_BASE_URL"];
+  if (envBaseUrl !== undefined) {
+    if (!isLoopbackUrl(envBaseUrl)) {
+      throw new LlmError(
+        "provider-not-running",
+        `SYMBION_OLLAMA_BASE_URL phải là một địa chỉ loopback (127.0.0.1/localhost/::1); giá trị hiện tại không hợp lệ và bị từ chối: "${envBaseUrl}".`
+      );
+    }
+    return envBaseUrl;
+  }
+
+  return OLLAMA_DEFAULT_BASE_URL;
+}
+
 export class OllamaProvider implements LlmProvider {
   readonly id = "ollama" as const;
   private readonly baseUrl: string;
@@ -59,25 +90,7 @@ export class OllamaProvider implements LlmProvider {
       return;
     }
 
-    // Env override (SYMBION_OLLAMA_BASE_URL) lets tests/dev tooling point this at a fake
-    // server without needing to thread a constructor param through the registry factory.
-    // Because this path is influenceable by anything that can set the daemon process's
-    // environment (poisoned .env, malicious postinstall, misconfigured deploy), it MUST be
-    // restricted to loopback hosts — never silently fall back to OLLAMA_DEFAULT_BASE_URL,
-    // since that would mask a misconfiguration as "everything's fine, just using localhost."
-    const envBaseUrl = process.env["SYMBION_OLLAMA_BASE_URL"];
-    if (envBaseUrl !== undefined) {
-      if (!isLoopbackUrl(envBaseUrl)) {
-        throw new LlmError(
-          "provider-not-running",
-          `SYMBION_OLLAMA_BASE_URL phải là một địa chỉ loopback (127.0.0.1/localhost/::1); giá trị hiện tại không hợp lệ và bị từ chối: "${envBaseUrl}".`
-        );
-      }
-      this.baseUrl = envBaseUrl;
-      return;
-    }
-
-    this.baseUrl = OLLAMA_DEFAULT_BASE_URL;
+    this.baseUrl = resolveOllamaBaseUrl();
   }
 
   listModels(): LlmModelOption[] {

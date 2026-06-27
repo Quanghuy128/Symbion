@@ -8,6 +8,8 @@ import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
 import type { GenerateBodyParams, GenerateBodyResult } from "@/lib/rpc/types";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { GENERATE_BODY_DISCLOSURE_FLAG_KEY, firstUseDisclosureCopy } from "@/components/GenerateBodyDisclosure";
+import { ProviderStatusPill } from "@/components/ProviderStatusPill";
+import { ConnectProviderPanel } from "@/components/ConnectProviderPanel";
 
 /** Cooldown window (ms) after a generate call resolves (success or error), independent of
  * the in-flight busyRef guard — blunts accidental rapid-fire clicking (STATE §9 Q12). */
@@ -57,6 +59,7 @@ export function GenerateBodyButton({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [connectPanelOpen, setConnectPanelOpen] = useState(false);
 
   // Captures the exact params of the last attempt, so Retry re-submits identically
   // (EC-3) without requiring the user to re-open the model picker.
@@ -164,6 +167,8 @@ export function GenerateBodyButton({
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
       </Button>
 
+      <ProviderStatusPill providerId={providerId} />
+
       {errorCode && (
         <div className="mt-1 flex items-center gap-2 text-xs text-destructive">
           <span>{ERROR_MESSAGES[errorCode] ?? DEFAULT_ERROR_MESSAGE}</span>
@@ -172,7 +177,25 @@ export function GenerateBodyButton({
               Thử lại
             </button>
           )}
+          {/* EC-7/AC-4: this CTA only opens when an Ollama-specific failure was resolved
+           *  by the RPC (errorCode === llm-provider-not-running) — never for the daemon-down
+           *  case, which is a different code path (disabled-button state above), and never
+           *  for "remote"'s llm-auth, which keeps its existing message unchanged per locked
+           *  decision 4 (no new UI for remote in v1). */}
+          {errorCode === "llm-provider-not-running" && providerId === "ollama" && (
+            <button type="button" className="underline" onClick={() => setConnectPanelOpen(true)}>
+              Cách kết nối Ollama
+            </button>
+          )}
         </div>
+      )}
+
+      {providerId === "ollama" && (
+        <ConnectProviderPanel
+          providerId="ollama"
+          open={connectPanelOpen}
+          onClose={() => setConnectPanelOpen(false)}
+        />
       )}
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>

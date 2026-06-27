@@ -35,6 +35,8 @@ import { writeFiles, type WriteFileTask } from "../fs/writeFiles.js";
 import { buildBodyGenerationPrompt } from "@symbion/core";
 import { getProvider } from "../llm/registry.js";
 import { LlmError, type LlmErrorCode } from "../llm/types.js";
+import { checkOllamaReachable, resolveOllamaBaseUrlForStatusCheck } from "../llm/providerStatus.js";
+import { detectHostEnvironment, getOllamaInstallInstructions } from "../llm/installInstructions.js";
 import { RpcError } from "./rpcError.js";
 import type * as contract from "./contract.js";
 
@@ -441,6 +443,25 @@ export const handlers = {
       }
       throw new RpcError("llm-unknown", "Lỗi không xác định khi gọi mô hình AI.");
     }
+  },
+
+  /**
+   * checkProviderStatus — read-only liveness ping for the connect-providers guided-setup
+   * flow (docs/loops/connect-providers-STATE.md §10.2). Ollama-only by contract (the
+   * `remote` provider is explicitly out of scope per locked decision 4 — its `providerId`
+   * type is the literal `"ollama"`, not the `"ollama" | "remote"` union the other LLM RPCs
+   * use). Does NOT go through `getProvider()`/`generate()` — see providerStatus.ts's doc
+   * comment for why. Never throws on "not reachable" — that is a valid resolved result,
+   * not a server error.
+   */
+  async checkProviderStatus(params: contract.CheckProviderStatusParams): Promise<contract.CheckProviderStatusResult> {
+    if (params == null || (params as { providerId?: unknown }).providerId !== "ollama") {
+      throw new RpcError("invalid-params", `checkProviderStatus chỉ hỗ trợ providerId "ollama".`);
+    }
+    const baseUrl = resolveOllamaBaseUrlForStatusCheck();
+    const reachable = await checkOllamaReachable(baseUrl, 3000);
+    const install = getOllamaInstallInstructions(detectHostEnvironment());
+    return { reachable, checkedBaseUrl: baseUrl, install };
   },
 };
 

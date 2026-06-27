@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
-import { OllamaProvider } from "../src/llm/ollamaProvider.js";
+import { OLLAMA_DEFAULT_BASE_URL, OllamaProvider, resolveOllamaBaseUrl } from "../src/llm/ollamaProvider.js";
 import { LlmError } from "../src/llm/types.js";
 
 let server: Server | undefined;
@@ -149,6 +149,37 @@ describe("OllamaProvider (Tier A — fake HTTP server)", () => {
     // Constructor-injected baseUrl is only ever set by trusted code (tests), never by an
     // external actor via env, so it intentionally does not go through isLoopbackUrl().
     expect(() => new OllamaProvider({ baseUrl: "http://example.com:9999" })).not.toThrow();
+  });
+
+  it("TC-D10: resolveOllamaBaseUrl() default (no env override) returns OLLAMA_DEFAULT_BASE_URL, same as the constructor's default path", () => {
+    const original = process.env["SYMBION_OLLAMA_BASE_URL"];
+    delete process.env["SYMBION_OLLAMA_BASE_URL"];
+    try {
+      expect(resolveOllamaBaseUrl()).toBe(OLLAMA_DEFAULT_BASE_URL);
+    } finally {
+      if (original === undefined) delete process.env["SYMBION_OLLAMA_BASE_URL"];
+      else process.env["SYMBION_OLLAMA_BASE_URL"] = original;
+    }
+  });
+
+  it("TC-D11 (regression guard): the extraction of resolveOllamaBaseUrl() did not change OllamaProvider's loopback-guard behavior — TC-D7/TC-D8/TC-D9 still pass (re-asserted here explicitly)", () => {
+    const original = process.env["SYMBION_OLLAMA_BASE_URL"];
+    try {
+      // non-loopback -> rejected at construction time, same as resolveOllamaBaseUrl() itself throwing
+      process.env["SYMBION_OLLAMA_BASE_URL"] = "http://example.com:9999";
+      expect(() => resolveOllamaBaseUrl()).toThrow(LlmError);
+      expect(() => new OllamaProvider()).toThrow(LlmError);
+
+      // loopback hosts -> accepted by both the standalone resolver and the constructor
+      for (const host of ["http://127.0.0.1:11434", "http://localhost:11434", "http://[::1]:11434"]) {
+        process.env["SYMBION_OLLAMA_BASE_URL"] = host;
+        expect(resolveOllamaBaseUrl()).toBe(host);
+        expect(() => new OllamaProvider()).not.toThrow();
+      }
+    } finally {
+      if (original === undefined) delete process.env["SYMBION_OLLAMA_BASE_URL"];
+      else process.env["SYMBION_OLLAMA_BASE_URL"] = original;
+    }
   });
 
   it("TC-D6: listModels() returns exactly 3 entries with all 3 tiers represented exactly once", () => {

@@ -229,6 +229,32 @@ export interface GenerateBodyResult {
   body: string;
 }
 
+/** Daemon-detected host environment, for selecting OS-specific install commands (EC-3). */
+export interface HostEnvironment {
+  kind: "wsl" | "linux" | "macos" | "windows" | "unknown";
+  /** short human label shown verbatim in the panel's "phát hiện: …" line. */
+  label: string;
+}
+
+export interface InstallInstructions {
+  env: HostEnvironment;
+  /** true only when detection is confident enough to show ONE command block. */
+  confident: boolean;
+  /** one entry per OS variant to show. Length 1 when confident===true; length 4 (all
+   *  known variants, labeled) when confident===false. */
+  variants: Array<{ label: string; command: string }>;
+}
+
+export interface CheckProviderStatusParams {
+  providerId: "ollama"; // narrow on purpose — "remote" is out of scope (locked decision 4)
+}
+export interface CheckProviderStatusResult {
+  reachable: boolean;
+  /** present iff reachable===false; informational only, not for branching logic in the UI. */
+  checkedBaseUrl: string;
+  install: InstallInstructions;
+}
+
 export type RpcMethod =
   | "ping"
   | "browseFolder"
@@ -249,7 +275,8 @@ export type RpcMethod =
   | "gitStatus"
   | "renderRunCommand"
   | "listModels"
-  | "generateBody";
+  | "generateBody"
+  | "checkProviderStatus";
 
 export interface RpcRequest<M extends RpcMethod = RpcMethod, P = unknown> {
   method: M;

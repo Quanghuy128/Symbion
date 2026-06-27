@@ -42,6 +42,41 @@ export interface ValidatePathResult {
   writable: boolean;
 }
 
+export interface ListDirParams {
+  /** absolute path to list; if omitted, daemon defaults to os.homedir(). */
+  path?: string;
+}
+export interface ListDirEntry {
+  name: string;
+  /** absolute path of this entry — what the UI sends back as the next listDir/createProject path. */
+  path: string;
+  /** true only for entries the daemon classifies as navigable (real dir or dir-like symlink target). */
+  isDir: boolean;
+  /** true if this entry is a symlink (dir or not) — UI may show a distinct icon; still navigable if isDir. */
+  isSymlink: boolean;
+  /** true if a permission/stat error means we know nothing more than the readdir name (not navigable). */
+  unreadable: boolean;
+}
+export interface ListDirResult {
+  /** resolved absolute path that was actually listed (after symlink/realpath resolution of `path` itself). */
+  path: string;
+  /** absolute path of the parent dir, or undefined if `path` is filesystem root ("/"). Lets UI render "Up". */
+  parentPath?: string;
+  /** subdirectories only (files are never returned — this RPC is a directory PICKER, not a file browser). */
+  entries: ListDirEntry[];
+  /** true if `path` itself could be stat'd but readdir failed (e.g. permission denied) — entries is []. */
+  denied: boolean;
+}
+
+export interface MakeDirParams {
+  path: string;
+}
+export interface MakeDirResult {
+  path: string;
+  /** false if it already existed as a dir (idempotent no-op), true if newly created. */
+  created: boolean;
+}
+
 export interface ListProjectsParams {}
 export interface ListProjectsResult {
   projects: Array<{ id: string; name: string; path: string }>;
@@ -198,6 +233,8 @@ export type RpcMethod =
   | "ping"
   | "browseFolder"
   | "validatePath"
+  | "listDir"
+  | "makeDir"
   | "listProjects"
   | "createProject"
   | "loadProject"

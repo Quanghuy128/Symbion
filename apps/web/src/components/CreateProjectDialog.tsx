@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { callRpc } from "@/lib/rpc/client";
+import { FolderBrowserDialog } from "@/components/FolderBrowserDialog";
+import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
-import type { ValidatePathResult } from "@/lib/rpc/types";
+import type { MakeDirParams, MakeDirResult, ValidatePathResult } from "@/lib/rpc/types";
 
 export interface CreateProjectDialogProps {
   open: boolean;
@@ -20,6 +21,8 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   const [validation, setValidation] = useState<ValidatePathResult | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [creatingDir, setCreatingDir] = useState(false);
   const createProject = useArtifactStore((s) => s.createProject);
 
   useEffect(() => {
@@ -39,6 +42,28 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   }, [path]);
 
   const canCreate = name.trim().length > 0 && !!validation?.exists && validation.isDir && !creating;
+
+  async function handleCreateDir() {
+    const trimmed = path.trim();
+    if (!trimmed) return;
+    setCreatingDir(true);
+    setError(null);
+    try {
+      await callRpc<MakeDirParams, MakeDirResult>("makeDir", { path: trimmed });
+      // re-run the authoritative validatePath check rather than trusting the
+      // client's "I just made this" claim — same pattern as the debounce effect.
+      const result = await callRpc<{ path: string }, ValidatePathResult>("validatePath", { path: trimmed });
+      setValidation(result);
+    } catch (err) {
+      if (err instanceof DaemonRpcError) {
+        setError(err.message);
+      } else {
+        setError((err as Error).message);
+      }
+    } finally {
+      setCreatingDir(false);
+    }
+  }
 
   async function handleCreate() {
     setCreating(true);
@@ -69,17 +94,33 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Đường dẫn repo</label>
-          <Input
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="/home/me/code/my-service"
-          />
+          <div className="flex gap-2">
+            <Input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="/home/me/code/my-service"
+            />
+            <Button variant="outline" onClick={() => setBrowserOpen(true)}>
+              Chọn…
+            </Button>
+          </div>
           {validation && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {validation.exists
-                ? `✓ Thư mục tồn tại · ${validation.hasClaudeDir ? ".claude/ đã có (xem xét Import)" : ".claude/ chưa có"}`
-                : "✗ Thư mục không tồn tại"}
-            </p>
+            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              {validation.exists ? (
+                <span>
+                  ✓ Thư mục tồn tại · {validation.hasClaudeDir ? ".claude/ đã có (xem xét Import)" : ".claude/ chưa có"}
+                </span>
+              ) : (
+                <>
+                  <span>✗ Thư mục không tồn tại</span>
+                  {path.trim().length > 0 && (
+                    <Button size="sm" variant="outline" disabled={creatingDir} onClick={handleCreateDir}>
+                      {creatingDir ? "Đang tạo…" : "Tạo thư mục này"}
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           )}
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
@@ -93,6 +134,16 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
           Tạo dự án
         </Button>
       </DialogFooter>
+
+      <FolderBrowserDialog
+        open={browserOpen}
+        initialPath={path.trim().length > 0 && validation?.isDir ? path.trim() : undefined}
+        onPick={(p) => {
+          setPath(p);
+          setBrowserOpen(false);
+        }}
+        onClose={() => setBrowserOpen(false)}
+      />
     </Dialog>
   );
 }

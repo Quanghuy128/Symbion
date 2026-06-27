@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createFakeOllamaServer, type Server as HttpServer } from "node:http";
@@ -172,6 +172,72 @@ describe("generateBody transport (TC-S1..TC-S4)", () => {
     ]);
     expect(res1.status).toBe(200);
     expect(res2.status).toBe(200);
+  });
+});
+
+describe("listDir / makeDir transport (TC-RPC1..TC-RPC9)", () => {
+  it("TC-RPC1: listDir without a token -> 401 (no free pass for read-only methods)", async () => {
+    const res = await rpc("listDir", {});
+    expect(res.status).toBe(401);
+  });
+
+  it("TC-RPC3: listDir with a valid token -> 200 with the expected ListDirResult shape", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "symbion-listdir-rpc-"));
+    try {
+      const res = await rpc("listDir", { path: dir }, { token: handle.token });
+      expect(res.status).toBe(200);
+      expect(res.body.path).toBe(dir);
+      expect(Array.isArray(res.body.entries)).toBe(true);
+      expect(res.body.denied).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("TC-RPC4: makeDir with a valid token -> 200, dir created on disk", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "symbion-makedir-rpc-"));
+    try {
+      const target = join(dir, "x");
+      const res = await rpc("makeDir", { path: target }, { token: handle.token });
+      expect(res.status).toBe(200);
+      expect(res.body.created).toBe(true);
+      expect(existsSync(target)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("TC-RPC5: malformed makeDir params (path missing) -> 400 invalid-params", async () => {
+    const res = await rpc("makeDir", {}, { token: handle.token });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("invalid-params");
+  });
+
+  it("TC-RPC8: makeDir with no `params` key at all in the request body -> 400 invalid-params (not 500)", async () => {
+    // JSON.stringify drops an `undefined` property entirely, so passing
+    // `undefined` here reproduces a client that omits `params` from the JSON
+    // body altogether (distinct from TC-RPC5's `params: {}`, which still has
+    // an empty-but-present params object).
+    const res = await rpc("makeDir", undefined, { token: handle.token });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("invalid-params");
+  });
+
+  it("TC-RPC9: listDir with no `params` key at all in the request body -> 400/200, never 500", async () => {
+    // listDir treats a missing path as "default to homedir()", so the absent
+    // `params` key alone should NOT crash into a 500 internal-error; the
+    // dispatch-layer `body.params ?? {}` default means handlers.listDir
+    // receives `{}` (path undefined) just like an explicit `params: {}` would,
+    // which is a valid, successful call (lists the daemon's home directory).
+    const res = await rpc("listDir", undefined, { token: handle.token });
+    expect(res.status).not.toBe(500);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.entries)).toBe(true);
+  });
+
+  it("makeDir without a token -> 401 (mutating method, not read-only)", async () => {
+    const res = await rpc("makeDir", { path: "/tmp/whatever" });
+    expect(res.status).toBe(401);
   });
 });
 

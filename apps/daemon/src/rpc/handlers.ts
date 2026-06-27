@@ -24,6 +24,7 @@ import {
 import { appendPublishLogEntry } from "../store/publishLog.js";
 import { gitStatus as coreGitStatus } from "../git/status.js";
 import { browseFolder as nativeBrowseFolder } from "../fs/folderPick.js";
+import { listDir as listDirImpl, makeDir as makeDirImpl } from "../fs/listDir.js";
 import {
   extractForeignAgentsMdContent,
   readAgentsMd,
@@ -34,7 +35,10 @@ import { writeFiles, type WriteFileTask } from "../fs/writeFiles.js";
 import { buildBodyGenerationPrompt } from "@symbion/core";
 import { getProvider } from "../llm/registry.js";
 import { LlmError, type LlmErrorCode } from "../llm/types.js";
+import { RpcError } from "./rpcError.js";
 import type * as contract from "./contract.js";
+
+export { RpcError };
 
 function randomId(): string {
   const hex = () => Math.floor(Math.random() * 16).toString(16);
@@ -51,12 +55,6 @@ function findProjectPath(projectId: string): string {
     throw new Error(`Không tìm thấy project: ${projectId}`);
   }
   return entry.path;
-}
-
-export class RpcError extends Error {
-  constructor(public code: string, message: string) {
-    super(message);
-  }
 }
 
 /**
@@ -116,6 +114,14 @@ export const handlers = {
     const hasAgentsMd = exists && isDir && existsSync(join(path, "AGENTS.md"));
 
     return { exists, isDir, isGitRepo, hasClaudeDir, hasAgentsMd, writable };
+  },
+
+  listDir(params: contract.ListDirParams): contract.ListDirResult {
+    return listDirImpl(params.path);
+  },
+
+  makeDir(params: contract.MakeDirParams): contract.MakeDirResult {
+    return makeDirImpl(params.path);
   },
 
   listProjects(_params: contract.ListProjectsParams): contract.ListProjectsResult {

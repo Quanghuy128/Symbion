@@ -26,7 +26,7 @@ const URL_RE = /Symbion daemon đang chạy: (http:\/\/127\.0\.0\.1:(\d+)\/\?t=(
  * the time the URL line is printed; the menu loop runs independently and the
  * process is killed at teardown regardless of menu state).
  */
-export async function bootDaemon(): Promise<DaemonHandle> {
+export async function bootDaemon(opts: { extraEnv?: Record<string, string> } = {}): Promise<DaemonHandle> {
   const projectRoot = mkdtempSync(join(tmpdir(), "symbion-e2e-project-"));
   const configDir = mkdtempSync(join(tmpdir(), "symbion-e2e-config-"));
 
@@ -34,6 +34,7 @@ export async function bootDaemon(): Promise<DaemonHandle> {
     env: {
       ...process.env,
       SYMBION_CONFIG_DIR: configDir,
+      ...opts.extraEnv,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });

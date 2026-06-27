@@ -49,6 +49,7 @@ const READ_ONLY_METHODS = new Set<RpcMethod>([
   "ping",
   "browseFolder",
   "validatePath",
+  "listDir",
   "listProjects",
   "loadProject",
   "scanClaudeDir",
@@ -56,6 +57,14 @@ const READ_ONLY_METHODS = new Set<RpcMethod>([
   "computeDiff",
   "gitStatus",
   "renderRunCommand",
+  // listModels does not write to the project's managed files (no fs mutation) — it is a
+  // synchronous, instant, zero-network-call lookup of the daemon's hardcoded model list.
+  "listModels",
+  // generateBody is deliberately NOT in this set: it performs an outbound network call
+  // (real-world side effect with cost), even though it does not touch the filesystem.
+  // This only affects which methods are conceptually labeled "read-only" for future use,
+  // not auth — every non-ping method already requires the token regardless of this set's
+  // membership (see the `method !== "ping"` check below). STATE §10.1.
 ]);
 
 export interface DaemonServerOptions {
@@ -166,7 +175,15 @@ export function startServer(opts: DaemonServerOptions): Promise<DaemonServerHand
         params: unknown,
         ctx: { port: number; version: string }
       ) => unknown;
-      const result = await handlerFn(body.params, { port: opts.port, version: opts.version });
+      // Default params to {} when the client omits the `params` key entirely
+      // (not just when params.path is missing/wrong-type) — every handler
+      // destructures/accesses fields off `params` directly, so an `undefined`
+      // params object throws a bare TypeError before any handler-level
+      // invalid-params validation runs, producing a misleading 500
+      // internal-error instead of 400 invalid-params. `ping`'s `_params` is
+      // unused so this default is a no-op for it.
+      const params = body.params ?? {};
+      const result = await handlerFn(params, { port: opts.port, version: opts.version });
       sendJson(res, 200, result);
     } catch (err) {
       if (err instanceof RpcError) {

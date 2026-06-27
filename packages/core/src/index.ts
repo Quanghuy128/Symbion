@@ -22,4 +22,7 @@ export * from "./version/semver.js";
 
 export * from "./runcommand/render.js";
 
+export * from "./generate/description.js";
+export * from "./generate/bodyPrompt.js";
+
 export { sha256Hex } from "./util/sha256.js";

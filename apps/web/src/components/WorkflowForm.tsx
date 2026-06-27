@@ -1,9 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import type { CanonicalArtifact } from "@symbion/core";
 import { extractAgentMentions } from "@symbion/core";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { GenerateBodyButton } from "@/components/GenerateBodyButton";
+import { ModelPicker } from "@/components/ModelPicker";
+import { GenerateBodyDisclosure } from "@/components/GenerateBodyDisclosure";
 
 export interface WorkflowFormProps {
   artifact: CanonicalArtifact;
@@ -13,6 +17,8 @@ export interface WorkflowFormProps {
 
 /** S8 — Workflow (command) builder form tab. */
 export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormProps) {
+  const [bodyModelId, setBodyModelId] = useState("");
+
   function update<K extends keyof CanonicalArtifact>(key: K, value: CanonicalArtifact[K]) {
     onChange({ ...artifact, [key]: value });
   }
@@ -44,15 +50,28 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
       <div>
         <div className="mb-1 flex items-center justify-between">
           <label className="text-sm font-medium">Nội dung</label>
-          <Button variant="outline" size="sm" onClick={insertArguments}>
-            [Chèn $ARGUMENTS]
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={insertArguments}>
+              [Chèn $ARGUMENTS]
+            </Button>
+            <ModelPicker providerId="ollama" value={bodyModelId} onChange={setBodyModelId} />
+            <GenerateBodyButton
+              kind="command"
+              name={artifact.name}
+              description={artifact.description}
+              currentBody={artifact.body}
+              modelId={bodyModelId}
+              providerId="ollama"
+              onApply={(value) => update("body", value)}
+            />
+          </div>
         </div>
         <textarea
           className="h-40 w-full rounded-md border border-border bg-background p-2 text-sm"
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
+        <GenerateBodyDisclosure providerId="ollama" />
       </div>
 
       {mentions.length > 0 && (

@@ -6,6 +6,9 @@ You are at the **analyze** step.
 
 Request to analyze: **$ARGUMENTS**
 
+<!-- process-manager 2026-06-28: added persistence step (audit-process finding: /analyze was the only pipeline stage producing zero file artifact — synthesis only lived in chat and was lost on session reset, unlike autopilot's own ANALYZE-section behavior). -->
+**Feature slug**: derive a kebab-case slug from `$ARGUMENTS` (state it back to the user) — this is the same slug `/office-hours`/`/design`/`/plan` will use for `docs/loops/<feature>-STATE.md`.
+
 Spin up **3 independent BA agents in parallel** using the Agent tool (subagent_type: `ba`), each approaching the request from a different angle. Send all 3 Agent calls in a single message so they run concurrently.
 
 **Agent 1 — Requirements Analyst**
@@ -53,3 +56,9 @@ After all 3 agents finish, synthesize their outputs into a single response struc
 
 ## Recommended Next Step
 Based on the synthesis: suggest whether to jump to `/office-hours` (scope still fuzzy), `/plan` (scope clear, ready to design), or `/build` (trivial change, design implicit).
+
+---
+
+Write this synthesis to `docs/loops/<feature>-STATE.md` (clearly-labeled sections — e.g. `## Requirements`, `## Solution Options`, `## Open Questions` — exact wording is yours) before ending your turn — so the analysis survives a session reset and `/office-hours`/`/plan` have a real artifact to read instead of relying on conversation context.
+
+<!-- retro 2026-06-28: dropped the "literal ## ANALYZE heading" instruction — like THINK, no real STATE file uses that literal keyword; ANALYZE/THINK are pipeline-stage names, not heading vocabulary the docs actually use. PLAN/BUILD/REVIEW/QA/CSO are different — those DO appear verbatim in real headings, confirmed by grep. -->

@@ -1,29 +1,39 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
-import type { GenerateBodyParams, GenerateBodyResult } from "@/lib/rpc/types";
+import type { GenerateBodyParams, GenerateBodyResult, ProviderId } from "@/lib/rpc/types";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { GENERATE_BODY_DISCLOSURE_FLAG_KEY, firstUseDisclosureCopy } from "@/components/GenerateBodyDisclosure";
 import { ProviderStatusPill } from "@/components/ProviderStatusPill";
-import { ConnectProviderPanel } from "@/components/ConnectProviderPanel";
 
 /** Cooldown window (ms) after a generate call resolves (success or error), independent of
  * the in-flight busyRef guard — blunts accidental rapid-fire clicking (STATE §9 Q12). */
 const COOLDOWN_MS = 4000;
 
-/** EC-4's exact error-code -> human-readable Vietnamese message taxonomy (STATE §10.5). */
+/** EC-4's exact error-code -> human-readable Vietnamese message taxonomy (STATE §10.5),
+ * generalized per docs/loops/multi-provider-settings-STATE.md §4d/§5 with the new
+ * "llm-not-configured" code. Used as a fallback only — the daemon's own RpcError message
+ * (surfaced via DaemonRpcError.message) is preferred when present, since for some codes
+ * (e.g. "llm-invalid-response") the daemon's message carries extra, useful detail this
+ * generic map would otherwise discard (see docs/learnings.md "Generate Body 404 loop"). */
 const ERROR_MESSAGES: Record<string, string> = {
   "llm-provider-not-running": "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy.",
   "llm-timeout": "Quá thời gian chờ (45s) — thử lại.",
-  "llm-auth": "Thiếu hoặc sai cấu hình API key cho remote provider.",
+  "llm-auth": "Thiếu hoặc sai cấu hình API key cho nhà cung cấp AI.",
   "llm-rate-limit": "Bị giới hạn tần suất gọi — thử lại sau.",
   "llm-invalid-response": "Phản hồi không hợp lệ từ mô hình.",
+  "llm-not-configured": "Chưa cấu hình nhà cung cấp AI nào — vào Cài đặt để thêm.",
 };
 const DEFAULT_ERROR_MESSAGE = "Lỗi không xác định, thử lại.";
+
+/** Error codes for which the CTA links to /settings — generalized from the old
+ * Ollama-specific "Cách kết nối Ollama" link (STATE §3.2/§4d). */
+const SETTINGS_CTA_CODES = new Set(["llm-provider-not-running", "llm-not-configured", "llm-auth"]);
 
 export interface GenerateBodyButtonProps {
   kind: "agent" | "command";
@@ -31,7 +41,9 @@ export interface GenerateBodyButtonProps {
   description: string;
   currentBody: string;
   modelId: string;
-  providerId: "ollama" | "remote";
+  /** null means no provider is configured/active yet (STATE §5's distinct "no provider
+   *  selected" state) — the button is disabled with a dedicated message in that case. */
+  providerId: ProviderId | null;
   onApply: (value: string) => void;
 }
 
@@ -59,7 +71,9 @@ export function GenerateBodyButton({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [connectPanelOpen, setConnectPanelOpen] = useState(false);
+  // The daemon's own RpcError message, preferred over the generic ERROR_MESSAGES
+  // fallback when present and non-empty (see ERROR_MESSAGES doc comment above).
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Captures the exact params of the last attempt, so Retry re-submits identically
   // (EC-3) without requiring the user to re-open the model picker.
@@ -72,9 +86,11 @@ export function GenerateBodyButton({
 
   async function fireRequest() {
     if (busyRef.current) return; // EC-5 in-flight re-entrancy guard
+    if (!providerId) return; // no provider configured/active — nothing to call
     busyRef.current = true;
     setBusy(true);
     setErrorCode(null);
+    setErrorMessage(null);
 
     const params: GenerateBodyParams = { kind, name, description, existingBody: currentBody, modelId, providerId };
     lastParamsRef.current = params;
@@ -83,11 +99,14 @@ export function GenerateBodyButton({
       const result = await callRpc<GenerateBodyParams, GenerateBodyResult>("generateBody", params);
       onApply(result.body);
       setErrorCode(null);
+      setErrorMessage(null);
     } catch (err) {
       if (err instanceof DaemonRpcError) {
         setErrorCode(err.code);
+        setErrorMessage(err.message || null);
       } else {
         setErrorCode("llm-unknown");
+        setErrorMessage(null);
       }
     } finally {
       busyRef.current = false;
@@ -128,7 +147,7 @@ export function GenerateBodyButton({
   }
 
   function handleClick() {
-    if (busyRef.current || cooldown) return;
+    if (busyRef.current || cooldown || !providerId) return;
     if (!hasSeenDisclosure()) {
       setDisclosureOpen(true); // first-ever click in this browser -> one-time disclosure first
       return;
@@ -148,10 +167,13 @@ export function GenerateBodyButton({
 
   function handleRetry() {
     setErrorCode(null);
+    setErrorMessage(null);
     void fireRequest();
   }
 
-  const disabled = busy || cooldown || !daemonConnected; // EC-8 daemon-connectivity gate
+  // EC-8 daemon-connectivity gate, generalized with the new "no provider configured" gate
+  // (STATE §5 — distinct from the daemon-down state, never silently treated the same way).
+  const disabled = busy || cooldown || !daemonConnected || !providerId;
 
   return (
     <>
@@ -160,7 +182,13 @@ export function GenerateBodyButton({
         variant="outline"
         size="sm"
         aria-label="Tạo nội dung bằng AI"
-        title={!daemonConnected ? "Daemon mất kết nối" : "Tạo nội dung bằng AI"}
+        title={
+          !daemonConnected
+            ? "Daemon mất kết nối"
+            : !providerId
+              ? "Chưa chọn nhà cung cấp AI — vào Cài đặt để chọn"
+              : "Tạo nội dung bằng AI"
+        }
         disabled={disabled}
         onClick={handleClick}
       >
@@ -169,33 +197,33 @@ export function GenerateBodyButton({
 
       <ProviderStatusPill providerId={providerId} />
 
+      {!providerId && daemonConnected && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Chưa chọn nhà cung cấp AI —{" "}
+          <Link href="/settings" className="underline">
+            vào Cài đặt để chọn
+          </Link>
+          .
+        </p>
+      )}
+
       {errorCode && (
         <div className="mt-1 flex items-center gap-2 text-xs text-destructive">
-          <span>{ERROR_MESSAGES[errorCode] ?? DEFAULT_ERROR_MESSAGE}</span>
+          <span>{errorMessage || ERROR_MESSAGES[errorCode] || DEFAULT_ERROR_MESSAGE}</span>
           {errorCode === "llm-timeout" && (
             <button type="button" className="underline" onClick={handleRetry} disabled={busy || cooldown}>
               Thử lại
             </button>
           )}
-          {/* EC-7/AC-4: this CTA only opens when an Ollama-specific failure was resolved
-           *  by the RPC (errorCode === llm-provider-not-running) — never for the daemon-down
-           *  case, which is a different code path (disabled-button state above), and never
-           *  for "remote"'s llm-auth, which keeps its existing message unchanged per locked
-           *  decision 4 (no new UI for remote in v1). */}
-          {errorCode === "llm-provider-not-running" && providerId === "ollama" && (
-            <button type="button" className="underline" onClick={() => setConnectPanelOpen(true)}>
-              Cách kết nối Ollama
-            </button>
+          {/* Generalized from the old Ollama-specific "Cách kết nối Ollama" CTA: any
+           *  provider-connectivity/auth/not-configured failure now links to the
+           *  provider-agnostic Settings page (STATE §3.2/§4d). */}
+          {SETTINGS_CTA_CODES.has(errorCode) && (
+            <Link href="/settings" className="underline">
+              Mở Cài đặt nhà cung cấp
+            </Link>
           )}
         </div>
-      )}
-
-      {providerId === "ollama" && (
-        <ConnectProviderPanel
-          providerId="ollama"
-          open={connectPanelOpen}
-          onClose={() => setConnectPanelOpen(false)}
-        />
       )}
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>

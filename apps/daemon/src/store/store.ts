@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -17,10 +17,38 @@ export class UnsupportedSchemaVersionError extends Error {
   }
 }
 
-function atomicWriteJson(absPath: string, data: unknown): void {
-  mkdirSync(dirname(absPath), { recursive: true });
+/**
+ * atomicWriteJson — mkdir-recursive + temp-file write + rename. Exported (not
+ * just module-local) so other daemon-only modules that own their own JSON
+ * file under globalConfigDir() (e.g. llm/secrets.ts's providers.json) reuse
+ * this exact primitive instead of re-implementing temp->rename semantics —
+ * one write-primitive, not two (docs/loops/multi-provider-settings-STATE.md §3.2).
+ *
+ * `mode` (optional) chmods the temp file BEFORE the rename so the final file
+ * never has a window where it's readable by more than the intended mode
+ * (e.g. 0o600 for secrets) — chmod-after-rename would leave a brief window
+ * with default (typically 0o644) permissions.
+ *
+ * `dirMode` (optional) additionally chmods the containing directory — used
+ * by secrets.ts so `~/.config/symbion/` itself isn't left world-readable
+ * (0o755 from the process umask) even though the secrets file inside it is
+ * 0o600, per the /cso review's directory-permissions finding.
+ */
+export function atomicWriteJson(
+  absPath: string,
+  data: unknown,
+  opts?: { mode?: number; dirMode?: number }
+): void {
+  const dir = dirname(absPath);
+  mkdirSync(dir, { recursive: true });
+  if (opts?.dirMode !== undefined) {
+    chmodSync(dir, opts.dirMode);
+  }
   const tempPath = `${absPath}.symbion-tmp-${process.pid}-${Date.now()}`;
   writeFileSync(tempPath, JSON.stringify(data, null, 2), "utf-8");
+  if (opts?.mode !== undefined) {
+    chmodSync(tempPath, opts.mode);
+  }
   renameSync(tempPath, absPath);
 }
 

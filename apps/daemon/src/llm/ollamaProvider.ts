@@ -2,20 +2,55 @@
  * OllamaProvider — calls a local Ollama instance over HTTP using Node's native
  * fetch + AbortController. No API key. The v1 default provider (STATE §9).
  *
- * Model ids below are real, currently-pullable Ollama tags chosen as
- * placeholders for the fast/balanced/best tiers (R2 in STATE §10.7 — a
- * dev-time content decision, not an architecture decision; Checker should
- * independently verify these tags are still valid/pullable at review time).
+ * listModels() queries the real local Ollama's `GET /api/tags` per
+ * docs/loops/ollama-dynamic-models-STATE.md §6.2 — the old hardcoded 3-entry
+ * placeholder constant has been removed entirely (no fallback to it on any
+ * failure path, per that STATE's §3 "never silently fail" constraint).
  */
 import { LlmError, type LlmGenerateRequest, type LlmGenerateResult, type LlmModelOption, type LlmProvider } from "./types.js";
 
 export const OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434";
 
-const OLLAMA_MODELS: LlmModelOption[] = [
-  { id: "llama3.2:1b", label: "Llama 3.2 1B (nhanh)", tier: "fast" },
-  { id: "llama3.1:8b", label: "Llama 3.1 8B (cân bằng)", tier: "balanced" },
-  { id: "llama3.1:70b", label: "Llama 3.1 70B (tốt nhất)", tier: "best" },
-];
+/** Same 3000ms convention as `checkOllamaReachable` (providerStatus.ts) — this is a
+ *  cheap "what's there" probe, not a generate() call, per STATE §6.1/§6.2. */
+const OLLAMA_LIST_MODELS_TIMEOUT_MS = 3000;
+
+/** Matches a parameter-count hint at the end of an Ollama tag, e.g. "8b", "1b", "70b",
+ *  "3.8b", "0.5b" — case-insensitive. Per STATE §6.3. */
+const PARAM_SIZE_RE = /(\d+(?:\.\d+)?)\s*b\b/i;
+
+/**
+ * inferTierFromTag — infers a coarse speed/capability tier from an Ollama tag's
+ * parameter-count hint when one is confidently parseable; otherwise returns
+ * `undefined` rather than guessing (STATE §6.3 — "omit tier" over "invent a default").
+ * Thresholds: <=3b fast, <=13b balanced, >13b best.
+ */
+function inferTierFromTag(tag: string): LlmModelOption["tier"] {
+  const match = tag.match(PARAM_SIZE_RE);
+  if (!match) return undefined;
+  const billions = parseFloat(match[1]!);
+  if (Number.isNaN(billions)) return undefined;
+  if (billions <= 3) return "fast";
+  if (billions <= 13) return "balanced";
+  return "best";
+}
+
+/** Maps a raw Ollama tag string (e.g. "llama3.1:8b") to an `LlmModelOption` — label is
+ *  the raw tag itself (no attempt at vendor-name prettification, STATE §6.3). */
+function ollamaTagToModelOption(tag: string): LlmModelOption {
+  return { id: tag, label: tag, tier: inferTierFromTag(tag) };
+}
+
+interface OllamaTagsResponseModel {
+  name?: string; // e.g. "llama3.1:8b"
+  model?: string; // Ollama duplicates `name` here in real responses; tolerate either
+  size?: number;
+  [key: string]: unknown;
+}
+interface OllamaTagsResponse {
+  models?: OllamaTagsResponseModel[];
+  [key: string]: unknown;
+}
 
 export interface OllamaProviderOptions {
   /** injectable for tests (Tier A fake-provider, per testplan §0); defaults to the real local Ollama. */
@@ -93,8 +128,65 @@ export class OllamaProvider implements LlmProvider {
     this.baseUrl = resolveOllamaBaseUrl();
   }
 
-  listModels(): LlmModelOption[] {
-    return OLLAMA_MODELS;
+  /**
+   * listModels — queries Ollama's real `GET /api/tags` (per
+   * docs/loops/ollama-dynamic-models-STATE.md §6.2), bounded by a 3000ms
+   * AbortController timeout (same convention as `checkOllamaReachable`). Uses
+   * `this.baseUrl`, already resolved through the SAME loopback-guarded
+   * `resolveOllamaBaseUrl()` the constructor uses — no second SSRF-guard
+   * implementation.
+   *
+   * Error mapping:
+   * - connection-refused / DNS failure / our own abort-on-timeout all collapse to
+   *   `LlmError("provider-not-running", ...)` — both mean "ModelPicker cannot get a
+   *   model list from Ollama right now," and AC4 only requires the existing
+   *   "unreachable" shape be unregressed, not a distinct timeout code (STATE §9.1).
+   * - non-2xx HTTP status -> `LlmError("invalid-response", ...)`.
+   * - non-JSON body -> `LlmError("invalid-response", ...)`.
+   * - missing/wrong-type `models` field on an otherwise-200 response ->
+   *   `LlmError("invalid-response", ...)` — distinct from "genuinely zero models,"
+   *   which is a well-formed `{ models: [] }` that resolves normally (empty array,
+   *   no throw) per STATE §3's "never silently fail ... not an empty array
+   *   indistinguishable from genuinely zero" constraint.
+   */
+  async listModels(): Promise<LlmModelOption[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), OLLAMA_LIST_MODELS_TIMEOUT_MS);
+    try {
+      let res: Response;
+      try {
+        res = await fetch(`${this.baseUrl}/api/tags`, { signal: controller.signal });
+      } catch {
+        throw new LlmError(
+          "provider-not-running",
+          "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy."
+        );
+      }
+      if (!res.ok) {
+        throw new LlmError("invalid-response", `Ollama trả về lỗi HTTP ${res.status} khi lấy danh sách mô hình.`);
+      }
+      let json: OllamaTagsResponse;
+      try {
+        json = (await res.json()) as OllamaTagsResponse;
+      } catch {
+        throw new LlmError(
+          "invalid-response",
+          "Phản hồi không hợp lệ từ Ollama (không phải JSON) khi lấy danh sách mô hình."
+        );
+      }
+      if (!Array.isArray(json.models)) {
+        throw new LlmError(
+          "invalid-response",
+          "Phản hồi không hợp lệ từ Ollama (thiếu trường models) khi lấy danh sách mô hình."
+        );
+      }
+      return json.models
+        .map((m) => m.name ?? m.model)
+        .filter((name): name is string => typeof name === "string" && name.length > 0)
+        .map(ollamaTagToModelOption);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async generate(req: LlmGenerateRequest): Promise<LlmGenerateResult> {

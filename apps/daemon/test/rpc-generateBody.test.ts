@@ -4,11 +4,13 @@ import { mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handlers, RpcError } from "../src/rpc/handlers.js";
-import { REMOTE_API_KEY_ENV_VAR } from "../src/llm/remoteProvider.js";
+import { setProviderKey } from "../src/llm/secrets.js";
 
 let server: Server | undefined;
 let projectRoot: string;
+let tempConfigDir: string;
 const originalOllamaUrl = process.env["SYMBION_OLLAMA_BASE_URL"];
+const originalConfigDir = process.env["SYMBION_CONFIG_DIR"];
 
 function listenEphemeral(handler: Parameters<typeof createServer>[0]): Promise<{ server: Server; baseUrl: string }> {
   return new Promise((resolve) => {
@@ -23,6 +25,8 @@ function listenEphemeral(handler: Parameters<typeof createServer>[0]): Promise<{
 
 beforeEach(() => {
   projectRoot = mkdtempSync(join(tmpdir(), "symbion-genbody-"));
+  tempConfigDir = mkdtempSync(join(tmpdir(), "symbion-test-"));
+  process.env["SYMBION_CONFIG_DIR"] = tempConfigDir;
 });
 
 afterEach(async () => {
@@ -31,12 +35,17 @@ afterEach(async () => {
     server = undefined;
   }
   rmSync(projectRoot, { recursive: true, force: true });
+  rmSync(tempConfigDir, { recursive: true, force: true });
   if (originalOllamaUrl === undefined) {
     delete process.env["SYMBION_OLLAMA_BASE_URL"];
   } else {
     process.env["SYMBION_OLLAMA_BASE_URL"] = originalOllamaUrl;
   }
-  delete process.env[REMOTE_API_KEY_ENV_VAR];
+  if (originalConfigDir === undefined) {
+    delete process.env["SYMBION_CONFIG_DIR"];
+  } else {
+    process.env["SYMBION_CONFIG_DIR"] = originalConfigDir;
+  }
 });
 
 function storeFilePath(): string {
@@ -137,8 +146,7 @@ describe("handlers.generateBody", () => {
     await expect(promise).rejects.toBeInstanceOf(RpcError);
   });
 
-  it("TC-H6: providerId: 'remote' with no key configured -> RpcError code llm-auth (seam wired end-to-end)", async () => {
-    delete process.env[REMOTE_API_KEY_ENV_VAR];
+  it("TC-H6: providerId: 'anthropic' with no key configured -> RpcError code llm-not-configured (seam wired end-to-end)", async () => {
     await expect(
       handlers.generateBody({
         kind: "agent",
@@ -146,10 +154,18 @@ describe("handlers.generateBody", () => {
         description: "",
         existingBody: "",
         modelId: "claude-sonnet-4-5",
-        providerId: "remote",
+        providerId: "anthropic",
       })
-    ).rejects.toMatchObject({ code: "llm-auth" });
+    ).rejects.toMatchObject({ code: "llm-not-configured" });
   });
+
+  // NOTE: a full success/auth round-trip against a fake server for the 3 cloud providers
+  // is covered at the provider layer (llm-anthropicProvider.test.ts / llm-openaiProvider.test.ts /
+  // llm-geminiProvider.test.ts) since each provider's baseUrl is only injectable via its own
+  // constructor option, not env var or RPC param — handlers.generateBody constructs providers
+  // via getProvider(), which has no way to inject a test baseUrl through the RPC surface. The
+  // full round-trip THROUGH the RPC handler (save key -> activate -> generateBody against a
+  // fake server) is covered in rpc-providerSettings-roundtrip.test.ts (TC-I1/TC-I2).
 
   it("TC-H10: SYMBION_OLLAMA_BASE_URL pointing at a non-loopback host surfaces as a clean RpcError, not a raw LlmError/500 (STATE §13 HIGH)", async () => {
     process.env["SYMBION_OLLAMA_BASE_URL"] = "http://example.com:9999";
@@ -211,26 +227,85 @@ describe("handlers.generateBody", () => {
 });
 
 describe("handlers.listModels", () => {
-  it("returns the daemon's hardcoded model list for ollama (exactly 3 entries)", () => {
-    const result = handlers.listModels({ providerId: "ollama" });
-    expect(result.models).toHaveLength(3);
+  // Ollama's listModels is now a real /api/tags network call (per
+  // docs/loops/ollama-dynamic-models-STATE.md §6.4) — these cases point
+  // SYMBION_OLLAMA_BASE_URL at an ephemeral fake server, same env-override
+  // seam already used elsewhere in this file/rpc-checkProviderStatus.test.ts.
+
+  it("TC-RPC-A1: ollama, populated /api/tags -> resolves {models:[...len>0], outcome:'ok'}", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [{ name: "llama3.1:8b" }] }));
+    });
+    server = s;
+    process.env["SYMBION_OLLAMA_BASE_URL"] = baseUrl;
+
+    const result = await handlers.listModels({ providerId: "ollama" });
+    expect(result.outcome).toBe("ok");
+    expect(result.models.length).toBeGreaterThan(0);
   });
 
-  it("returns the daemon's hardcoded model list for remote (exactly 3 entries)", () => {
-    const result = handlers.listModels({ providerId: "remote" });
-    expect(result.models).toHaveLength(3);
+  it("TC-RPC-A2: ollama, /api/tags returns zero models -> resolves {models:[], outcome:'empty'}, no errorMessage", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [] }));
+    });
+    server = s;
+    process.env["SYMBION_OLLAMA_BASE_URL"] = baseUrl;
+
+    const result = await handlers.listModels({ providerId: "ollama" });
+    expect(result).toEqual({ models: [], outcome: "empty" });
   });
 
-  it("TC-H9: invalid providerId -> clean RpcError('invalid-params'), not a bare Error leak (STATE §13)", () => {
-    expect(() =>
+  it("TC-RPC-A3: ollama, malformed JSON from /api/tags -> resolves {models:[], outcome:'fetch-failed', errorMessage}, does NOT throw", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("not json {{{");
+    });
+    server = s;
+    process.env["SYMBION_OLLAMA_BASE_URL"] = baseUrl;
+
+    const result = await handlers.listModels({ providerId: "ollama" });
+    expect(result.models).toEqual([]);
+    expect(result.outcome).toBe("fetch-failed");
+    expect(result.errorMessage).toBeTruthy();
+  });
+
+  it("TC-RPC-A4: ollama unreachable -> still THROWS RpcError('llm-provider-not-running'), unchanged shape (AC4)", async () => {
+    process.env["SYMBION_OLLAMA_BASE_URL"] = "http://127.0.0.1:1"; // nothing listening
+    await expect(handlers.listModels({ providerId: "ollama" })).rejects.toMatchObject({
+      code: "llm-provider-not-running",
+    });
+  });
+
+  it("returns the daemon's hardcoded model list for anthropic (exactly 3 entries, outcome 'ok')", async () => {
+    const result = await handlers.listModels({ providerId: "anthropic" });
+    expect(result.models).toHaveLength(3);
+    expect(result.outcome).toBe("ok");
+  });
+
+  it("returns the daemon's hardcoded model list for openai (exactly 3 entries, outcome 'ok')", async () => {
+    const result = await handlers.listModels({ providerId: "openai" });
+    expect(result.models).toHaveLength(3);
+    expect(result.outcome).toBe("ok");
+  });
+
+  it("returns the daemon's hardcoded model list for gemini (exactly 3 entries, outcome 'ok')", async () => {
+    const result = await handlers.listModels({ providerId: "gemini" });
+    expect(result.models).toHaveLength(3);
+    expect(result.outcome).toBe("ok");
+  });
+
+  it("TC-H9: invalid providerId -> clean RpcError('invalid-params'), not a bare Error leak (STATE §13)", async () => {
+    await expect(
       handlers.listModels({
         // @ts-expect-error intentionally invalid at the type level to simulate an
         // off-the-wire JSON payload that bypasses TS's compile-time union check.
         providerId: "made-up-provider",
       })
-    ).toThrowError(RpcError);
+    ).rejects.toBeInstanceOf(RpcError);
     try {
-      handlers.listModels({
+      await handlers.listModels({
         // @ts-expect-error see above
         providerId: "made-up-provider",
       });

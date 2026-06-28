@@ -57,8 +57,12 @@ const READ_ONLY_METHODS = new Set<RpcMethod>([
   "computeDiff",
   "gitStatus",
   "renderRunCommand",
-  // listModels does not write to the project's managed files (no fs mutation) — it is a
-  // synchronous, instant, zero-network-call lookup of the daemon's hardcoded model list.
+  // listModels does not write to the project's managed files (no fs mutation). For the 3
+  // cloud providers it is still a synchronous, instant, zero-network-call lookup of a
+  // hardcoded list; for Ollama it now performs a real, timeout-bounded `GET /api/tags`
+  // network call against the local Ollama instance (docs/loops/ollama-dynamic-models-STATE.md
+  // §6.5) — "read-only" here means "no fs mutation," not "free"/"local-only"/"synchronous,"
+  // same conceptual category checkProviderStatus/generateBody already occupy below.
   "listModels",
   // generateBody is deliberately NOT in this set: it performs an outbound network call
   // (real-world side effect with cost), even though it does not touch the filesystem.
@@ -66,9 +70,17 @@ const READ_ONLY_METHODS = new Set<RpcMethod>([
   // not auth — every non-ping method already requires the token regardless of this set's
   // membership (see the `method !== "ping"` check below). STATE §10.1.
   // checkProviderStatus also performs an outbound network call (a liveness ping to
-  // Ollama's loopback port), same rationale as generateBody — labeled here as
-  // conceptually read-only (no fs mutation) even though it's not "free" like listModels.
+  // Ollama's loopback port, or an authenticated cheap call to a cloud provider), same
+  // rationale as generateBody — labeled here as conceptually read-only (no fs mutation)
+  // even though it's not "free" like listModels.
   "checkProviderStatus",
+  // listProviders reads providers.json but performs no mutation — same rationale as
+  // listModels's membership here (docs/loops/multi-provider-settings-STATE.md §3.2).
+  // saveProviderKey/clearProviderKey/setActiveProvider are deliberately NOT in this set —
+  // they mutate providers.json and still require the session token like every other
+  // non-ping/non-read-only method (no change to the auth gate itself, just correct set
+  // membership for the new methods).
+  "listProviders",
 ]);
 
 export interface DaemonServerOptions {

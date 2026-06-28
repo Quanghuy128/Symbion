@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { GenerateBodyButton } from "@/components/GenerateBodyButton";
 import { ModelPicker } from "@/components/ModelPicker";
 import { GenerateBodyDisclosure } from "@/components/GenerateBodyDisclosure";
+import { useActiveProvider } from "@/lib/hooks/useActiveProvider";
 
 const KNOWN_TOOLS = ["Read", "Write", "Edit", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "Task"];
 
@@ -19,6 +20,7 @@ export interface AgentFormProps {
 export function AgentForm({ artifact, onChange }: AgentFormProps) {
   const [advancedOpen, setAdvancedOpen] = useState((artifact.customFields?.length ?? 0) > 0);
   const [bodyModelId, setBodyModelId] = useState("");
+  const { activeProviderId } = useActiveProvider();
 
   function update<K extends keyof CanonicalArtifact>(key: K, value: CanonicalArtifact[K]) {
     onChange({ ...artifact, [key]: value });
@@ -83,14 +85,14 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
         <div className="mb-1 flex items-center justify-between">
           <label className="text-sm font-medium">Nội dung</label>
           <div className="flex items-center gap-2">
-            <ModelPicker providerId="ollama" value={bodyModelId} onChange={setBodyModelId} />
+            <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
               kind="agent"
               name={artifact.name}
               description={artifact.description}
               currentBody={artifact.body}
               modelId={bodyModelId}
-              providerId="ollama"
+              providerId={activeProviderId}
               onApply={(value) => update("body", value)}
             />
           </div>
@@ -100,7 +102,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
-        <GenerateBodyDisclosure providerId="ollama" />
+        <GenerateBodyDisclosure providerId={activeProviderId} />
       </div>
 
       <div>

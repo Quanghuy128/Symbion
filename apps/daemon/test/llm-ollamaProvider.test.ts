@@ -182,16 +182,141 @@ describe("OllamaProvider (Tier A — fake HTTP server)", () => {
     }
   });
 
-  it("TC-D6: listModels() returns exactly 3 entries with all 3 tiers represented exactly once", () => {
-    const provider = new OllamaProvider();
-    const models = provider.listModels();
-    expect(models).toHaveLength(3);
-    for (const m of models) {
-      expect(m.id).toBeTruthy();
-      expect(m.label).toBeTruthy();
-      expect(["fast", "balanced", "best"]).toContain(m.tier);
+  it("TC-LM-A1: listModels() resolves real /api/tags entries mapped to LlmModelOption[] with inferred tier", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [{ name: "llama3.1:8b", model: "llama3.1:8b", size: 123 }] }));
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    const models = await provider.listModels();
+    expect(models).toEqual([{ id: "llama3.1:8b", label: "llama3.1:8b", tier: "balanced" }]);
+  });
+
+  it("TC-LM-A2: listModels() resolves [] (no throw) when Ollama reports zero models pulled", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [] }));
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    const models = await provider.listModels();
+    expect(models).toEqual([]);
+  });
+
+  it("TC-LM-A3: listModels() infers fast/balanced/best/undefined tiers from varied tags, preserving input order", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          models: [
+            { name: "llama3.2:1b" },
+            { name: "llama3.1:8b" },
+            { name: "llama3.1:70b" },
+            { name: "mistral:latest" },
+          ],
+        })
+      );
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    const models = await provider.listModels();
+    expect(models).toEqual([
+      { id: "llama3.2:1b", label: "llama3.2:1b", tier: "fast" },
+      { id: "llama3.1:8b", label: "llama3.1:8b", tier: "balanced" },
+      { id: "llama3.1:70b", label: "llama3.1:70b", tier: "best" },
+      { id: "mistral:latest", label: "mistral:latest", tier: undefined },
+    ]);
+  });
+
+  it("TC-LM-A4: nothing listening -> listModels() rejects with LlmError code provider-not-running", async () => {
+    const provider = new OllamaProvider({ baseUrl: "http://127.0.0.1:1" });
+    await expect(provider.listModels()).rejects.toMatchObject({ code: "provider-not-running" });
+  });
+
+  it("TC-LM-A5: fake server never responds -> listModels() rejects provider-not-running within the 3000ms budget (elapsed < 6000ms)", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((req, res) => {
+      req.on("aborted", () => {});
+      // never respond — simulate a hang
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    const start = Date.now();
+    await expect(provider.listModels()).rejects.toMatchObject({ code: "provider-not-running" });
+    // Bounded by the 3000ms AbortController budget; generous margin (vs. the 4000ms used
+    // elsewhere) to absorb CI/dev-machine scheduling jitter without weakening the actual
+    // assertion under test (AC6 — "bounded," not a tight latency SLA).
+    expect(Date.now() - start).toBeLessThan(6000);
+  });
+
+  it("TC-LM-A6: non-JSON body -> listModels() rejects invalid-response", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end("<html>not ollama</html>");
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    await expect(provider.listModels()).rejects.toMatchObject({ code: "invalid-response" });
+  });
+
+  it("TC-LM-A7: valid JSON missing the models key -> listModels() rejects invalid-response", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ foo: "bar" }));
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    await expect(provider.listModels()).rejects.toMatchObject({ code: "invalid-response" });
+  });
+
+  it("TC-LM-A8: models field present but not an array -> listModels() rejects invalid-response", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: "oops" }));
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    await expect(provider.listModels()).rejects.toMatchObject({ code: "invalid-response" });
+  });
+
+  it("TC-LM-A9: HTTP 500 -> listModels() rejects invalid-response", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "boom" }));
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    await expect(provider.listModels()).rejects.toMatchObject({ code: "invalid-response" });
+  });
+
+  it("TC-LM-A10: an entry missing both name and model is filtered out (not an error) alongside a valid entry", async () => {
+    const { server: s, baseUrl } = await listenEphemeral((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [{ size: 1 }, { name: "llama3.1:8b" }] }));
+    });
+    server = s;
+
+    const provider = new OllamaProvider({ baseUrl });
+    const models = await provider.listModels();
+    expect(models).toEqual([{ id: "llama3.1:8b", label: "llama3.1:8b", tier: "balanced" }]);
+  });
+
+  it("TC-LM-A11: SYMBION_OLLAMA_BASE_URL set to a non-loopback host -> listModels() rejects provider-not-running (same SSRF guard as generate())", async () => {
+    const original = process.env["SYMBION_OLLAMA_BASE_URL"];
+    process.env["SYMBION_OLLAMA_BASE_URL"] = "http://evil.example.com";
+    try {
+      expect(() => new OllamaProvider()).toThrow(LlmError);
+    } finally {
+      if (original === undefined) delete process.env["SYMBION_OLLAMA_BASE_URL"];
+      else process.env["SYMBION_OLLAMA_BASE_URL"] = original;
     }
-    const tiers = models.map((m) => m.tier).sort();
-    expect(tiers).toEqual(["balanced", "best", "fast"]);
   });
 });

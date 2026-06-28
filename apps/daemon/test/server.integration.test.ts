@@ -242,10 +242,31 @@ describe("listDir / makeDir transport (TC-RPC1..TC-RPC9)", () => {
 });
 
 describe("listModels transport", () => {
-  it("POST /rpc listModels with a valid token -> 200 with 3 models", async () => {
-    const res = await rpc("listModels", { providerId: "ollama" }, { token: handle.token });
+  it("POST /rpc listModels with a valid token -> 200 with 3 models (static cloud provider, unaffected by this machine's Ollama state)", async () => {
+    const res = await rpc("listModels", { providerId: "anthropic" }, { token: handle.token });
     expect(res.status).toBe(200);
     expect(res.body.models).toHaveLength(3);
+    expect(res.body.outcome).toBe("ok");
+  });
+
+  it("POST /rpc listModels for ollama, reachable fake server -> 200 with outcome 'ok'", async () => {
+    const { createServer } = await import("node:http");
+    const fakeServer = createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [{ name: "llama3.1:8b" }] }));
+    });
+    await new Promise<void>((resolve) => fakeServer.listen(0, "127.0.0.1", () => resolve()));
+    const addr = fakeServer.address();
+    const port = typeof addr === "object" && addr ? addr.port : 0;
+    process.env["SYMBION_OLLAMA_BASE_URL"] = `http://127.0.0.1:${port}`;
+    try {
+      const res = await rpc("listModels", { providerId: "ollama" }, { token: handle.token });
+      expect(res.status).toBe(200);
+      expect(res.body.outcome).toBe("ok");
+      expect(res.body.models.length).toBeGreaterThan(0);
+    } finally {
+      await new Promise<void>((resolve) => fakeServer.close(() => resolve()));
+    }
   });
 
   it("POST /rpc listModels with no token -> 401", async () => {

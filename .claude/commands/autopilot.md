@@ -110,9 +110,17 @@ Read the plan in docs/loops/<feature>-STATE.md and run git diff.
 Assess: does implementation match the design? Any drift, unnecessary complexity, missing edge cases?
 Return findings + verdict PASS or NEEDS-WORK."
 
-Aggregate verdicts:
-- Any 🔴 NEEDS-WORK → APPROVAL GATE B (below)
-- Both PASS → continue to QA
+<!-- process-manager 2026-06-28: added security-reviewer trigger check (audit-process finding: CLAUDE.md documents /cso as required "when touching RPC / fs-write / secrets" but autopilot never mechanically checked the trigger condition — an unattended run touching the daemon's write/RPC surface could ship without a security review). -->
+**Security-review trigger check**: run `git diff --stat`. If the diff touches `apps/daemon/` RPC handlers, filesystem-write/path-handling code, or secret storage, ALSO invoke `security-reviewer` in this same parallel batch:
+
+**security-reviewer**: "Security audit for '$ARGUMENTS' (OWASP Top 10 + STRIDE).
+Read docs/loops/<feature>-STATE.md and run git diff.
+Symbion focus areas: localhost RPC hardening (127.0.0.1 bind + origin-bound token + anti DNS-rebinding), path confinement, destructive-write safety (backup-before-write, conflict blocks overwrite), secret handling.
+Return findings 🔴/🟠/🟡/🟢 + verdict PASS or NEEDS-WORK."
+
+Aggregate verdicts (including security-reviewer's, if it ran):
+- Any 🔴/🟠 NEEDS-WORK → APPROVAL GATE B (below)
+- All PASS → continue to QA
 
 ## APPROVAL GATE B — if user selected "After REVIEW if 🔴 blocker found" AND blockers exist
 

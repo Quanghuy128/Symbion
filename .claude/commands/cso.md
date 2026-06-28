@@ -15,6 +15,6 @@ Pass to it:
 
 Receive findings 🔴/🟠/🟡/🟢 + PASS/NEEDS-WORK verdict.
 - 🔴/🟠 finding → return to `/build` for the Maker to fix (pass findings), then re-run cso.
-- PASS → write result to STATE, proceed to `/qa` or `/ship`.
+- PASS → write result to STATE under a heading containing `CSO` (substring match — `/ship`'s precondition check looks for the keyword, not an exact `## CSO` string), proceed to `/qa` or `/ship`.
 
 When to run: any change touching the daemon RPC, filesystem writes/path handling, the publish/upsert engine, user input parsing, or secrets.

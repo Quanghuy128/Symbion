@@ -12,6 +12,8 @@ Process:
 1. **office-hours (condensed)**: self-answer questions that have clear defaults; collect "taste" questions together.
 2. **plan** (via `architect` subagent): build architecture + data flow + edge cases + **test plan** + DB changes.
 3. **SINGLE APPROVAL GATE**: present to user — (a) decisions already made automatically (for awareness), (b) ONLY the taste questions that need a real decision (one batched AskUserQuestion).
-4. After user answers → write full STATE (scope + plan + test plan), ready for `/build`.
+4. After user answers → write scope to STATE under a `Scope` section and the plan under a heading containing `PLAN` (substring match, e.g. `## PLAN — Architecture`), plus the test plan to `docs/loops/<feature>-testplan.md` — ready for `/build`.
+<!-- process-manager 2026-06-28: named the exact artifacts/headings (audit-process finding: autoplan described the output loosely ("write full STATE") while /plan.md names the testplan file explicitly — inconsistent precision between two commands producing the same artifact type). -->
+<!-- retro 2026-06-28: corrected "## THINK" reference — no real STATE file uses that literal keyword; the checkable signal is a Scope section. -->
 
 Goal: the user answers exactly once for decisions that genuinely need them, instead of being interrupted at every step.

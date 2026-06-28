@@ -198,20 +198,57 @@ export interface RenderRunCommandResult {
   prompt: string;
 }
 
-/** One of the 3 fixed, hardcoded (no dynamic-fetch) model choices for a given LLM provider.
- * Source of truth is apps/daemon (see apps/daemon/src/llm/*Provider.ts); apps/web fetches this
- * list via the `listModels` RPC instead of hand-duplicating it (resolves STATE §10.7 Risk R1). */
+/** A model choice for a given LLM provider. For the 3 cloud providers (openai/anthropic/
+ * gemini), this is still one of a fixed, hardcoded list (no dynamic fetch, STATE §10.7 Risk
+ * R1, unchanged). For Ollama, this is now dynamically discovered from the local Ollama's
+ * `GET /api/tags` (docs/loops/ollama-dynamic-models-STATE.md §6.2/§6.3) — source of truth is
+ * apps/daemon (see apps/daemon/src/llm/*Provider.ts); apps/web fetches this list via the
+ * `listModels` RPC instead of hand-duplicating it. */
 export interface LlmModelOption {
   id: string;
   label: string;
-  tier: "fast" | "balanced" | "best";
+  /** Optional — dynamically-discovered Ollama models with no confidently-parseable
+   *  parameter-count hint in their tag name have no tier (STATE §6.3). The 3 cloud
+   *  providers' static entries always set this. */
+  tier?: "fast" | "balanced" | "best";
 }
 
+/** The 4-id provider union, widened from "ollama" | "remote" per
+ * docs/loops/multi-provider-settings-STATE.md §3.1/§3.2. "remote" is removed —
+ * folded into "anthropic" (rename, not a 5th id). */
+export type ProviderId = "ollama" | "openai" | "anthropic" | "gemini";
+
+/** Mirrors apps/daemon/src/llm/types.ts's LlmErrorCode — re-exported here so
+ * apps/web can use the "not-configured" value for messaging without a
+ * separate hand-duplicated string union. */
+export type LlmErrorCode =
+  | "timeout"
+  | "network"
+  | "auth"
+  | "rate-limit"
+  | "invalid-response"
+  | "provider-not-running"
+  | "not-configured"
+  | "unknown";
+
 export interface ListModelsParams {
-  providerId: "ollama" | "remote";
+  providerId: ProviderId;
 }
+
+/** Distinguishes "Ollama reachable but zero models pulled" (the exact bug reported in
+ *  docs/loops/ollama-dynamic-models-STATE.md §0) from "fetch itself failed" (malformed
+ *  JSON / non-2xx from /api/tags) — both resolve the RPC call (neither is surfaced as a
+ *  thrown RpcError), because both are well-formed, expected outcomes for a
+ *  reachable-but-empty-or-misbehaving Ollama, not daemon bugs. Cloud providers always
+ *  return "ok" (their listModels() never fails). */
+export type ListModelsOutcome = "ok" | "empty" | "fetch-failed";
+
 export interface ListModelsResult {
   models: LlmModelOption[];
+  outcome: ListModelsOutcome;
+  /** present iff outcome === "fetch-failed" — human-readable detail from the daemon
+   *  (e.g. "Ollama trả về lỗi HTTP 500..."), for a non-generic error message. */
+  errorMessage?: string;
 }
 
 export interface GenerateBodyParams {
@@ -221,12 +258,87 @@ export interface GenerateBodyParams {
   existingBody: string;
   /** which of the fixed model ids the user picked this click; required, no server default guess. */
   modelId: string;
-  /** "ollama" is the only value the v1 UI ever actually sends; "remote" is accepted by the
-   *  contract/handler (seam exercised by unit tests) but no web control sends it yet. */
-  providerId: "ollama" | "remote";
+  /** the caller (apps/web) is responsible for passing the currently-active provider id
+   *  (read from `listProviders`'s result) — the daemon never silently substitutes it. */
+  providerId: ProviderId;
 }
 export interface GenerateBodyResult {
   body: string;
+}
+
+/** Daemon-detected host environment, for selecting OS-specific install commands (EC-3). */
+export interface HostEnvironment {
+  kind: "wsl" | "linux" | "macos" | "windows" | "unknown";
+  /** short human label shown verbatim in the panel's "phát hiện: …" line. */
+  label: string;
+}
+
+export interface InstallInstructions {
+  env: HostEnvironment;
+  /** true only when detection is confident enough to show ONE command block. */
+  confident: boolean;
+  /** one entry per OS variant to show. Length 1 when confident===true; length 4 (all
+   *  known variants, labeled) when confident===false. */
+  variants: Array<{ label: string; command: string }>;
+}
+
+export interface CheckProviderStatusParams {
+  /** widened from the literal "ollama" to the 4-id union per
+   *  docs/loops/multi-provider-settings-STATE.md §3.2. */
+  providerId: ProviderId;
+}
+export interface CheckProviderStatusResult {
+  reachable: boolean;
+  /** present iff providerId==="ollama"; informational only, not for branching logic in the UI. */
+  checkedBaseUrl?: string;
+  /** present iff reachable===false; mirrors the daemon's LlmErrorCode taxonomy, plus the
+   *  new "not-configured" value for "active provider has no key/never configured." */
+  errorCode?: LlmErrorCode;
+  /** present iff providerId==="ollama" — the guided-setup install instructions. */
+  install?: InstallInstructions;
+  /** "local" (ollama) vs "api-key" (openai/anthropic/gemini) — lets the web panel render
+   *  the right UI without a second RPC round-trip. */
+  kind: "local" | "api-key";
+}
+
+/** One entry per provider — what `listProviders` returns. Never carries a raw apiKey;
+ * `maskedKey` is always pre-masked by secrets.ts's `maskKey()` before crossing into JSON. */
+export interface ProviderDescriptor {
+  id: ProviderId;
+  label: string;
+  kind: "local" | "api-key";
+  configured: boolean;
+  active: boolean;
+  maskedKey?: string;
+  model?: string;
+}
+
+export interface ListProvidersParams {}
+export interface ListProvidersResult {
+  providers: ProviderDescriptor[];
+}
+
+export interface SaveProviderKeyParams {
+  providerId: ProviderId;
+  apiKey: string;
+  model?: string;
+}
+export interface SaveProviderKeyResult {
+  providers: ProviderDescriptor[];
+}
+
+export interface ClearProviderKeyParams {
+  providerId: ProviderId;
+}
+export interface ClearProviderKeyResult {
+  providers: ProviderDescriptor[];
+}
+
+export interface SetActiveProviderParams {
+  providerId: ProviderId;
+}
+export interface SetActiveProviderResult {
+  providers: ProviderDescriptor[];
 }
 
 export type RpcMethod =
@@ -249,7 +361,12 @@ export type RpcMethod =
   | "gitStatus"
   | "renderRunCommand"
   | "listModels"
-  | "generateBody";
+  | "generateBody"
+  | "checkProviderStatus"
+  | "listProviders"
+  | "saveProviderKey"
+  | "clearProviderKey"
+  | "setActiveProvider";
 
 export interface RpcRequest<M extends RpcMethod = RpcMethod, P = unknown> {
   method: M;

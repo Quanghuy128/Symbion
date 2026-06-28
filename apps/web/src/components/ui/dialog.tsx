@@ -13,6 +13,15 @@ export interface DialogProps {
 /** Minimal modal primitive (shadcn-style). No external Radix dependency to keep the
  * v1 surface small; swap for the real shadcn Dialog component when wiring the CLI. */
 export function Dialog({ open, onClose, children, className }: DialogProps) {
+  React.useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>

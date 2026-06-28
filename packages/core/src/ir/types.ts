@@ -87,15 +87,6 @@ export interface GlobalConfig {
   builderDefaultTab: "form" | "markdown";
   /** registry of known projects, so the sidebar can list projects across repos. */
   projects: Array<{ id: string; name: string; path: string }>;
-  /** Seam for the remote LLM provider's (future) provider-switch UI default, daemon-owned
-   *  only. apps/web never reads or writes this field; it is never sent in any RPC response
-   *  body. The remote API key itself is NOT stored here (or anywhere on disk) — it is read
-   *  exclusively from the SYMBION_REMOTE_LLM_API_KEY env var at call time. v1 has no settings
-   *  UI to populate this; it exists only so a future ticket doesn't need another schema
-   *  migration. See docs/loops/auto-generate-body-STATE.md §10.4. */
-  llm?: {
-    activeProvider?: "ollama" | "remote";
-  };
 }
 
 export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {

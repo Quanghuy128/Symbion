@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { GenerateBodyButton } from "@/components/GenerateBodyButton";
 import { ModelPicker } from "@/components/ModelPicker";
 import { GenerateBodyDisclosure } from "@/components/GenerateBodyDisclosure";
+import { useActiveProvider } from "@/lib/hooks/useActiveProvider";
 
 export interface WorkflowFormProps {
   artifact: CanonicalArtifact;
@@ -18,6 +19,7 @@ export interface WorkflowFormProps {
 /** S8 — Workflow (command) builder form tab. */
 export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormProps) {
   const [bodyModelId, setBodyModelId] = useState("");
+  const { activeProviderId } = useActiveProvider();
 
   function update<K extends keyof CanonicalArtifact>(key: K, value: CanonicalArtifact[K]) {
     onChange({ ...artifact, [key]: value });
@@ -54,14 +56,14 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
             <Button variant="outline" size="sm" onClick={insertArguments}>
               [Chèn $ARGUMENTS]
             </Button>
-            <ModelPicker providerId="ollama" value={bodyModelId} onChange={setBodyModelId} />
+            <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
               kind="command"
               name={artifact.name}
               description={artifact.description}
               currentBody={artifact.body}
               modelId={bodyModelId}
-              providerId="ollama"
+              providerId={activeProviderId}
               onApply={(value) => update("body", value)}
             />
           </div>
@@ -71,7 +73,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
-        <GenerateBodyDisclosure providerId="ollama" />
+        <GenerateBodyDisclosure providerId={activeProviderId} />
       </div>
 
       {mentions.length > 0 && (

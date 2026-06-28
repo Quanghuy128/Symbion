@@ -33,8 +33,24 @@ import {
 } from "../fs/readTargetFiles.js";
 import { writeFiles, type WriteFileTask } from "../fs/writeFiles.js";
 import { buildBodyGenerationPrompt } from "@symbion/core";
-import { getProvider } from "../llm/registry.js";
+import { getProvider, listProviderDescriptors } from "../llm/registry.js";
 import { LlmError, type LlmErrorCode } from "../llm/types.js";
+import {
+  checkApiKeyProviderReachable,
+  checkOllamaReachable,
+  resolveOllamaBaseUrlForStatusCheck,
+} from "../llm/providerStatus.js";
+import { detectHostEnvironment, getOllamaInstallInstructions } from "../llm/installInstructions.js";
+import {
+  clearProviderKey as secretsClearProviderKey,
+  loadProvidersConfig,
+  maskKey,
+  ProviderNotConfiguredError,
+  setActiveProvider as secretsSetActiveProvider,
+  setProviderKey as secretsSetProviderKey,
+  type ApiKeyProviderId,
+  type ProviderId as SecretsProviderId,
+} from "../llm/secrets.js";
 import { RpcError } from "./rpcError.js";
 import type * as contract from "./contract.js";
 
@@ -59,14 +75,15 @@ function findProjectPath(projectId: string): string {
 
 /**
  * Runtime guards for the LLM RPC surface (generateBody/listModels). TypeScript's
- * `"agent" | "command"` / `"ollama" | "remote"` unions give zero enforcement once
+ * `"agent" | "command"` / the 4-id provider unions give zero enforcement once
  * JSON is parsed off the wire — an unrecognized value must fail cleanly with
  * RpcError("invalid-params", ...) BEFORE reaching the prompt builder or provider
  * registry, never fall through to the generic 500/internal-error catch-all (see
  * docs/loops/auto-generate-body-STATE.md §13, MEDIUM finding).
  */
 const VALID_KINDS = new Set(["agent", "command"]);
-const VALID_PROVIDER_IDS = new Set(["ollama", "remote"]);
+const VALID_PROVIDER_IDS = new Set(["ollama", "openai", "anthropic", "gemini"]);
+const VALID_API_KEY_PROVIDER_IDS = new Set(["openai", "anthropic", "gemini"]);
 
 function assertValidKind(kind: unknown): asserts kind is "agent" | "command" {
   if (typeof kind !== "string" || !VALID_KINDS.has(kind)) {
@@ -74,13 +91,62 @@ function assertValidKind(kind: unknown): asserts kind is "agent" | "command" {
   }
 }
 
-function assertValidProviderId(providerId: unknown): asserts providerId is "ollama" | "remote" {
+function assertValidProviderId(providerId: unknown): asserts providerId is contract.ProviderId {
   if (typeof providerId !== "string" || !VALID_PROVIDER_IDS.has(providerId)) {
     throw new RpcError(
       "invalid-params",
-      `Tham số "providerId" không hợp lệ: phải là "ollama" hoặc "remote".`
+      `Tham số "providerId" không hợp lệ: phải là một trong "ollama", "openai", "anthropic", "gemini".`
     );
   }
+}
+
+function assertValidApiKeyProviderId(providerId: unknown): asserts providerId is ApiKeyProviderId {
+  if (typeof providerId !== "string" || !VALID_API_KEY_PROVIDER_IDS.has(providerId)) {
+    throw new RpcError(
+      "invalid-params",
+      `Tham số "providerId" không hợp lệ: phải là một trong "openai", "anthropic", "gemini".`
+    );
+  }
+}
+
+const PROVIDER_LABELS: Record<contract.ProviderId, string> = {
+  ollama: "Ollama",
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  gemini: "Gemini",
+};
+
+/**
+ * buildProviderDescriptors — projects the daemon-internal ProvidersConfig
+ * (raw apiKey, never crosses the RPC boundary) into the masked
+ * `ProviderDescriptor[]` shape every provider-settings RPC returns. Single
+ * call site for this projection so `maskKey()` is applied exactly once, in
+ * exactly one place, never as an afterthought filter on an already-built
+ * response object (STATE §3.2's `listProviders` handler note + §9 security note).
+ */
+function buildProviderDescriptors(): contract.ProviderDescriptor[] {
+  const config = loadProvidersConfig();
+  return listProviderDescriptors().map((descriptor) => {
+    if (descriptor.kind === "local") {
+      return {
+        id: descriptor.id,
+        label: descriptor.id === "ollama" ? "Ollama" : PROVIDER_LABELS[descriptor.id],
+        kind: descriptor.kind,
+        configured: true, // ollama needs no key — always "configured" in the sense of "usable"
+        active: config.activeProviderId === descriptor.id,
+      };
+    }
+    const stored = config.providers[descriptor.id as ApiKeyProviderId];
+    return {
+      id: descriptor.id,
+      label: PROVIDER_LABELS[descriptor.id],
+      kind: descriptor.kind,
+      configured: Boolean(stored),
+      active: config.activeProviderId === descriptor.id,
+      maskedKey: stored ? maskKey(stored.apiKey) : undefined,
+      model: stored?.model,
+    };
+  });
 }
 
 export const handlers = {
@@ -375,16 +441,43 @@ export const handlers = {
   },
 
   /**
-   * listModels — synchronous, zero network calls, instant response. Single source
-   * of truth for the 3 fixed model ids/labels per provider, so apps/web never
-   * hand-duplicates the daemon's hardcoded list (resolves STATE §10.7 Risk R1
-   * per the user's amendment: add a listModels RPC instead of duplicating the
-   * constant by hand in both apps/web and apps/daemon).
+   * listModels — single source of truth for a provider's model list, so apps/web
+   * never hand-duplicates it (resolves STATE §10.7 Risk R1 per the user's
+   * amendment). For the 3 cloud providers this is still a static, hardcoded,
+   * zero-network-call list (unchanged, AC5). For Ollama, this now performs a real
+   * `GET /api/tags` network call against the local Ollama instance (per
+   * docs/loops/ollama-dynamic-models-STATE.md §6.2/§6.4) — bounded by a 3000ms
+   * timeout, never hangs indefinitely (AC6).
+   *
+   * Three resolved outcomes (never a thrown RpcError for these, since both are
+   * well-formed, expected facts about a reachable Ollama, not daemon bugs):
+   * - `{models, outcome:"ok"}` — non-empty list (cloud providers always land here).
+   * - `{models:[], outcome:"empty"}` — Ollama reachable, zero models pulled.
+   * - `{models:[], outcome:"fetch-failed", errorMessage}` — Ollama reachable but
+   *   `/api/tags` itself failed (malformed JSON / non-2xx / missing `models` field).
+   *
+   * `provider-not-running` (Ollama unreachable) is the ONE case that still THROWS
+   * `RpcError("llm-provider-not-running", ...)` — unchanged shape, AC4.
    */
-  listModels(params: contract.ListModelsParams): contract.ListModelsResult {
+  async listModels(params: contract.ListModelsParams): Promise<contract.ListModelsResult> {
     assertValidProviderId(params.providerId);
     const provider = getProvider(params.providerId);
-    return { models: provider.listModels() };
+    try {
+      const models = await provider.listModels();
+      return { models, outcome: models.length === 0 ? "empty" : "ok" };
+    } catch (err) {
+      if (err instanceof LlmError) {
+        if (err.code === "provider-not-running") {
+          // unchanged existing path — Ollama unreachable still throws, AC4.
+          throw new RpcError(`llm-${err.code}`, humanMessageForLlmError(err));
+        }
+        // invalid-response (malformed JSON / non-2xx from /api/tags), or any other
+        // LlmError code reaching here — resolve with outcome:"fetch-failed" rather
+        // than throw, so the web layer can render a distinct, non-generic message.
+        return { models: [], outcome: "fetch-failed", errorMessage: humanMessageForLlmError(err) };
+      }
+      throw new RpcError("llm-unknown", "Lỗi không xác định khi lấy danh sách mô hình.");
+    }
   },
 
   /**
@@ -437,30 +530,142 @@ export const handlers = {
       return { body: result.text };
     } catch (err) {
       if (err instanceof LlmError) {
-        throw new RpcError(`llm-${err.code}`, humanMessageForLlmError(err.code));
+        throw new RpcError(`llm-${err.code}`, humanMessageForLlmError(err));
       }
       throw new RpcError("llm-unknown", "Lỗi không xác định khi gọi mô hình AI.");
     }
   },
+
+  /**
+   * checkProviderStatus — read-only liveness/auth check, widened per
+   * docs/loops/multi-provider-settings-STATE.md §3.2/§4b from the literal
+   * "ollama" to the 4-id union. Ollama keeps its exact existing path
+   * (checkOllamaReachable, unchanged). The 3 api-key providers: first check
+   * secrets.ts has a stored key (if not, short-circuit to
+   * { reachable:false, errorCode:"not-configured" } with ZERO network calls —
+   * never attempt a guaranteed-auth-failure round-trip); if a key exists,
+   * construct the provider (reads its own key internally) and perform ONE
+   * cheap authenticated call via checkApiKeyProviderReachable. Never throws
+   * on "not reachable" — that is a valid resolved result, not a server error.
+   */
+  async checkProviderStatus(params: contract.CheckProviderStatusParams): Promise<contract.CheckProviderStatusResult> {
+    assertValidProviderId((params as { providerId?: unknown } | null)?.providerId);
+    const { providerId } = params;
+
+    if (providerId === "ollama") {
+      const baseUrl = resolveOllamaBaseUrlForStatusCheck();
+      const reachable = await checkOllamaReachable(baseUrl, 3000);
+      const install = getOllamaInstallInstructions(detectHostEnvironment());
+      return { reachable, checkedBaseUrl: baseUrl, install, kind: "local" };
+    }
+
+    const config = loadProvidersConfig();
+    const hasKey = Boolean(config.providers[providerId as ApiKeyProviderId]);
+    if (!hasKey) {
+      return { reachable: false, errorCode: "not-configured", kind: "api-key" };
+    }
+
+    const provider = getProvider(providerId);
+    const result = await checkApiKeyProviderReachable(provider, 3000);
+    return { reachable: result.reachable, errorCode: result.errorCode, kind: "api-key" };
+  },
+
+  /**
+   * listProviders — returns all 4 providers' static descriptor + current
+   * persisted state (masked key, model, configured/active) in one call,
+   * backing the Settings page's initial render and useActiveProvider()'s
+   * one-call-per-mount resolution (STATE §3.2/§4a/§4d).
+   */
+  listProviders(_params: contract.ListProvidersParams): contract.ListProvidersResult {
+    return { providers: buildProviderDescriptors() };
+  },
+
+  /**
+   * saveProviderKey — validates providerId against the 3 api-key ids (ollama
+   * never has a stored key) and apiKey under a size cap (mirrors
+   * generateBody's MAX_FIELD_LEN pattern), then upserts via secrets.ts.
+   * Returns the masked descriptors — apiKey is NEVER serialized raw.
+   */
+  saveProviderKey(params: contract.SaveProviderKeyParams): contract.SaveProviderKeyResult {
+    const providerIdRaw = (params as { providerId?: unknown } | null)?.providerId;
+    assertValidApiKeyProviderId(providerIdRaw);
+    const providerId: ApiKeyProviderId = providerIdRaw;
+    const model = params.model;
+
+    const MAX_API_KEY_LEN = 4000;
+    const apiKey = params.apiKey;
+    if (typeof apiKey !== "string" || apiKey.trim().length === 0 || apiKey.length > MAX_API_KEY_LEN) {
+      throw new RpcError("invalid-params", `Tham số "apiKey" không hợp lệ hoặc quá lớn.`);
+    }
+    if (model !== undefined && (typeof model !== "string" || model.length > 200)) {
+      throw new RpcError("invalid-params", `Tham số "model" không hợp lệ.`);
+    }
+
+    secretsSetProviderKey(providerId, apiKey, model ?? "");
+    return { providers: buildProviderDescriptors() };
+  },
+
+  /** clearProviderKey — removes one provider's stored key/model. If it was active,
+   * activeProviderId resets to null (no automatic fallback to ollama). */
+  clearProviderKey(params: contract.ClearProviderKeyParams): contract.ClearProviderKeyResult {
+    const providerIdRaw = (params as { providerId?: unknown } | null)?.providerId;
+    assertValidApiKeyProviderId(providerIdRaw);
+    const providerId: ApiKeyProviderId = providerIdRaw;
+    secretsClearProviderKey(providerId);
+    return { providers: buildProviderDescriptors() };
+  },
+
+  /** setActiveProvider — rejects (invalid-params) if the target api-key provider has no
+   * stored key; ollama always succeeds (needs none). Never a silent no-op. */
+  setActiveProvider(params: contract.SetActiveProviderParams): contract.SetActiveProviderResult {
+    assertValidProviderId((params as { providerId?: unknown } | null)?.providerId);
+    try {
+      secretsSetActiveProvider(params.providerId as SecretsProviderId);
+    } catch (err) {
+      if (err instanceof ProviderNotConfiguredError) {
+        throw new RpcError("invalid-params", "Chưa cấu hình API key cho nhà cung cấp này.");
+      }
+      throw err;
+    }
+    return { providers: buildProviderDescriptors() };
+  },
 };
 
-/** EC-4's exact error-code -> human-readable-Vietnamese-message taxonomy (STATE §10.5). */
-function humanMessageForLlmError(code: LlmErrorCode): string {
+/**
+ * EC-4's exact error-code -> human-readable-Vietnamese-message taxonomy (STATE §10.5).
+ *
+ * Per-code fallback strings are used when `err.message` is empty, or for codes
+ * ("provider-not-running" / "timeout" / "auth" / "rate-limit" / "not-configured")
+ * whose throw sites across all 4 provider adapters (ollamaProvider.ts,
+ * openaiProvider.ts, anthropicProvider.ts, geminiProvider.ts) already construct a
+ * message that says exactly what the fallback says (provider name aside) — no extra
+ * detail to preserve there.
+ *
+ * For "invalid-response" and "network", the throw sites DO carry extra,
+ * user-relevant detail the generic fallback would otherwise discard (e.g. a 404
+ * "model not pulled" message naming the missing model) — confirmed root cause of
+ * the Generate Body 404 loop (docs/learnings.md). For those codes (and "unknown"),
+ * prefer the original `err.message` when present.
+ */
+function humanMessageForLlmError(err: LlmError): string {
+  const code: LlmErrorCode = err.code;
   switch (code) {
     case "provider-not-running":
       return "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy.";
     case "timeout":
       return "Quá thời gian chờ (45s) — thử lại.";
     case "auth":
-      return "Thiếu hoặc sai cấu hình API key cho remote provider.";
+      return "Thiếu hoặc sai cấu hình API key cho nhà cung cấp AI.";
     case "rate-limit":
       return "Bị giới hạn tần suất gọi — thử lại sau.";
+    case "not-configured":
+      return "Chưa cấu hình nhà cung cấp AI nào — vào Cài đặt để thêm.";
     case "invalid-response":
-      return "Phản hồi không hợp lệ từ mô hình.";
+      return err.message || "Phản hồi không hợp lệ từ mô hình.";
     case "network":
     case "unknown":
     default:
-      return "Lỗi không xác định, thử lại.";
+      return err.message || "Lỗi không xác định, thử lại.";
   }
 }
 

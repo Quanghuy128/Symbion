@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { initDaemonSession } from "@/lib/rpc/client";
+import { AppNav } from "./AppNav";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { EmptyState } from "./EmptyState";
 import { CreateProjectDialog } from "./CreateProjectDialog";
@@ -41,20 +42,23 @@ export function AppShell() {
   }, [startHeartbeat]);
 
   return (
-    <div className="flex h-screen">
-      <ProjectSidebar onCreateProject={() => setCreateOpen(true)} onSelectProject={(id) => loadProject(id)} />
+    <div className="flex h-screen flex-col">
+      <AppNav />
+      <div className="flex flex-1 overflow-hidden">
+        <ProjectSidebar onCreateProject={() => setCreateOpen(true)} onSelectProject={(id) => loadProject(id)} />
 
-      <main className="flex-1">
-        {currentProject ? (
-          <ProjectView project={currentProject} />
-        ) : projects.length === 0 ? (
-          <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Chọn một dự án ở thanh bên.
-          </div>
-        )}
-      </main>
+        <main className="flex-1 overflow-auto">
+          {currentProject ? (
+            <ProjectView project={currentProject} />
+          ) : projects.length === 0 ? (
+            <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Chọn một dự án ở thanh bên.
+            </div>
+          )}
+        </main>
+      </div>
 
       <CreateProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}

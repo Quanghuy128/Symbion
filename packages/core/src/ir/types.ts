@@ -91,7 +91,7 @@ export interface GlobalConfig {
 
 export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   schemaVersion: 1,
-  port: 20128,
+  port: 12802,
   theme: "system",
   builderDefaultTab: "form",
   projects: [],

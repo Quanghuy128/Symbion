@@ -29,7 +29,7 @@ export function initDaemonSession(token: string, port: number): void {
 }
 
 export function getDaemonOrigin(): string {
-  const port = cachedPort ?? Number(process.env["NEXT_PUBLIC_DAEMON_PORT"] ?? 20128);
+  const port = cachedPort ?? Number(process.env["NEXT_PUBLIC_DAEMON_PORT"] ?? 12802);
   return `http://127.0.0.1:${port}`;
 }
 

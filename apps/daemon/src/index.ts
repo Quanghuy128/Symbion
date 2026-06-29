@@ -43,7 +43,7 @@ async function main() {
 
   let running = true;
   while (running) {
-    const choice = await showBootMenu(url, VERSION);
+    const choice = await showBootMenu(url);
     if (choice === "web") {
       console.log(`Mở: ${url}`);
       // best-effort open in default browser; not critical-path for headless/CI runs.

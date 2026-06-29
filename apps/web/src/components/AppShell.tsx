@@ -24,7 +24,7 @@ export function AppShell() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("t");
-    const port = Number(window.location.port) || 20128;
+    const port = Number(window.location.port) || 12802;
     if (token) {
       initDaemonSession(token, port);
     }

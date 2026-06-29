@@ -52,6 +52,7 @@ import {
   type ProviderId as SecretsProviderId,
 } from "../llm/secrets.js";
 import { RpcError } from "./rpcError.js";
+import { isUncPath } from "./pathStyle.js";
 import type * as contract from "./contract.js";
 
 export { RpcError };
@@ -162,6 +163,19 @@ export const handlers = {
 
   validatePath(params: contract.ValidatePathParams): contract.ValidatePathResult {
     const { path } = params;
+
+    if (isUncPath(path)) {
+      return {
+        exists: false,
+        isDir: false,
+        isGitRepo: false,
+        hasClaudeDir: false,
+        hasAgentsMd: false,
+        writable: false,
+        reason: "unc-unsupported",
+      };
+    }
+
     const exists = existsSync(path);
     let isDir = false;
     let writable = false;

@@ -203,6 +203,16 @@ describe("makeDir — error / edge cases", () => {
     }
   });
 
+  it("TC-MD-NEW-1: Windows-style backslash '..' segment -> invalid-params (parity with TC-MD5)", () => {
+    const pathWithDotDot = `${tmpRoot}/..\\escape`;
+    try {
+      handlers.makeDir({ path: pathWithDotDot });
+      expect.fail("should have thrown");
+    } catch (err) {
+      expect((err as RpcError).code).toBe("invalid-params");
+    }
+  });
+
   it("TC-MD6: path exists as a file -> path-is-file", () => {
     const blocker = join(tmpRoot, "blocker");
     writeFileSync(blocker, "x");

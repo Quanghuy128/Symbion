@@ -1,5 +1,6 @@
 import { realpathSync, existsSync } from "node:fs";
 import { dirname, isAbsolute, normalize, relative, resolve } from "node:path";
+import { isWindowsStyleAbsolute } from "./pathStyle.js";
 
 export class PathConfinementError extends Error {
   constructor(message: string) {
@@ -20,7 +21,12 @@ export class PathConfinementError extends Error {
  * Throws PathConfinementError on any violation. Never returns a path outside root.
  */
 export function resolveConfinedPath(projectRoot: string, relPath: string): string {
-  if (isAbsolute(relPath)) {
+  // Closes the Windows-style-traversal gap unconditionally for every caller,
+  // regardless of whether that caller also remembers to call
+  // rejectTraversalSegments separately.
+  rejectTraversalSegments(relPath);
+
+  if (isAbsolute(relPath) || isWindowsStyleAbsolute(relPath)) {
     throw new PathConfinementError(`Đường dẫn tuyệt đối không được phép: ${relPath}`);
   }
 

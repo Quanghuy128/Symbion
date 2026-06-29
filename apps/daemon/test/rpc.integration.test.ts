@@ -59,6 +59,45 @@ describe("T2 validatePath", () => {
     const res = handlers.validatePath({ path: join(projectRoot, "nope") }, ctx);
     expect(res.exists).toBe(false);
   });
+
+  it("Windows-style drive-absolute path (well-formed, doesn't exist on this host) -> exists false, no reason", () => {
+    const res = handlers.validatePath({ path: "C:\\Users\\me\\nonexistent-repo" }, ctx);
+    expect(res).toEqual({
+      exists: false,
+      isDir: false,
+      isGitRepo: false,
+      hasClaudeDir: false,
+      hasAgentsMd: false,
+      writable: false,
+    });
+    expect(res.reason).toBeUndefined();
+  });
+
+  it("UNC path -> reason: unc-unsupported, all other fields false", () => {
+    const res = handlers.validatePath({ path: "\\\\fileserver\\teams\\my-service" }, ctx);
+    expect(res).toEqual({
+      exists: false,
+      isDir: false,
+      isGitRepo: false,
+      hasClaudeDir: false,
+      hasAgentsMd: false,
+      writable: false,
+      reason: "unc-unsupported",
+    });
+  });
+
+  it("forward-slash drive-absolute variant -> same shape as backslash variant (mixed-separator tolerance)", () => {
+    const res = handlers.validatePath({ path: "C:/Users/me/code/my-service" }, ctx);
+    expect(res.exists).toBe(false);
+    expect(res.reason).toBeUndefined();
+  });
+
+  it("existing Unix-style dir still validates correctly (regression guard for new UNC branch)", () => {
+    const res = handlers.validatePath({ path: projectRoot }, ctx);
+    expect(res.exists).toBe(true);
+    expect(res.isDir).toBe(true);
+    expect(res.reason).toBeUndefined();
+  });
 });
 
 const FIXTURES_DIR = fileURLToPath(
@@ -448,6 +487,34 @@ describe("T11 path confinement (E14)", () => {
     } finally {
       rmSync(outsideDir, { recursive: true, force: true });
     }
+  });
+
+  it("rejects Windows-style backslash traversal (..\\..\\escape.md)", () => {
+    expect(() => resolveConfinedPath(projectRoot, "..\\..\\escape.md")).toThrow(PathConfinementError);
+  });
+
+  it("rejects Windows-style multi-segment traversal (..\\..\\windows\\system32)", () => {
+    expect(() => resolveConfinedPath(projectRoot, "..\\..\\windows\\system32")).toThrow(PathConfinementError);
+  });
+
+  it("rejects Windows-style drive-absolute path as absolute-and-disallowed", () => {
+    expect(() => resolveConfinedPath(projectRoot, "C:\\Users\\me\\repo")).toThrow(PathConfinementError);
+  });
+
+  it("rejects UNC-style path as absolute-and-disallowed", () => {
+    expect(() => resolveConfinedPath(projectRoot, "\\\\server\\share\\file.md")).toThrow(PathConfinementError);
+  });
+
+  it("rejects mixed-separator traversal (..\\../escape.md)", () => {
+    expect(() => resolveConfinedPath(projectRoot, "..\\../escape.md")).toThrow(PathConfinementError);
+  });
+
+  it("rejects Windows-style traversal that does not start with .. (subdir\\..\\..\\escape.md)", () => {
+    expect(() => resolveConfinedPath(projectRoot, "subdir\\..\\..\\escape.md")).toThrow(PathConfinementError);
+  });
+
+  it("does not false-positive on a filename containing a literal '..' substring", () => {
+    expect(() => resolveConfinedPath(projectRoot, "my..file.md")).not.toThrow();
   });
 });
 

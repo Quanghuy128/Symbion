@@ -2,49 +2,34 @@ import { createInterface } from "node:readline";
 
 export type BootChoice = "web" | "terminal" | "tray" | "exit";
 
-const MENU_LINES = (url: string, version: string) => [
-  "========================================",
-  `  Symbion — Choose Interface (${version})`,
-  `  Server: ${url}`,
-  "========================================",
-  "  1) Web UI (Open in Browser)",
-  "  2) Terminal UI (Interactive CLI)",
-  "  3) Hide to Tray (Background)",
-  "  4) Exit",
-  "----------------------------------------",
-];
+const MENU_LINE = "  1) Web UI   2) Hide to Tray   3) Exit";
+const PROMPT = "  Chọn (1-3): ";
 
 /**
- * showBootMenu — S0 terminal boot menu. All 4 options always shown; Terminal UI
- * is present-but-stubbed (prints a coming-soon notice and returns to menu),
- * per STATE §0/§8 #10 (v1 web-only).
+ * showBootMenu — S0 terminal boot menu. Compact single-line menu (Web UI /
+ * Hide to Tray / Exit). The stubbed "Terminal UI (coming soon)" option is
+ * hidden from the printed menu and the input mapping (not deleted from the
+ * `BootChoice` type — see the type above) so re-enabling it in v1.5 is a
+ * one-line change: re-add the menu-line text and an `if (choice === "2")
+ * return resolve("terminal")`-shaped branch with a renumber.
  */
-export async function showBootMenu(url: string, version: string): Promise<BootChoice> {
+export async function showBootMenu(url: string): Promise<BootChoice> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   const ask = (): Promise<BootChoice> =>
     new Promise((resolve) => {
-      for (const line of MENU_LINES(url, version)) {
-        console.log(line);
-      }
-      rl.question("  Chọn (1-4): ", (answer) => {
+      console.log(MENU_LINE);
+      rl.question(PROMPT, (answer) => {
         const choice = answer.trim();
         if (choice === "1") return resolve("web");
-        if (choice === "2") return resolve("terminal");
-        if (choice === "3") return resolve("tray");
-        if (choice === "4") return resolve("exit");
+        if (choice === "2") return resolve("tray");
+        if (choice === "3") return resolve("exit");
         console.log("  Lựa chọn không hợp lệ, thử lại.\n");
         ask().then(resolve);
       });
     });
 
   const choice = await ask();
-
-  if (choice === "terminal") {
-    console.log("\n  Terminal UI — sắp có ở v1.5.\n");
-    rl.close();
-    return showBootMenu(url, version);
-  }
 
   rl.close();
   return choice;

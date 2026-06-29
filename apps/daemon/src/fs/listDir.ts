@@ -19,6 +19,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, isAbsolute } from "node:path";
 import { RpcError } from "../rpc/rpcError.js";
+import { splitAnySeparator } from "../rpc/pathStyle.js";
 import type { ListDirEntry, ListDirResult, MakeDirResult } from "../rpc/contract.js";
 
 /**
@@ -114,7 +115,7 @@ export function makeDir(path: unknown): MakeDirResult {
     throw new RpcError("invalid-params", "Đường dẫn phải là đường dẫn tuyệt đối.");
   }
 
-  const segments = path.split("/");
+  const segments = splitAnySeparator(path);
   if (segments.includes("..")) {
     throw new RpcError("invalid-params", `Đường dẫn chứa ".." không được phép: ${path}`);
   }

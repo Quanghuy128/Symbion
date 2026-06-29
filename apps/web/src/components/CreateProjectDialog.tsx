@@ -98,7 +98,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
             <Input
               value={path}
               onChange={(e) => setPath(e.target.value)}
-              placeholder="/home/me/code/my-service"
+              placeholder="…/code/my-service"
             />
             <Button variant="outline" onClick={() => setBrowserOpen(true)}>
               Chọn…
@@ -106,7 +106,12 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
           </div>
           {validation && (
             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-              {validation.exists ? (
+              {validation.reason === "unc-unsupported" ? (
+                <span className="text-destructive">
+                  ⚠ UNC paths (\\server\share\...) chưa được hỗ trợ. Hãy dùng đường dẫn ổ đĩa, ví dụ
+                  C:\Users\me\code\my-service
+                </span>
+              ) : validation.exists ? (
                 <span>
                   ✓ Thư mục tồn tại · {validation.hasClaudeDir ? ".claude/ đã có (xem xét Import)" : ".claude/ chưa có"}
                 </span>

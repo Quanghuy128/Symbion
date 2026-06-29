@@ -40,6 +40,18 @@ export interface ValidatePathResult {
   hasClaudeDir: boolean;
   hasAgentsMd: boolean;
   writable: boolean;
+  /**
+   * Present ONLY when validation short-circuited before a normal exists/isDir
+   * check could mean anything useful — e.g. a UNC path, which is structurally
+   * unsupported regardless of whether anything happens to exist at that string.
+   * Absent (undefined) for every other result, including "well-formed but
+   * does not exist yet" (that case is `exists: false` with NO reason — the
+   * web layer's existing ternary already handles it as today's 5b state).
+   * Extensible: a future unsupported-shape (e.g. a path exceeding Windows'
+   * MAX_PATH, EC-3.5, explicitly deferred this loop) would add a new literal
+   * to this union rather than a new boolean field.
+   */
+  reason?: "unc-unsupported";
 }
 
 export interface ListDirParams {

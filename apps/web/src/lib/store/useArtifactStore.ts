@@ -6,6 +6,8 @@ import { callRpc } from "../rpc/client";
 import type {
   CreateProjectResult,
   DeleteArtifactResult,
+  ImportArtifactsParams,
+  ImportArtifactsResult,
   ListProjectsResult,
   LoadProjectResult,
   PingResult,
@@ -27,6 +29,13 @@ interface ArtifactStoreState {
   loadProject: (id: string) => Promise<void>;
   saveArtifact: (artifact: CanonicalArtifact) => Promise<void>;
   deleteArtifact: (artifactId: string) => Promise<void>;
+  /** Calls the `importArtifacts` RPC and applies its returned (merged)
+   *  `project` back onto `currentProject`, mirroring the saveArtifact/
+   *  deleteArtifact pattern. Fixes the stale-currentProject-after-import bug
+   *  (GitHub Issue #8 review finding): without this, callers that invoke
+   *  `createProject` then `importArtifacts` directly via `callRpc` would
+   *  render the empty just-created store instead of the merged result. */
+  importArtifacts: (params: ImportArtifactsParams) => Promise<ProjectStore>;
   setDaemonConnected: (connected: boolean) => void;
   /** Starts the periodic `ping` heartbeat that flips daemonConnected on
    *  failure/success (E9). Idempotent — calling twice does not start a
@@ -81,6 +90,12 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
       { projectId: project.id, artifactId }
     );
     set({ currentProject: result.project });
+  },
+
+  async importArtifacts(params) {
+    const result = await callRpc<ImportArtifactsParams, ImportArtifactsResult>("importArtifacts", params);
+    set({ currentProject: result.project });
+    return result.project;
   },
 
   setDaemonConnected(connected) {

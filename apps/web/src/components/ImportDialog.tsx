@@ -5,6 +5,7 @@ import type { CanonicalArtifact } from "@symbion/core";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ImportReviewStep } from "@/components/ImportReviewStep";
 import { callRpc } from "@/lib/rpc/client";
 import type { ScanClaudeDirResult } from "@/lib/rpc/types";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
@@ -20,7 +21,9 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [projectName, setProjectName] = useState("");
   const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const createProject = useArtifactStore((s) => s.createProject);
+  const importArtifacts = useArtifactStore((s) => s.importArtifacts);
   const loadProjects = useArtifactStore((s) => s.loadProjects);
 
   async function handleScan() {
@@ -41,16 +44,30 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
   async function handleImport() {
     if (!scanned) return;
     setImporting(true);
+    setError(null);
+    let createdProjectName: string | null = null;
     try {
       const project = await createProject(projectName || path.split("/").filter(Boolean).pop() || "imported", path);
+      createdProjectName = project.name;
       const all: CanonicalArtifact[] = [...scanned.agents, ...scanned.commands];
-      await callRpc("importArtifacts", {
+      await importArtifacts({
         projectId: project.id,
         selectedIds: Array.from(selected),
         scanned: all,
       });
       await loadProjects();
       onClose();
+    } catch (err) {
+      const message = (err as Error).message;
+      // Partial-failure UX (review §🟡): if createProject already succeeded
+      // before importArtifacts threw, the project genuinely exists now —
+      // tell the user that instead of letting them retry blindly into
+      // "already-a-project".
+      setError(
+        createdProjectName
+          ? `Dự án "${createdProjectName}" đã được tạo nhưng nhập thất bại: ${message}. Mở dự án "${createdProjectName}" trong danh sách bên trái để nhập lại.`
+          : message
+      );
     } finally {
       setImporting(false);
     }
@@ -73,25 +90,9 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
         </div>
         <Input placeholder="Tên dự án (tùy chọn)" value={projectName} onChange={(e) => setProjectName(e.target.value)} />
 
-        {scanned && (
-          <div className="space-y-2 text-sm">
-            <p>✓ {scanned.agents.length} agents</p>
-            <p>✓ {scanned.commands.length} commands</p>
-            {scanned.skipped.map((s) => (
-              <p key={s.relPath} className="text-xs text-amber-600">
-                ⚠ {s.relPath} không parse được → bỏ qua ({s.reason})
-              </p>
-            ))}
-            <div className="max-h-48 space-y-1 overflow-y-auto">
-              {[...scanned.agents, ...scanned.commands].map((a) => (
-                <label key={a.id} className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggle(a.id)} />
-                  {a.kind === "agent" ? a.name : `/${a.name}`}
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
+        {scanned && <ImportReviewStep scanned={scanned} selected={selected} onToggle={toggle} />}
+
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
 
       <DialogFooter>

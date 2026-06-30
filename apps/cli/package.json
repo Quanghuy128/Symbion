@@ -1,0 +1,39 @@
+{
+  "name": "@quanghuy128/symbion",
+  "version": "0.1.0",
+  "description": "Local-daemon + web UI for authoring AI-coding autoworkflows.",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "symbion": "bin/symbion.mjs"
+  },
+  "files": [
+    "bin/",
+    "apps/daemon/dist/",
+    "apps/web/out/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Quanghuy128/Symbion.git"
+  },
+  "homepage": "https://github.com/Quanghuy128/Symbion",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@symbion/core": "0.1.0",
+    "@symbion/rpc-types": "0.1.0",
+    "yaml": "2.9.0"
+  },
+  "bundledDependencies": [
+    "@symbion/core",
+    "@symbion/rpc-types",
+    "yaml"
+  ]
+}

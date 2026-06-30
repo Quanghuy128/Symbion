@@ -41,7 +41,50 @@ packages/core Pure TS — canonical IR, render/parse, diff, marker/hash, provide
 - Node.js >= 18
 - npm
 
-## Running locally
+## Installation
+
+Install Symbion globally to use it as a CLI tool from any directory:
+
+```bash
+npm install -g @quanghuy128/symbion
+```
+
+Or add it as a project dependency and run it via `npx`:
+
+```bash
+npm install @quanghuy128/symbion
+npx symbion
+```
+
+## Usage
+
+Once installed, run:
+
+```bash
+symbion
+```
+
+This starts the local Symbion daemon and opens an interactive menu:
+
+```
+  1) Web UI   2) Hide to Tray   3) Exit
+```
+
+- **Web UI** opens the Symbion web app in your default browser, served
+  locally by the daemon (nothing is sent to any external server — Symbion
+  runs entirely on `127.0.0.1`).
+- **Hide to Tray** keeps the daemon running in the background so you can
+  keep using your terminal.
+- **Exit** shuts the daemon down.
+
+Other commands:
+
+```bash
+symbion --version   # print the installed version
+symbion --help      # show usage help
+```
+
+## Running from a clone (contributing / local development)
 
 ```bash
 npm install

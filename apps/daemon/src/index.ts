@@ -6,7 +6,7 @@ import { showBootMenu } from "./boot/menu.js";
 import { loadGlobalConfig, saveGlobalConfig } from "./store/store.js";
 import { findOpenPort } from "./net/findOpenPort.js";
 
-const VERSION = "0.1.0";
+const VERSION = process.env.SYMBION_VERSION ?? "0.1.0";
 
 function findWebStaticRoot(): string | undefined {
   // apps/daemon/dist/index.js -> ../../web/out (apps/web/out, the Next static export).
@@ -39,6 +39,7 @@ async function main() {
   }
 
   const url = `http://127.0.0.1:${handle.port}/?t=${handle.token}`;
+  console.log(`Symbion v${VERSION}`);
   console.log(`Symbion daemon đang chạy: ${url}`);
 
   let running = true;

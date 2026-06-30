@@ -591,3 +591,159 @@ describe("renderRunCommand RPC", () => {
     expect(result.prompt).toBe("/autoplan Add emoji reactions [claude-opus-4-8] [--gate]");
   });
 });
+
+describe("applyTemplate RPC (templates-marketplace)", () => {
+  function baseTemplate(overrides: Partial<{
+    sourceTemplateId: string;
+    kind: "agent" | "command";
+    name: string;
+    description: string;
+    tools?: string[];
+    body: string;
+  }> = {}) {
+    return {
+      sourceTemplateId: "agent:code-reviewer",
+      kind: "agent" as const,
+      name: "code-reviewer",
+      description: "Rà soát code, gắn nhãn rủi ro bảo mật & style.",
+      tools: ["Read", "Grep"],
+      body: "You are a meticulous code reviewer.",
+      ...overrides,
+    };
+  }
+
+  it("D1: applies a valid agent template with no collision -> wasRenamed false, draft status, sourceTemplateId set", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    const result = handlers.applyTemplate({ projectId, template: baseTemplate() }, ctx);
+
+    expect(result.wasRenamed).toBe(false);
+    expect(result.finalName).toBe("code-reviewer");
+    expect(result.project.artifacts).toHaveLength(1);
+    const applied = result.project.artifacts.find((a) => a.id === result.appliedArtifactId);
+    expect(applied?.meta.status).toBe("draft");
+    expect(applied?.meta.sourceTemplateId).toBe("agent:code-reviewer");
+    expect(applied?.name).toBe("code-reviewer");
+  });
+
+  it("D2: applying with an existing same-name-same-kind artifact -> auto-suffixed, original untouched", async () => {
+    const { projectId } = await setupProjectWithArtifacts(); // has agent "ba", command "analyze"
+    const result = handlers.applyTemplate(
+      { projectId, template: baseTemplate({ name: "ba", kind: "agent" }) },
+      ctx
+    );
+    expect(result.wasRenamed).toBe(true);
+    expect(result.finalName).toBe("ba-2");
+
+    const original = result.project.artifacts.find((a) => a.id === "agent-1");
+    expect(original?.name).toBe("ba");
+    expect(original?.body).toBe("You are BA.");
+  });
+
+  it("D2b: collisions through -2/-3 already taken -> first free suffix (-4)", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    handlers.applyTemplate({ projectId, template: baseTemplate({ name: "x" }) }, ctx);
+    handlers.applyTemplate({ projectId, template: baseTemplate({ name: "x" }) }, ctx);
+    handlers.applyTemplate({ projectId, template: baseTemplate({ name: "x" }) }, ctx);
+    const result = handlers.applyTemplate({ projectId, template: baseTemplate({ name: "x" }) }, ctx);
+
+    expect(result.finalName).toBe("x-4");
+  });
+
+  it("D2c: collision scoping is (kind, name) — an existing agent doesn't block a command of the same name", async () => {
+    const { projectId } = await setupProjectWithArtifacts(); // agent "ba", command "analyze"
+    const result = handlers.applyTemplate(
+      { projectId, template: baseTemplate({ name: "ba", kind: "command", tools: undefined }) },
+      ctx
+    );
+    expect(result.wasRenamed).toBe(false);
+    expect(result.finalName).toBe("ba");
+  });
+
+  it("D3: writes ONLY .symbion/store.json — no .claude/ or AGENTS.md file appears", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    handlers.applyTemplate({ projectId, template: baseTemplate() }, ctx);
+
+    expect(existsSync(join(projectRoot, ".claude"))).toBe(false);
+    expect(existsSync(join(projectRoot, "AGENTS.md"))).toBe(false);
+    expect(existsSync(join(projectRoot, ".symbion", "store.json"))).toBe(true);
+  });
+
+  it("D4: template.kind 'skill' (simulated client bug) -> throws RpcError, nothing persisted", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    expect(() =>
+      handlers.applyTemplate(
+        { projectId, template: baseTemplate({ kind: "skill" as unknown as "agent" }) },
+        ctx
+      )
+    ).toThrow();
+
+    const store = loadProjectStore(projectRoot);
+    expect(store.artifacts).toHaveLength(0);
+  });
+
+  it("D5: empty/whitespace-only name -> throws RpcError, nothing persisted", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    expect(() =>
+      handlers.applyTemplate({ projectId, template: baseTemplate({ name: "   " }) }, ctx)
+    ).toThrow();
+    expect(loadProjectStore(projectRoot).artifacts).toHaveLength(0);
+  });
+
+  it("D5b: empty description -> throws RpcError, nothing persisted", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    expect(() =>
+      handlers.applyTemplate({ projectId, template: baseTemplate({ description: "" }) }, ctx)
+    ).toThrow();
+    expect(loadProjectStore(projectRoot).artifacts).toHaveLength(0);
+  });
+
+  it("D6: unknown projectId -> throws the same not-found error class as other project-scoped RPCs", () => {
+    expect(() => handlers.applyTemplate({ projectId: "nonexistent", template: baseTemplate() }, ctx)).toThrow();
+  });
+
+  it("D8: re-applying the SAME template to the SAME project twice -> two independent draft artifacts, neither overwritten", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    const first = handlers.applyTemplate({ projectId, template: baseTemplate() }, ctx);
+    const second = handlers.applyTemplate({ projectId, template: baseTemplate() }, ctx);
+
+    expect(first.finalName).toBe("code-reviewer");
+    expect(second.finalName).toBe("code-reviewer-2");
+    expect(second.project.artifacts).toHaveLength(2);
+    expect(second.project.artifacts.some((a) => a.id === first.appliedArtifactId)).toBe(true);
+  });
+
+  it("D9: server-side validateAllArtifacts re-check blocks a name that fails FILENAME_SAFE_RE even though auto-suffix wouldn't catch it", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    expect(() =>
+      handlers.applyTemplate(
+        { projectId, template: baseTemplate({ name: "bad name with spaces" }) },
+        ctx
+      )
+    ).toThrow();
+    expect(loadProjectStore(projectRoot).artifacts).toHaveLength(0);
+  });
+});

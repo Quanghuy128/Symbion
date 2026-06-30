@@ -15,6 +15,8 @@ export * from "./render/render.js";
 
 export * from "./parse/scan.js";
 
+export * from "./templates/parseTemplate.js";
+
 export * from "./diff/diff.js";
 export * from "./diff/conflict.js";
 

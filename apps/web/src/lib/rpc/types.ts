@@ -33,6 +33,8 @@ export type {
   ScanClaudeDirResult,
   ImportArtifactsParams,
   ImportArtifactsResult,
+  ApplyTemplateParams,
+  ApplyTemplateResult,
   RenderParams,
   RenderResult,
   ComputeDiffParams,

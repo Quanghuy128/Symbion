@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createFakeOllamaServer, type Server as HttpServer } from "node:http";
@@ -94,6 +94,50 @@ describe("T15 security", () => {
     // the allow-path of the Host allowlist check on every other test in this file.
     const res = await rpc("listProjects", {}, { token: handle.token });
     expect(res.status).toBe(200);
+  });
+
+  // D7 (templates-marketplace testplan): applyTemplate requires the session
+  // token like every other non-ping/non-read-only RPC — confirms it was
+  // correctly NOT added to READ_ONLY_METHODS and gets no special-case auth
+  // bypass. Uses an unknown projectId (no fixture project created in this
+  // describe block) — the assertion is purely about the 401 gate firing
+  // BEFORE the handler runs, not about a successful apply.
+  it("applyTemplate missing token -> 401 (never reaches the handler)", async () => {
+    const res = await rpc("applyTemplate", {
+      projectId: "does-not-exist",
+      template: {
+        sourceTemplateId: "agent:x",
+        kind: "agent",
+        name: "x",
+        description: "y",
+        body: "z",
+      },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("applyTemplate wrong token -> 401", async () => {
+    const res = await rpc(
+      "applyTemplate",
+      {
+        projectId: "does-not-exist",
+        template: { sourceTemplateId: "agent:x", kind: "agent", name: "x", description: "y", body: "z" },
+      },
+      { token: "wrong-token" }
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("applyTemplate correct token, unknown projectId -> reaches handler, fails with a handler-level error (not 401)", async () => {
+    const res = await rpc(
+      "applyTemplate",
+      {
+        projectId: "does-not-exist",
+        template: { sourceTemplateId: "agent:x", kind: "agent", name: "x", description: "y", body: "z" },
+      },
+      { token: handle.token }
+    );
+    expect(res.status).not.toBe(401);
   });
 });
 
@@ -272,5 +316,73 @@ describe("listModels transport", () => {
   it("POST /rpc listModels with no token -> 401", async () => {
     const res = await rpc("listModels", { providerId: "ollama" });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("static file serving — extensionless route resolution (pre-existing bug, fixed during templates-marketplace QA)", () => {
+  // Reproduces a real Next.js static export (`output: "export"`) layout: one
+  // .html file per route plus an index.html app-shell fallback. A direct
+  // request for an extensionless route path (e.g. `/templates`, no trailing
+  // `.html`) must resolve to that route's own .html file, not silently fall
+  // through to index.html (which previously made `/templates` and `/settings`
+  // serve the Builder/`/` bundle instead of their own).
+  let webRoot: string;
+  let staticHandle: DaemonServerHandle;
+
+  beforeEach(async () => {
+    webRoot = mkdtempSync(join(tmpdir(), "symbion-webroot-"));
+    writeFileSync(join(webRoot, "index.html"), '<script src="/_next/static/chunks/app/page-BUILDER.js"></script>');
+    writeFileSync(
+      join(webRoot, "templates.html"),
+      '<script src="/_next/static/chunks/app/templates/page-TEMPLATES.js"></script>'
+    );
+    writeFileSync(
+      join(webRoot, "settings.html"),
+      '<script src="/_next/static/chunks/app/settings/page-SETTINGS.js"></script>'
+    );
+    const port = 21000 + Math.floor(Math.random() * 4000);
+    staticHandle = await startServer({ port, version: "0.1.0", webStaticRoot: webRoot });
+  });
+
+  afterEach(async () => {
+    await staticHandle.close();
+    rmSync(webRoot, { recursive: true, force: true });
+  });
+
+  it("GET /templates resolves templates.html, not index.html's Builder bundle", async () => {
+    const res = await fetch(`http://127.0.0.1:${staticHandle.port}/templates`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("templates/page-TEMPLATES.js");
+    expect(text).not.toContain("page-BUILDER.js");
+  });
+
+  it("GET /settings resolves settings.html, not index.html's Builder bundle", async () => {
+    const res = await fetch(`http://127.0.0.1:${staticHandle.port}/settings`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("settings/page-SETTINGS.js");
+    expect(text).not.toContain("page-BUILDER.js");
+  });
+
+  it("GET / still resolves index.html (Builder bundle) unaffected by the fix", async () => {
+    const res = await fetch(`http://127.0.0.1:${staticHandle.port}/`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("page-BUILDER.js");
+  });
+
+  it("GET /templates.html (explicit extension) still resolves directly, unaffected", async () => {
+    const res = await fetch(`http://127.0.0.1:${staticHandle.port}/templates.html`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("templates/page-TEMPLATES.js");
+  });
+
+  it("GET /does-not-exist-anywhere falls back to index.html (no matching .html, no matching directory)", async () => {
+    const res = await fetch(`http://127.0.0.1:${staticHandle.port}/does-not-exist-anywhere`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("page-BUILDER.js");
   });
 });

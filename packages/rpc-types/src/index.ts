@@ -156,6 +156,54 @@ export interface ImportArtifactsResult {
   project: ProjectStore;
 }
 
+/**
+ * applyTemplate — stages ONE bundled template (from apps/web's static
+ * template gallery) into a project's store as a new draft artifact, with
+ * server-side auto-suffix collision resolution (never blocks, never
+ * silently overwrites — docs/loops/templates-marketplace-STATE.md THINK #4).
+ * Deliberately separate from `importArtifacts` (see PLAN §0(b)): that RPC's
+ * contract is shaped for "N pre-scanned artifacts the user already reviewed
+ * and picked," and its `validateAllArtifacts` duplicate-name check BLOCKS
+ * rather than auto-suffixes — overloading it would change behavior for its
+ * existing caller (ImportDialog/CreateProjectDialog's import-from-disk flow).
+ *
+ * Writes ONLY `.symbion/store.json` for the target project — never the real
+ * repo's `.claude/`/`AGENTS.md` files. The existing publish/diff/confirm/
+ * backup pipeline (render -> computeDiff -> write) is untouched and remains
+ * the only path that ever writes to disk for a template-derived artifact.
+ */
+export interface ApplyTemplateParams {
+  projectId: string;
+  /** the parsed template content — sent from web, NOT re-fetched server-side
+   *  (templates live in the web bundle, not on the daemon's filesystem). The
+   *  daemon re-validates shape (kind/name/description non-empty) as
+   *  defense-in-depth, same "never trust the client" posture as every other
+   *  mutating RPC, but trusts the content bytes (no remote/foreign-input
+   *  trust boundary — this is the web app's own bundled, build-time,
+   *  reviewed content, not arbitrary external input). */
+  template: {
+    sourceTemplateId: string;
+    /** Skills never reach this RPC (Apply disabled client-side) — typed as
+     *  the 2-valued union so a "skill" value is a compile error at the call
+     *  site, with a runtime guard server-side as a second line of defense. */
+    kind: "agent" | "command";
+    name: string;
+    description: string;
+    tools?: string[];
+    body: string;
+  };
+}
+export interface ApplyTemplateResult {
+  /** the full merged store, same convention as importArtifacts/saveArtifact. */
+  project: ProjectStore;
+  /** the newly applied artifact's id, so the UI can highlight/locate it. */
+  appliedArtifactId: string;
+  /** name actually used after auto-suffix (== template.name if no collision). */
+  finalName: string;
+  /** finalName !== template.name */
+  wasRenamed: boolean;
+}
+
 export interface RenderParams {
   projectId: string;
   targets: TargetId[];
@@ -367,6 +415,7 @@ export type RpcMethod =
   | "updateSettings"
   | "scanClaudeDir"
   | "importArtifacts"
+  | "applyTemplate"
   | "render"
   | "computeDiff"
   | "write"

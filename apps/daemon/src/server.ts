@@ -35,7 +35,13 @@ function serveStaticFile(webRoot: string, urlPath: string, res: ServerResponse):
   }
 
   if (!existsSync(absPath) || statSync(absPath).isDirectory()) {
-    absPath = join(root, "index.html");
+    // Next.js static export emits one .html file per route (e.g. `templates.html`,
+    // `settings.html`) rather than nested `index.html` per directory. For an
+    // extensionless request whose literal path doesn't exist, try `<path>.html`
+    // first so each route resolves to its own page bundle; only fall back to the
+    // app shell's index.html (SPA-style) if that also doesn't exist.
+    const htmlPath = join(root, `${relPath}.html`);
+    absPath = existsSync(htmlPath) ? htmlPath : join(root, "index.html");
   }
   if (!existsSync(absPath)) return false;
 

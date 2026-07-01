@@ -22,6 +22,11 @@ export function SettingsShell() {
     const port = Number(window.location.port) || 12802;
     if (token) {
       initDaemonSession(token, port);
+      // Strip the token from the URL bar immediately so it doesn't persist in
+      // browser history or leak via Referer headers on outbound navigation.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("t");
+      window.history.replaceState(null, "", url.pathname + (url.search !== "?" ? url.search : "") + url.hash);
     }
   }, []);
 

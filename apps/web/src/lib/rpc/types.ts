@@ -33,6 +33,11 @@ export type {
   ScanClaudeDirResult,
   ImportArtifactsParams,
   ImportArtifactsResult,
+  ApplyTemplateParams,
+  ApplyTemplateResult,
+  FetchAuthorTemplatesParams,
+  FetchAuthorTemplatesResult,
+  FetchAuthorTemplatesOutcome,
   RenderParams,
   RenderResult,
   ComputeDiffParams,
@@ -75,4 +80,5 @@ export type {
   PublishResult,
   RenderedFile,
   TargetId,
+  TemplateListItem,
 } from "@symbion/rpc-types";

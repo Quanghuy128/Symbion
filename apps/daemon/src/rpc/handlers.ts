@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { accessSync, constants } from "node:fs";
 import { join } from "node:path";
 import {
+  AUTHOR_REGISTRY,
   computeDiff as coreComputeDiff,
   parseClaudeDir,
   renderArtifacts,
@@ -13,6 +14,7 @@ import {
   type RenderedFile,
   type TargetId,
 } from "@symbion/core";
+import { fetchAuthorTemplatesFromGithub } from "../templates/githubFetch.js";
 import {
   createProjectStore,
   loadGlobalConfig,
@@ -331,6 +333,142 @@ export const handlers = {
     }
     saveProjectStore(path, store);
     return { project: store };
+  },
+
+  /**
+   * applyTemplate — stages one bundled template (apps/web's static gallery)
+   * into a project's store as a new draft artifact, with server-side
+   * auto-suffix collision resolution. See packages/rpc-types's
+   * ApplyTemplateParams doc comment + docs/loops/templates-marketplace-STATE.md
+   * PLAN §0(b)/§2 for the full rationale (new RPC vs. extending
+   * importArtifacts; TOCTOU; never-block-never-overwrite collision policy).
+   *
+   * Defense-in-depth shape re-validation: the daemon never trusts the
+   * client's `template.kind`/`name`/`description` even though this content
+   * originates from the web app's own bundled, build-time-reviewed data
+   * (not arbitrary external input) — same posture as every other mutating
+   * handler in this file (see saveArtifact/importArtifacts comments above).
+   */
+  applyTemplate(params: contract.ApplyTemplateParams): contract.ApplyTemplateResult {
+    const { projectId, template } = params;
+
+    if (!template || (template.kind !== "agent" && template.kind !== "command")) {
+      throw new RpcError("invalid-kind", "Chỉ Agent/Command hỗ trợ Áp dụng.");
+    }
+    if (typeof template.name !== "string" || template.name.trim().length === 0) {
+      throw new RpcError("invalid-template", "Template thiếu name.");
+    }
+    if (typeof template.description !== "string" || template.description.trim().length === 0) {
+      throw new RpcError("invalid-template", "Template thiếu description.");
+    }
+    if (typeof template.body !== "string" || template.body.trim().length === 0) {
+      throw new RpcError("invalid-template", "Template thiếu nội dung (body).");
+    }
+    if (typeof template.sourceTemplateId !== "string" || template.sourceTemplateId.trim().length === 0) {
+      throw new RpcError("invalid-template", "Template thiếu sourceTemplateId.");
+    }
+
+    // templates-authors PLAN §P6: server-side defense-in-depth mirror of the
+    // client-side license/attribution acknowledgment gate. The daemon looks
+    // up authorId in AUTHOR_REGISTRY itself (never trusts a client-asserted
+    // boolean about WHETHER the gate applies) — only an unrecognized/absent
+    // authorId or one whose registry entry is kind:"bundled" (Symbion) is
+    // treated as not-third-party, matching "never trust the client" posture.
+    const authorId = template.authorId ?? "symbion";
+    const author = AUTHOR_REGISTRY.find((a) => a.id === authorId);
+    // Conservative default: unknown authorId → treat as third-party (requires
+    // acknowledgment). A known "bundled" (Symbion) entry is the ONLY exempt case.
+    // This ensures "never trust the client about WHETHER the gate applies" even if a
+    // future registry entry is misspelled or a hand-crafted RPC sends an unrecognized id.
+    const isThirdParty = author === undefined || author.kind === "github";
+    if (isThirdParty && template.acknowledgedThirdParty !== true) {
+      throw new RpcError(
+        "license-not-acknowledged",
+        "Cần xác nhận đã đọc thông báo về bản quyền nội dung của tác giả khác trước khi áp dụng."
+      );
+    }
+
+    const path = findProjectPath(projectId);
+    const store = loadProjectStore(path); // fresh read — closes the TOCTOU gap a client-side calc would have
+
+    // Auto-suffix algorithm (THINK #4): first free "<name>", "<name>-2", "<name>-3", ...
+    // scoped to (kind, name) pairs, matching validate.ts's own duplicate rule
+    // (same kind + same name) so the suffix algorithm and the lint rule it's
+    // dodging stay in lockstep by construction.
+    const existingNames = new Set(
+      store.artifacts.filter((a) => a.kind === template.kind).map((a) => a.name)
+    );
+    let finalName = template.name;
+    let n = 2;
+    while (existingNames.has(finalName)) {
+      finalName = `${template.name}-${n}`;
+      n++;
+    }
+    const wasRenamed = finalName !== template.name;
+
+    const now = new Date().toISOString();
+    const artifact: CanonicalArtifact = {
+      id: randomId(),
+      kind: template.kind,
+      name: finalName,
+      description: template.description,
+      tools: template.tools,
+      body: template.body,
+      meta: {
+        version: "draft",
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+        sourceTemplateId: template.sourceTemplateId,
+      },
+    };
+
+    // Defense-in-depth: re-validate the FULL resulting set, same posture as
+    // importArtifacts/saveArtifact. Should never actually fail given the
+    // auto-suffix loop above already guarantees no name collision, but keeps
+    // the same "never trust, always re-check before persist" invariant as
+    // every other write path (a real safety net if e.g. FILENAME_SAFE_RE
+    // rejects a name with a space/slash the bundle author typo'd).
+    const merged = [...store.artifacts, artifact];
+    const issues = validateAllArtifacts(merged);
+    const blocking = issues.filter((i) => i.level === "error" && i.artifactId === artifact.id);
+    if (blocking.length > 0) {
+      throw new RpcError(
+        "validation-failed",
+        `Không thể áp dụng — vi phạm lint: ${blocking.map((i) => i.message).join("; ")}`
+      );
+    }
+
+    store.artifacts.push(artifact);
+    saveProjectStore(path, store);
+
+    return { project: store, appliedArtifactId: artifact.id, finalName, wasRenamed };
+  },
+
+  /**
+   * fetchAuthorTemplates — templates-authors v2 extension (PLAN §P2). Looks
+   * up `authorId` in AUTHOR_REGISTRY (packages/core) server-side — never
+   * trusts/reads any client-supplied owner/repo fields, even if a
+   * hand-crafted request sends them (PLAN §P8 SSRF finding #1(a)). An
+   * unknown authorId, or one resolving to a `kind: "bundled"` entry (e.g.
+   * "symbion" — the bundled author can't be routed through the network-fetch
+   * path), is a programming/client-bug error -> thrown RpcError, NOT a
+   * well-formed outcome. A known `kind: "github"` author always resolves
+   * (never throws) to a `FetchAuthorTemplatesOutcome` — every external
+   * failure mode (network/rate-limit/not-found/per-file/parse) is a
+   * well-formed, expected-to-sometimes-fail result, not a daemon bug.
+   */
+  async fetchAuthorTemplates(params: contract.FetchAuthorTemplatesParams): Promise<contract.FetchAuthorTemplatesResult> {
+    if (typeof params?.authorId !== "string" || params.authorId.trim().length === 0) {
+      throw new RpcError("invalid-author", "Thiếu authorId.");
+    }
+    const author = AUTHOR_REGISTRY.find((a) => a.id === params.authorId);
+    if (!author || author.kind !== "github") {
+      throw new RpcError("invalid-author", `authorId không hợp lệ hoặc không phải nguồn GitHub: "${params.authorId}".`);
+    }
+
+    const outcome = await fetchAuthorTemplatesFromGithub(author);
+    return { outcome };
   },
 
   render(params: contract.RenderParams): contract.RenderResult {

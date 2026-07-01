@@ -4,8 +4,12 @@ import { create } from "zustand";
 import type { CanonicalArtifact, ProjectStore } from "@symbion/core";
 import { callRpc } from "../rpc/client";
 import type {
+  ApplyTemplateParams,
+  ApplyTemplateResult,
   CreateProjectResult,
   DeleteArtifactResult,
+  FetchAuthorTemplatesParams,
+  FetchAuthorTemplatesResult,
   ImportArtifactsParams,
   ImportArtifactsResult,
   ListProjectsResult,
@@ -36,6 +40,20 @@ interface ArtifactStoreState {
    *  `createProject` then `importArtifacts` directly via `callRpc` would
    *  render the empty just-created store instead of the merged result. */
   importArtifacts: (params: ImportArtifactsParams) => Promise<ProjectStore>;
+  /** Calls the `applyTemplate` RPC (Templates feature). Deliberately does NOT
+   *  mutate `currentProject` — Apply targets an arbitrary project, not
+   *  necessarily the currently-loaded one (the /templates route has no
+   *  "current project" concept at all, per templates-marketplace THINK #6).
+   *  Caller (TemplatePreviewModal) reads the full ApplyTemplateResult
+   *  directly to render the result panel. */
+  applyTemplate: (params: ApplyTemplateParams) => Promise<ApplyTemplateResult>;
+  /** Calls the `fetchAuthorTemplates` RPC (templates-authors v2). No caching
+   *  here — the in-session cache (THINK #3) lives in TemplatesView's own
+   *  state (PLAN §P4: daemon/store stays stateless, always performs a real
+   *  fetch when called). This is a thin RPC wrapper, mirroring applyTemplate's
+   *  "no currentProject mutation" shape (this RPC doesn't touch any project
+   *  at all). */
+  fetchAuthorTemplates: (params: FetchAuthorTemplatesParams) => Promise<FetchAuthorTemplatesResult>;
   setDaemonConnected: (connected: boolean) => void;
   /** Starts the periodic `ping` heartbeat that flips daemonConnected on
    *  failure/success (E9). Idempotent — calling twice does not start a
@@ -96,6 +114,22 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
     const result = await callRpc<ImportArtifactsParams, ImportArtifactsResult>("importArtifacts", params);
     set({ currentProject: result.project });
     return result.project;
+  },
+
+  async applyTemplate(params) {
+    const result = await callRpc<ApplyTemplateParams, ApplyTemplateResult>("applyTemplate", params);
+    // No currentProject mutation on purpose — see interface doc comment above.
+    // If the applied-to project happens to already be loaded as currentProject,
+    // sync it too so an open Builder view reflects the new draft immediately.
+    const current = get().currentProject;
+    if (current && current.id === params.projectId) {
+      set({ currentProject: result.project });
+    }
+    return result;
+  },
+
+  async fetchAuthorTemplates(params) {
+    return callRpc<FetchAuthorTemplatesParams, FetchAuthorTemplatesResult>("fetchAuthorTemplates", params);
   },
 
   setDaemonConnected(connected) {

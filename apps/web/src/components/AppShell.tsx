@@ -31,7 +31,35 @@ export function AppShell() {
     loadProjects().catch(() => {
       useArtifactStore.getState().setDaemonConnected(false);
     });
-  }, [loadProjects]);
+
+    // Cross-route handoff from /templates (templates-marketplace PLAN §3): the
+    // Apply-success panel's "Mở dự án" button and the zero-projects state's
+    // "Tạo dự án trước" button both land here via query params, read ONCE on
+    // mount, then stripped from the URL so a refresh doesn't re-trigger them.
+    // Distinct param names from the existing `?t=` session token — they
+    // coexist on the same URL with no collision.
+    const openProjectId = params.get("openProject");
+    const createProjectRequested = params.get("createProject") === "1";
+    if (openProjectId) {
+      loadProject(openProjectId).catch(() => {
+        // best-effort — if the project no longer exists, AppShell falls back
+        // to its normal "no current project" empty/list state, no crash.
+      });
+    }
+    if (createProjectRequested) {
+      setCreateOpen(true);
+    }
+    // Strip all transient boot params from the URL (token, cross-route handoff
+    // params) so they don't appear in browser history or leak via Referer headers.
+    if (token || openProjectId || createProjectRequested) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("t");
+      url.searchParams.delete("openProject");
+      url.searchParams.delete("createProject");
+      window.history.replaceState(null, "", url.pathname + (url.search !== "?" ? url.search : "") + url.hash);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadProjects, loadProject]);
 
   // E9: periodic ping heartbeat flips daemonConnected on failure/success so
   // the red blocking banner (DaemonStatusBadge) + disabled Save/Publish

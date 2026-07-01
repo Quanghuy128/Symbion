@@ -6,6 +6,7 @@ import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui
 import { Button } from "@/components/ui/button";
 import { TemplateMarkdownViewer } from "./TemplateMarkdownViewer";
 import { ProjectPickerStep } from "./ProjectPickerStep";
+import { LicenseAcknowledgmentStep } from "./LicenseAcknowledgmentStep";
 import { ApplyResultPanel } from "./ApplyResultPanel";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import type { TemplateListItem } from "@/data/templates/manifest";
@@ -15,7 +16,7 @@ export interface TemplatePreviewModalProps {
   onClose: () => void;
 }
 
-type Step = "preview" | "apply" | "result";
+type Step = "preview" | "license" | "apply" | "result";
 
 const KIND_LABEL: Record<TemplateListItem["kind"], string> = {
   agent: "Agent",
@@ -42,9 +43,19 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
     finalName: string;
     wasRenamed: boolean;
   } | null>(null);
+  // templates-authors PLAN §P6 / design doc §3.7: reset whenever a new
+  // `template` prop is passed in — never remembered across items, even
+  // within the same session (design doc Interaction Notes).
+  const [licenseAcknowledged, setLicenseAcknowledged] = useState(false);
 
   const selectAllRef = useRef<(() => void) | null>(null);
   const router = useRouter();
+
+  const isThirdPartyAuthor = template.authorId !== "symbion";
+
+  useEffect(() => {
+    setLicenseAcknowledged(false);
+  }, [template.id]);
 
   const projects = useArtifactStore((s) => s.projects);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
@@ -78,11 +89,22 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
 
   function handleOpenApplyStep() {
     setApplyError(null);
+    // design doc §1 step 8 / FR: a non-Symbion-authored item inserts the new
+    // license/attribution acknowledgment step BEFORE the project picker;
+    // a Symbion-authored item goes straight to "apply" — pixel-identical to v1.
+    setStep(isThirdPartyAuthor ? "license" : "apply");
+  }
+
+  function handleContinueFromLicense() {
     setStep("apply");
   }
 
   async function handleConfirmApply() {
     if (!selectedProjectId || template.kind === "skill") return;
+    // Defense in depth (design doc): the button should already be
+    // unreachable for an un-acknowledged third-party item, but the gate is
+    // enforced at the data layer too, not just via disabled-button UI.
+    if (isThirdPartyAuthor && !licenseAcknowledged) return;
     setApplying(true);
     setApplyError(null);
     try {
@@ -96,6 +118,8 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
           description: template.description,
           tools: template.tools,
           body: extractBody(template.raw),
+          authorId: template.authorId,
+          acknowledgedThirdParty: isThirdPartyAuthor ? licenseAcknowledged : undefined,
         },
       });
       setApplyResult({
@@ -133,6 +157,22 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
+              {isThirdPartyAuthor && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Nguồn: {template.authorDisplayName}
+                  {template.authorRepoLabel ? ` (${template.authorRepoLabel})` : ""}{" "}
+                  {template.authorRepoLabel && (
+                    <a
+                      href={`https://github.com/${template.authorRepoLabel}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-foreground"
+                    >
+                      ↗
+                    </a>
+                  )}
+                </p>
+              )}
             </div>
           </DialogHeader>
 
@@ -168,6 +208,22 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
         </>
       )}
 
+      {step === "license" && (
+        <>
+          <DialogHeader>
+            <DialogTitle>Áp dụng &quot;{template.name}&quot;</DialogTitle>
+          </DialogHeader>
+          <LicenseAcknowledgmentStep
+            authorDisplayName={template.authorDisplayName}
+            authorRepo={template.authorRepoLabel ?? template.authorDisplayName}
+            acknowledged={licenseAcknowledged}
+            onAcknowledgedChange={setLicenseAcknowledged}
+            onBack={() => setStep("preview")}
+            onContinue={handleContinueFromLicense}
+          />
+        </>
+      )}
+
       {step === "apply" && (
         <>
           <DialogHeader>
@@ -187,12 +243,17 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
           {applyError && <p className="mt-2 text-xs text-destructive">{applyError}</p>}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStep("preview")}>
+            <Button variant="outline" onClick={() => setStep(isThirdPartyAuthor ? "license" : "preview")}>
               Quay lại
             </Button>
             {projects.length > 0 && (
               <Button
-                disabled={!selectedProjectId || !daemonConnected || applying}
+                disabled={
+                  !selectedProjectId ||
+                  !daemonConnected ||
+                  applying ||
+                  (isThirdPartyAuthor && !licenseAcknowledged)
+                }
                 onClick={handleConfirmApply}
               >
                 {applying ? "Đang áp dụng…" : "Xác nhận áp dụng"}

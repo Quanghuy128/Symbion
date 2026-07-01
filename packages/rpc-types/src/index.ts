@@ -16,6 +16,7 @@ import type {
   PublishResult,
   RenderedFile,
   TargetId,
+  TemplateListItem,
 } from "@symbion/core";
 
 export interface PingParams {}
@@ -191,6 +192,23 @@ export interface ApplyTemplateParams {
     description: string;
     tools?: string[];
     body: string;
+    /**
+     * templates-authors PLAN §P6: the item's author id (looked up against
+     * AUTHOR_REGISTRY server-side to determine isThirdParty — the daemon
+     * does NOT trust a client-asserted boolean about WHETHER the license
+     * gate applies, only the client's assertion that it was acknowledged
+     * once shown). Absent/undefined is treated as "symbion" (old-client
+     * compat — zero behavior change for Symbion-authored items, PLAN §P6).
+     */
+    authorId?: string;
+    /**
+     * templates-authors PLAN §P6: required truthy for any non-"symbion"
+     * (third-party / GitHub-backed) author — server-side defense-in-depth
+     * mirror of the client-side license/attribution acknowledgment gate in
+     * TemplatePreviewModal's "license" step. Ignored (no guard triggered)
+     * for Symbion-authored items.
+     */
+    acknowledgedThirdParty?: boolean;
   };
 }
 export interface ApplyTemplateResult {
@@ -202,6 +220,43 @@ export interface ApplyTemplateResult {
   finalName: string;
   /** finalName !== template.name */
   wasRenamed: boolean;
+}
+
+/**
+ * fetchAuthorTemplates — templates-authors v2 extension (PLAN §P2). Given a
+ * GitHub-backed author id (looked up in AUTHOR_REGISTRY server-side, never a
+ * client-suppliable owner/repo), fetches that author's repo content LIVE via
+ * GitHub's tree API (1 api.github.com call, counts against the 60/hr
+ * unauthenticated budget) + per-file raw.githubusercontent.com fetches
+ * (confirmed NOT rate-limited the same way, PLAN §P3). Read-only — makes
+ * outbound network calls but never writes to disk (added to the daemon's
+ * READ_ONLY_METHODS set alongside listModels/checkProviderStatus).
+ *
+ * Fetched content is held only in daemon/web process memory for the
+ * session — never written into Symbion's own source tree (AC7), never
+ * cached server-side (in-session caching is a client-side-only concern,
+ * THINK #3 / PLAN §P4 — this RPC always performs a real fetch when called).
+ */
+export interface FetchAuthorTemplatesParams {
+  /** looked up in AUTHOR_REGISTRY server-side, not trusted as a free-form
+   *  repo descriptor — a hand-crafted request sending extra owner/repo
+   *  fields is ignored (PLAN §P8 SSRF finding #1(a)). */
+  authorId: string;
+}
+
+export type FetchAuthorTemplatesOutcome =
+  | { status: "success"; items: TemplateListItem[]; skipped: Array<{ relPath: string; reason: string }> }
+  | {
+      status: "error";
+      kind: "network" | "rate-limit" | "not-found";
+      message: string;
+      /** epoch ms — present iff kind === "rate-limit" and GitHub's
+       *  X-RateLimit-Reset header was present (converted from seconds). */
+      resetAt?: number;
+    };
+
+export interface FetchAuthorTemplatesResult {
+  outcome: FetchAuthorTemplatesOutcome;
 }
 
 export interface RenderParams {
@@ -416,6 +471,7 @@ export type RpcMethod =
   | "scanClaudeDir"
   | "importArtifacts"
   | "applyTemplate"
+  | "fetchAuthorTemplates"
   | "render"
   | "computeDiff"
   | "write"
@@ -440,4 +496,13 @@ export interface RpcErrorBody {
 
 // Re-exported for convenience so consumers of @symbion/rpc-types don't also
 // need a separate import from @symbion/core for the IR types referenced above.
-export type { CanonicalArtifact, DiffFile, ProjectSettings, ProjectStore, PublishResult, RenderedFile, TargetId };
+export type {
+  CanonicalArtifact,
+  DiffFile,
+  ProjectSettings,
+  ProjectStore,
+  PublishResult,
+  RenderedFile,
+  TargetId,
+  TemplateListItem,
+};

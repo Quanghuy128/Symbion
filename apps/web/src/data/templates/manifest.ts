@@ -12,7 +12,7 @@
  * (packages/core, pure) at manifest-build time; a malformed one goes into
  * `skipped`, never throws (AC7).
  */
-import { parseTemplateMarkdown, type TemplateKind } from "@symbion/core";
+import { parseTemplateMarkdown, type TemplateKind, type TemplateListItem } from "@symbion/core";
 
 import * as agentCodeReviewer from "./agents/code-reviewer";
 import * as agentTestCoverageAuditor from "./agents/test-coverage-auditor";
@@ -29,18 +29,11 @@ import * as skillPrDescription from "./skills/pr-description";
 import * as skillApiErrorMessage from "./skills/api-error-message";
 import * as skillMigrationChecklist from "./skills/migration-checklist";
 
-export interface TemplateListItem {
-  /** stable slug, e.g. "agent:code-reviewer" — used as sourceTemplateId on Apply. */
-  id: string;
-  kind: TemplateKind;
-  /** becomes CanonicalArtifact.name on Apply. */
-  name: string;
-  /** one-line, shown on card + becomes CanonicalArtifact.description. */
-  description: string;
-  tools?: string[];
-  /** exact bytes of the .md-equivalent source — what "Copy markdown" copies verbatim. */
-  raw: string;
-}
+// TemplateListItem now lives in @symbion/core (templates-authors PLAN §P9) so
+// apps/daemon's fetchAuthorTemplates handler and this bundled-manifest loader
+// share the exact same shape. Re-exported here for backward-compat import
+// paths inside apps/web (existing call sites import it from this module).
+export type { TemplateListItem };
 
 export interface TemplateManifest {
   items: TemplateListItem[];
@@ -98,6 +91,10 @@ export function loadTemplateManifest(): TemplateManifest {
       description: result.parsed.description,
       tools: result.parsed.tools,
       raw: source.mod.raw,
+      // templates-authors PLAN §P2: stamp the "Symbion" author identity onto
+      // every bundled item. No authorRepoLabel — kind is "bundled", not "github".
+      authorId: "symbion",
+      authorDisplayName: "Symbion",
     });
   }
 

@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { handlers } from "../src/rpc/handlers.js";
+import { handlers, RpcError } from "../src/rpc/handlers.js";
 import { PathConfinementError, resolveConfinedPath } from "../src/rpc/guard.js";
 import { loadProjectStore } from "../src/store/store.js";
 
@@ -745,5 +745,117 @@ describe("applyTemplate RPC (templates-marketplace)", () => {
       )
     ).toThrow();
     expect(loadProjectStore(projectRoot).artifacts).toHaveLength(0);
+  });
+});
+
+describe("applyTemplate RPC — license acknowledgment guard (templates-authors PLAN §P6)", () => {
+  function eccTemplate(
+    overrides: Partial<{
+      sourceTemplateId: string;
+      kind: "agent" | "command";
+      name: string;
+      description: string;
+      tools?: string[];
+      body: string;
+      authorId?: string;
+      acknowledgedThirdParty?: boolean;
+    }> = {}
+  ) {
+    return {
+      sourceTemplateId: "ecc:agents/example-agent.md",
+      kind: "agent" as const,
+      name: "example-agent",
+      description: "Example agent description.",
+      tools: ["Read", "Grep"],
+      body: "Example agent body text.",
+      authorId: "ecc",
+      ...overrides,
+    };
+  }
+
+  it("D23: authorId 'ecc', no acknowledgedThirdParty field sent -> throws RpcError, nothing persisted", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    expect(() => handlers.applyTemplate({ projectId, template: eccTemplate() }, ctx)).toThrow(RpcError);
+    expect(loadProjectStore(projectRoot).artifacts).toHaveLength(0);
+  });
+
+  it("D24: authorId 'ecc', acknowledgedThirdParty: false explicitly -> throws RpcError, nothing persisted", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    expect(() =>
+      handlers.applyTemplate({ projectId, template: eccTemplate({ acknowledgedThirdParty: false }) }, ctx)
+    ).toThrow(RpcError);
+    expect(loadProjectStore(projectRoot).artifacts).toHaveLength(0);
+  });
+
+  it("D25: authorId 'ecc', acknowledgedThirdParty: true -> succeeds exactly like a normal apply", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    const result = handlers.applyTemplate(
+      { projectId, template: eccTemplate({ acknowledgedThirdParty: true }) },
+      ctx
+    );
+    expect(result.wasRenamed).toBe(false);
+    expect(result.finalName).toBe("example-agent");
+    expect(result.project.artifacts).toHaveLength(1);
+    const applied = result.project.artifacts.find((a) => a.id === result.appliedArtifactId);
+    expect(applied?.meta.sourceTemplateId).toBe("ecc:agents/example-agent.md");
+  });
+
+  it("D26: authorId 'symbion' (or omitted, simulating an old client), no acknowledgedThirdParty -> succeeds, zero behavior change", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    const symbionTemplate = {
+      sourceTemplateId: "agent:code-reviewer",
+      kind: "agent" as const,
+      name: "code-reviewer",
+      description: "Rà soát code, gắn nhãn rủi ro bảo mật & style.",
+      tools: ["Read", "Grep"],
+      body: "You are a meticulous code reviewer.",
+    };
+
+    const result1 = handlers.applyTemplate({ projectId, template: symbionTemplate }, ctx); // authorId omitted
+    expect(result1.wasRenamed).toBe(false);
+
+    const result2 = handlers.applyTemplate(
+      {
+        projectId,
+        template: { ...symbionTemplate, name: "code-reviewer-explicit-symbion", authorId: "symbion" },
+      },
+      ctx
+    );
+    expect(result2.wasRenamed).toBe(false);
+  });
+
+  it("D27: unknown authorId without acknowledgedThirdParty -> throws RpcError (conservative: treat as third-party)", async () => {
+    await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
+    const projects = await handlers.listProjects({}, ctx);
+    const projectId = projects.projects[0]!.id;
+
+    expect(() =>
+      handlers.applyTemplate(
+        {
+          projectId,
+          template: {
+            sourceTemplateId: "mystery:agents/foo.md",
+            kind: "agent" as const,
+            name: "foo-agent",
+            description: "Agent from unknown author.",
+            body: "Agent body text.",
+            authorId: "mystery-unknown-author",
+          },
+        },
+        ctx
+      )
+    ).toThrow(RpcError);
   });
 });

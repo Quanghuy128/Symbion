@@ -134,3 +134,78 @@ describe("parseTemplateMarkdown", () => {
     expect(result.ok).toBe(false);
   });
 });
+
+// templates-authors v2: U20-U24 regression + new fixtures modeling ECC's
+// real-observed frontmatter SHAPES (synthetic content only — no real ECC
+// body/prompt text, per the testplan's explicit "synthetic fixtures only"
+// rule). parseTemplateMarkdown itself is reused completely UNCHANGED
+// (docs/loops/templates-authors-STATE.md PLAN §P0/§P9 finding: zero parser
+// modification needed) — these tests confirm that finding holds.
+describe("parseTemplateMarkdown — ECC-shaped synthetic fixtures (templates-authors)", () => {
+  it("U20: spot-check U1 still holds post-refactor — parser unchanged, ECC-shaped fixtures parse same as bundled fixtures", () => {
+    const result = parseTemplateMarkdown(VALID_AGENT, "agent");
+    expect(result.ok).toBe(true);
+  });
+
+  it("U21: agent-shaped fixture with YAML flow-array tools + an extra unknown field ('model') parses ok, extra field does not block parsing", () => {
+    const raw = `---
+name: example-agent
+description: example agent description
+tools: ["Read", "Grep"]
+model: sonnet
+---
+
+Example agent body text.
+`;
+    const result = parseTemplateMarkdown(raw, "agent");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.parsed.tools).toEqual(["Read", "Grep"]);
+  });
+
+  it("U22: command-shaped fixture with description only + extra unknown fields ('argument-hint') parses ok, name is undefined", () => {
+    const raw = `---
+description: example command description
+argument-hint: "<some-hint>"
+---
+
+Example command body text.
+`;
+    const result = parseTemplateMarkdown(raw, "command");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.parsed.name).toBeUndefined();
+  });
+
+  it("U23: skill-shaped fixture with a multi-line YAML folded-scalar description parses ok, joined into a single string with no embedded newline artifact", () => {
+    const raw = `---
+name: example-skill
+description: >
+  This is an example description
+  spanning two physical lines.
+---
+
+Example skill body text.
+`;
+    const result = parseTemplateMarkdown(raw, "skill");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.parsed.description).toBe("This is an example description spanning two physical lines.");
+    expect(result.parsed.description).not.toContain("\n");
+  });
+
+  it("U24: skill-shaped fixture with a nested-object frontmatter field ('metadata') parses ok without throwing", () => {
+    const raw = `---
+name: example-skill
+description: example skill description
+metadata:
+  origin: example-source
+---
+
+Example skill body text.
+`;
+    expect(() => parseTemplateMarkdown(raw, "skill")).not.toThrow();
+    const result = parseTemplateMarkdown(raw, "skill");
+    expect(result.ok).toBe(true);
+  });
+});

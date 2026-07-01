@@ -49,11 +49,14 @@ export function AppShell() {
     if (createProjectRequested) {
       setCreateOpen(true);
     }
-    if (openProjectId || createProjectRequested) {
+    // Strip all transient boot params from the URL (token, cross-route handoff
+    // params) so they don't appear in browser history or leak via Referer headers.
+    if (token || openProjectId || createProjectRequested) {
       const url = new URL(window.location.href);
+      url.searchParams.delete("t");
       url.searchParams.delete("openProject");
       url.searchParams.delete("createProject");
-      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      window.history.replaceState(null, "", url.pathname + (url.search !== "?" ? url.search : "") + url.hash);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadProjects, loadProject]);

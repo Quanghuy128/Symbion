@@ -87,6 +87,12 @@ const READ_ONLY_METHODS = new Set<RpcMethod>([
   // non-ping/non-read-only method (no change to the auth gate itself, just correct set
   // membership for the new methods).
   "listProviders",
+  // fetchAuthorTemplates (templates-authors v2) performs outbound network calls
+  // (GitHub tree API + per-file raw.githubusercontent.com fetches) but writes
+  // nothing to disk — same "outbound-network-but-no-disk-write" classification
+  // as listModels/checkProviderStatus above (docs/loops/templates-authors-STATE.md
+  // PLAN §P2).
+  "fetchAuthorTemplates",
 ]);
 
 export interface DaemonServerOptions {

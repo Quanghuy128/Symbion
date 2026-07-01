@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { accessSync, constants } from "node:fs";
 import { join } from "node:path";
 import {
+  AUTHOR_REGISTRY,
   computeDiff as coreComputeDiff,
   parseClaudeDir,
   renderArtifacts,
@@ -13,6 +14,7 @@ import {
   type RenderedFile,
   type TargetId,
 } from "@symbion/core";
+import { fetchAuthorTemplatesFromGithub } from "../templates/githubFetch.js";
 import {
   createProjectStore,
   loadGlobalConfig,
@@ -366,6 +368,26 @@ export const handlers = {
       throw new RpcError("invalid-template", "Template thiếu sourceTemplateId.");
     }
 
+    // templates-authors PLAN §P6: server-side defense-in-depth mirror of the
+    // client-side license/attribution acknowledgment gate. The daemon looks
+    // up authorId in AUTHOR_REGISTRY itself (never trusts a client-asserted
+    // boolean about WHETHER the gate applies) — only an unrecognized/absent
+    // authorId or one whose registry entry is kind:"bundled" (Symbion) is
+    // treated as not-third-party, matching "never trust the client" posture.
+    const authorId = template.authorId ?? "symbion";
+    const author = AUTHOR_REGISTRY.find((a) => a.id === authorId);
+    // Conservative default: unknown authorId → treat as third-party (requires
+    // acknowledgment). A known "bundled" (Symbion) entry is the ONLY exempt case.
+    // This ensures "never trust the client about WHETHER the gate applies" even if a
+    // future registry entry is misspelled or a hand-crafted RPC sends an unrecognized id.
+    const isThirdParty = author === undefined || author.kind === "github";
+    if (isThirdParty && template.acknowledgedThirdParty !== true) {
+      throw new RpcError(
+        "license-not-acknowledged",
+        "Cần xác nhận đã đọc thông báo về bản quyền nội dung của tác giả khác trước khi áp dụng."
+      );
+    }
+
     const path = findProjectPath(projectId);
     const store = loadProjectStore(path); // fresh read — closes the TOCTOU gap a client-side calc would have
 
@@ -421,6 +443,32 @@ export const handlers = {
     saveProjectStore(path, store);
 
     return { project: store, appliedArtifactId: artifact.id, finalName, wasRenamed };
+  },
+
+  /**
+   * fetchAuthorTemplates — templates-authors v2 extension (PLAN §P2). Looks
+   * up `authorId` in AUTHOR_REGISTRY (packages/core) server-side — never
+   * trusts/reads any client-supplied owner/repo fields, even if a
+   * hand-crafted request sends them (PLAN §P8 SSRF finding #1(a)). An
+   * unknown authorId, or one resolving to a `kind: "bundled"` entry (e.g.
+   * "symbion" — the bundled author can't be routed through the network-fetch
+   * path), is a programming/client-bug error -> thrown RpcError, NOT a
+   * well-formed outcome. A known `kind: "github"` author always resolves
+   * (never throws) to a `FetchAuthorTemplatesOutcome` — every external
+   * failure mode (network/rate-limit/not-found/per-file/parse) is a
+   * well-formed, expected-to-sometimes-fail result, not a daemon bug.
+   */
+  async fetchAuthorTemplates(params: contract.FetchAuthorTemplatesParams): Promise<contract.FetchAuthorTemplatesResult> {
+    if (typeof params?.authorId !== "string" || params.authorId.trim().length === 0) {
+      throw new RpcError("invalid-author", "Thiếu authorId.");
+    }
+    const author = AUTHOR_REGISTRY.find((a) => a.id === params.authorId);
+    if (!author || author.kind !== "github") {
+      throw new RpcError("invalid-author", `authorId không hợp lệ hoặc không phải nguồn GitHub: "${params.authorId}".`);
+    }
+
+    const outcome = await fetchAuthorTemplatesFromGithub(author);
+    return { outcome };
   },
 
   render(params: contract.RenderParams): contract.RenderResult {

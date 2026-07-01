@@ -195,6 +195,7 @@ export class OllamaProvider implements LlmProvider {
 
     try {
       let res: Response;
+
       try {
         res = await fetch(`${this.baseUrl}/api/generate`, {
           method: "POST",
@@ -204,13 +205,29 @@ export class OllamaProvider implements LlmProvider {
             prompt: req.userPrompt,
             system: req.systemPrompt,
             stream: false,
+
+            // Important for Qwen3 reasoning models:
+            // prevents long thinking output that can exceed Symbion's timeout.
+            think: false,
+
+            // Keep generation bounded for paraphrase / short text rewrite use cases.
+            // Nhanh, ngắn, ổn định — hợp cho UI form/autofill
+            options: {
+              num_ctx: 2048, //size of context window
+              num_predict: 256, //maximum number of tokens to predict when generating text
+              temperature: 0.5, //creative level
+            },
+
+            // Keeps the model warm after the first request.
+            keep_alive: "10m",
           }),
           signal: controller.signal,
         });
-      } catch (err) {
+      } catch {
         if (controller.signal.aborted) {
           throw new LlmError("timeout", `Quá thời gian chờ (${req.timeoutMs}ms) khi gọi Ollama.`);
         }
+
         throw new LlmError(
           "provider-not-running",
           "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy."
@@ -220,11 +237,17 @@ export class OllamaProvider implements LlmProvider {
       if (res.status === 404) {
         throw new LlmError("invalid-response", `Mô hình "${req.model}" không tồn tại trên Ollama (404).`);
       }
+
       if (!res.ok) {
-        throw new LlmError("invalid-response", `Ollama trả về lỗi HTTP ${res.status}.`);
+        const text = await res.text().catch(() => "");
+        throw new LlmError(
+          "invalid-response",
+          `Ollama trả về lỗi HTTP ${res.status}${text ? `: ${text}` : "."}`
+        );
       }
 
       let json: OllamaGenerateResponse;
+
       try {
         json = (await res.json()) as OllamaGenerateResponse;
       } catch {
@@ -240,4 +263,5 @@ export class OllamaProvider implements LlmProvider {
       clearTimeout(timer);
     }
   }
+  
 }

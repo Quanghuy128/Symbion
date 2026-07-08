@@ -5,8 +5,33 @@ import { startServer, type DaemonServerHandle } from "./server.js";
 import { showBootMenu } from "./boot/menu.js";
 import { loadGlobalConfig, saveGlobalConfig } from "./store/store.js";
 import { findOpenPort } from "./net/findOpenPort.js";
+import { buildBootBanner, isTtyOutput, supportsEmoji } from "./boot/banner.js";
+import { openInBrowser } from "./boot/openBrowser.js";
 
 const VERSION = process.env.SYMBION_VERSION ?? "0.1.0";
+
+/**
+ * printBootBanner — reads the process-global environment exactly once
+ * (isTTY / columns / env / platform) and delegates to the pure
+ * `buildBootBanner`/`supportsEmoji` in ./boot/banner.ts, then prints each
+ * returned line. Called exactly once, before the boot menu loop starts —
+ * never inside it (boot-terminal-ux Scope decision #3 / PLAN §P1: the
+ * banner must never be redrawn on menu retry, which is enforced by
+ * apps/daemon/test/menu.test.ts's TC-MENU-5/TC-MENU-6 regression guards).
+ */
+function printBootBanner(version: string, url: string): void {
+  const isTty = isTtyOutput(process.stdout);
+  const lines = buildBootBanner({
+    version,
+    url,
+    useEmoji: supportsEmoji(process.env, process.platform),
+    isTty,
+    terminalColumns: process.stdout.columns,
+  });
+  for (const line of lines) {
+    console.log(line);
+  }
+}
 
 function findWebStaticRoot(): string | undefined {
   // apps/daemon/dist/index.js -> ../../web/out (apps/web/out, the Next static export).
@@ -39,8 +64,7 @@ async function main() {
   }
 
   const url = `http://127.0.0.1:${handle.port}/?t=${handle.token}`;
-  console.log(`Symbion v${VERSION}`);
-  console.log(`Symbion daemon đang chạy: ${url}`);
+  printBootBanner(VERSION, url);
 
   let running = true;
   while (running) {
@@ -48,14 +72,10 @@ async function main() {
     if (choice === "web") {
       console.log(`Mở: ${url}`);
       // best-effort open in default browser; not critical-path for headless/CI runs.
-      try {
-        const open = await import("node:child_process");
-        const platform = process.platform;
-        const cmd = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
-        open.exec(`${cmd} "${url}"`);
-      } catch {
-        // ignore — user can open the URL manually
-      }
+      // Failures are now surfaced via the onFailure callback (FR-A.3 fix —
+      // previously a silent try/catch around a fire-and-forget exec() call
+      // that could never observe an async failure at all).
+      openInBrowser(url, (message) => console.log(message));
     } else if (choice === "tray") {
       console.log("Đã chuyển sang chạy nền (Hide to Tray). Server vẫn đang chạy.");
       running = false; // detach menu loop; process keeps running via the HTTP server

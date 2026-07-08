@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import type { CanonicalArtifact, ProjectStore } from "@symbion/core";
-import { callRpc } from "../rpc/client";
+import { callRpc, DaemonRpcError, hasSession } from "../rpc/client";
 import type {
   ApplyTemplateParams,
   ApplyTemplateResult,
@@ -35,7 +35,25 @@ export interface ToastState {
 interface ArtifactStoreState {
   projects: Array<{ id: string; name: string; path: string }>;
   currentProject: ProjectStore | null;
+  /** Derived from (daemonReachable && sessionValid) — kept for the ~11
+   *  existing consumers gating Save/Publish/Generate buttons on "is the
+   *  daemon fully usable right now," which is exactly this combination
+   *  regardless of *which* sub-condition failed. Never set directly by
+   *  callers anymore — see reportConnectionOk/reportConnectionError below
+   *  (boot-terminal-ux PLAN §P1). */
   daemonConnected: boolean;
+  /** True once the daemon process itself has answered the last `ping`
+   *  (tokenless liveness probe). False means the daemon is genuinely
+   *  unreachable (process down, network error) — distinct from a merely
+   *  invalid/expired session (see sessionValid below). */
+  daemonReachable: boolean;
+  /** True once the last authenticated RPC call (e.g. `listProjects`)
+   *  actually succeeded. False while `daemonReachable` is true means: the
+   *  daemon process is up, but this browser tab's session token is
+   *  missing/stale/foreign — e.g. after an F5 refresh that lost the
+   *  in-memory token, or a tab left open across a daemon restart
+   *  (boot-terminal-ux FR-A.2/A.2b). */
+  sessionValid: boolean;
   /** Q4: the only store-shape addition in this feature. Single-slot — a new
    *  showToast() call replaces whatever toast is currently showing rather
    *  than queuing. null = no toast visible. */
@@ -67,13 +85,28 @@ interface ArtifactStoreState {
    *  "no currentProject mutation" shape (this RPC doesn't touch any project
    *  at all). */
   fetchAuthorTemplates: (params: FetchAuthorTemplatesParams) => Promise<FetchAuthorTemplatesResult>;
+  /** @deprecated kept only as a thin wrapper for any lingering direct callers;
+   *  prefer reportConnectionOk/reportConnectionError, which correctly derive
+   *  daemonReachable/sessionValid instead of guessing a single boolean. */
   setDaemonConnected: (connected: boolean) => void;
+  /** Call after any authenticated RPC call succeeds — marks the daemon as
+   *  fully reachable and the session as valid (boot-terminal-ux PLAN §P1). */
+  reportConnectionOk: () => void;
+  /** Call after any RPC call fails — classifies the failure so the UI can
+   *  distinguish "daemon is down" from "session token is stale/invalid"
+   *  (FR-A.2/A.2b). A `DaemonRpcError` with code `"unauthorized"` means the
+   *  daemon answered but rejected the token (daemonReachable stays true,
+   *  sessionValid becomes false). Any other error (network throw, timeout,
+   *  non-401 error) fails closed: both flags become false — an unknown
+   *  failure mode must never be silently upgraded to "connected." */
+  reportConnectionError: (err: unknown) => void;
   /** Q4: shows a single toast, replacing any currently-visible one. */
   showToast: (message: string, variant?: "success" | "error") => void;
   /** Q4: dismisses the current toast (auto-dismiss timer or manual close). */
   dismissToast: () => void;
-  /** Starts the periodic `ping` heartbeat that flips daemonConnected on
-   *  failure/success (E9). Idempotent — calling twice does not start a
+  /** Starts the periodic `ping` heartbeat that classifies daemonReachable/
+   *  sessionValid (and the derived daemonConnected) on every tick (E9,
+   *  extended per FR-A.2b). Idempotent — calling twice does not start a
    *  second interval. Returns a stop function. */
   startHeartbeat: () => () => void;
   /** local-only mutation, used by the BuilderDrawer for live preview before Save. */
@@ -84,6 +117,8 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
   projects: [],
   currentProject: null,
   daemonConnected: true,
+  daemonReachable: true,
+  sessionValid: true,
   toast: null,
 
   async loadProjects() {
@@ -151,7 +186,27 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
   },
 
   setDaemonConnected(connected) {
-    set({ daemonConnected: connected });
+    if (connected) {
+      get().reportConnectionOk();
+    } else {
+      set({ daemonReachable: false, sessionValid: false, daemonConnected: false });
+    }
+  },
+
+  reportConnectionOk() {
+    set({ daemonReachable: true, sessionValid: true, daemonConnected: true });
+  },
+
+  reportConnectionError(err) {
+    if (err instanceof DaemonRpcError && err.code === "unauthorized") {
+      // Daemon answered (it's up) but rejected the token: stale/foreign
+      // session, not a dead daemon (FR-A.2/EC-A.1/EC-A.5).
+      set({ daemonReachable: true, sessionValid: false, daemonConnected: false });
+      return;
+    }
+    // Fail closed: network throw, timeout, or any other unrecognized error
+    // shape is treated as "not usable" — never silently upgraded to connected.
+    set({ daemonReachable: false, sessionValid: false, daemonConnected: false });
   },
 
   showToast(message, variant) {
@@ -172,11 +227,33 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
       };
     }
     const tick = async () => {
+      // Step 1: tokenless liveness probe — the ONLY thing that answers "is
+      // the daemon process even alive," independent of session state.
       try {
         await callRpc<{}, PingResult>("ping", {});
-        get().setDaemonConnected(true);
-      } catch {
-        get().setDaemonConnected(false);
+      } catch (err) {
+        get().reportConnectionError(err);
+        return;
+      }
+
+      // Step 2: purely client-side check, no network call needed. After an
+      // F5 refresh, cachedToken is genuinely null (module reinitializes) —
+      // this is the exact EC-A.5 trigger. Short-circuits before wasting a
+      // network round-trip on a call we already know will 401.
+      if (!hasSession()) {
+        set({ daemonReachable: true, sessionValid: false, daemonConnected: false });
+        return;
+      }
+
+      // Step 3: probe an authenticated call. Reuses the same existing
+      // `listProjects` read used elsewhere — no new RPC method. A 401 here
+      // with a valid-looking session (stale/foreign token, EC-A.1) lands in
+      // reportConnectionError via the same messaging path as step 2.
+      try {
+        await callRpc<{}, ListProjectsResult>("listProjects", {});
+        get().reportConnectionOk();
+      } catch (err) {
+        get().reportConnectionError(err);
       }
     };
     // Fire immediately so a disconnect is detected without waiting a full interval.

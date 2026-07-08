@@ -467,10 +467,111 @@ tab entirely unbuilt). Options: (a) send `feature-builder` back with the exact b
 `feat/symbion-dark-redesign` branch with per-step commits) and re-run `/review` once, or (b) stop
 here for manual handling. Awaiting user choice — see next message.
 
+**Resolved**: option (a) taken. The diff was already on `feat/symbion-dark-redesign` (not
+`feat/designer-agent-design-md` as the architect's process note in §8 warned — verified via
+`git branch --show-current` before starting this fix pass). The fix pass below is committed as a
+separate commit, not an amend of `ced75a1`, giving at least 2-commit bisectability
+(`ced75a1` infra/rail/list/drawer/publish/toast, `4659669` Graph tab + review fixes) — full
+per-step (4a/4b) bisectability per §6.9 was not attempted since those steps already landed
+correctly in `ced75a1` and were out of scope for this fix pass.
+
+## 9. BUILD — fix-pass notes (Graph tab + review fixes, commit `4659669`)
+
+> Written by the Maker (this run) after fixing exactly the items REVIEW (§8) flagged. Verified via
+> `grep`/read, not just claimed — see "Verification" below, since STATE §7's earlier false
+> "already checked" claim about this exact same Graph tab is why this fix pass exists.
+
+**What changed:**
+
+1. `apps/web/src/components/DependencyGraph.tsx` — full rewrite of the node/edge construction and
+   render:
+   - Registered `nodeTypes = { command: CommandNode, agent: AgentNode, missingAgent:
+     MissingAgentNode }` and `edgeTypes = { animated: AnimatedEdge }`, passed as `nodeTypes`/
+     `edgeTypes` props directly on `<ReactFlow>` (previously these 3 node components existed,
+     imported nowhere — dead code per §8's finding).
+   - Removed all hardcoded light-theme inline `style` hexes (`#6366f1`/`#8b5cf6`/`#fee2e2`+
+     `#991b1b`/`#ef4444`); nodes now carry a `type` field and no inline color style — coloring
+     lives in the node components themselves (`#818cf8` command / `#a78bfa` agent / `border-danger`
+     + `bg-danger/10` missing, using `tailwind.config.ts`'s existing `danger: "#f87171"` token, not
+     a new hardcoded hex).
+   - Edges are now `type: "animated"` (renders via the new `AnimatedEdge`), carrying
+     `data: { drawIndex, missing }`. Missing-mention edges keep React Flow's built-in `animated`
+     (dashed marching-ants) prop, unchanged mechanism, just recolored via `AnimatedEdge`'s danger
+     branch instead of an inline `style.stroke`.
+   - Added `hoveredId` state (`onNodeMouseEnter`/`onNodeMouseLeave`) and two `useMemo`s that stamp
+     `highlighted`/`dimmed` onto nodes/edges connected/unconnected to the hovered node — plain CSS
+     transition (opacity + stroke color/width) inside `AnimatedEdge`/`CommandNode`/`AgentNode`,
+     ~120-200ms, no scale/lift/popovers added (confirmed: no `transform: scale`/`translateY` added
+     to any node in this diff).
+   - `nodesDraggable={false}`/`nodesConnectable={false}` left byte-identical (confirmed via diff —
+     only their surrounding JSX moved, values untouched).
+   - `<Background>` swapped to `<Background variant={BackgroundVariant.Dots} />`.
+   - Renders `<GraphStatusChips claudeLossy={ADAPTERS.claude.capability.lossy}
+     codexLossy={ADAPTERS.codex.capability.lossy} missingAgentMentions={...} />` above the canvas,
+     inside the same component (no prop drilling from `ProjectView` needed — `DependencyGraph`
+     already imports `@symbion/core`).
+2. **New** `apps/web/src/components/graph/GraphStatusChips.tsx` — presentational, exact props
+   contract from design doc §4.1: `{ claudeLossy: boolean; codexLossy: boolean;
+   missingAgentMentions: string[] }` (chip-count/list variant collapsed to a boolean pair per the
+   PLAN's simpler §6.2 Q2 resolution — the design doc's original prop sketch used `codexLossyCount`/
+   `claudeClean`, but PLAN §6.2 row 2 explicitly resolves this as "`ADAPTERS.<target>.capability
+   .lossy`" — a boolean per target — so the boolean-pair shape matches the locked PLAN resolution,
+   not the design doc's earlier draft sketch).
+3. **New** `apps/web/src/components/graph/AnimatedEdge.tsx` — React Flow custom edge (`EdgeProps`),
+   uses `getBezierPath`/`BaseEdge` from `reactflow`. Staggered draw-in: `drawIndex < 15` edges get a
+   `setTimeout(drawIndex * 40ms)` before their opacity flips 0→1; edges beyond the cap render
+   immediately (`drawn` initialized `true`). Transition timing reuses `cubic-bezier(.2,.8,.2,1)` —
+   read directly from `tailwind.config.ts`'s existing `animation.slideIn` value, not invented fresh.
+   Reduced-motion: relies entirely on `globals.css`'s existing global
+   `@media (prefers-reduced-motion: reduce)` block (which forces all `animation-duration`/
+   `transition-duration` to ~0) — no second reduced-motion mechanism added, per the instruction not
+   to invent a duplicate.
+4. `apps/web/src/components/publish/ConflictResolver.tsx` — replaced the ref-mutated-during-render
+   pattern (`useRef(false)` + `hasRevealedRef.current = true` in the render body) with
+   `useState(() => true)` + a mount-only `useEffect` that flips it to `false`. Fixes the React 18
+   Strict Mode dev-only double-invocation bug code-reviewer flagged (§8 🟡 item 1).
+5. `apps/web/src/components/publish/PublishDialog.tsx` — **no code change.** Checked
+   `docs/loops/symbion-dark-redesign-design.md` §7 frontmatter `components.Dialog.widths`:
+   `"480-500 (create/publish-config/copy-run) · 640 (publish-diff) · 560 (template-preview)"`. The
+   publish-config dialog's current `w-[500px]` (`PublishDialog.tsx:45`) sits exactly inside the
+   named 480-500 range for "publish-config" — this was correct all along, not drift. §8 🟡 item 2 is
+   resolved as "confirmed correct," no revert needed.
+
+**Verification performed (not just claimed):**
+- `grep -n "nodeTypes\|edgeTypes" apps/web/src/components/DependencyGraph.tsx` → both appear as
+  JSX props on `<ReactFlow ... nodeTypes={nodeTypes} edgeTypes={edgeTypes} ...>` (lines 135-136),
+  not merely declared-and-unused — this is the exact mistake this fix pass exists to correct, so it
+  was checked directly rather than assumed.
+- `grep -n "CommandNode\|AgentNode\|MissingAgentNode\|AnimatedEdge\|GraphStatusChips"
+  apps/web/src/components/DependencyGraph.tsx` → all 5 imported AND referenced in `nodeTypes`/
+  `edgeTypes`/JSX (not dead imports).
+- `grep -n "nodesDraggable\|nodesConnectable" apps/web/src/components/DependencyGraph.tsx` → both
+  still present as `={false}`, confirming the read-only graph invariant held.
+- `npm run build` — passes (`tsc` across all 4 workspace packages + `next build` compiles,
+  type-checks, generates all static routes). Re-run after this fix pass, independently, not reused
+  from the earlier BUILD note.
+- `git diff --stat -- packages/core apps/daemon` (implicitly, via `git status` before commit) —
+  only `apps/web/src/components/DependencyGraph.tsx`,
+  `apps/web/src/components/graph/AnimatedEdge.tsx` (new),
+  `apps/web/src/components/graph/GraphStatusChips.tsx` (new), and
+  `apps/web/src/components/publish/ConflictResolver.tsx` are in this commit — confirmed zero
+  `packages/core`/`apps/daemon` touch, zero unrelated file creep from the earlier uncommitted
+  36-file diff.
+- Confirmed no `@radix-ui/*` added (no `package.json` change in this commit at all).
+- Confirmed `useArtifactStore.ts` not touched in this commit (not in the commit's file list).
+
+**Not independently re-verified (flag for `/review`):**
+- Actual visual/manual QA of the hover highlight/dim and edge stagger timing in a browser — this
+  was a code-level implementation + build-pass verification only, not a live chrome-devtools check.
+- Whether `GraphStatusChips`' boolean-pair prop shape (vs. the design doc's earlier
+  `claudeClean`/`codexLossyCount` sketch) is an acceptable interpretation of "matches the design
+  doc's component contracts" — flagged explicitly above as a deliberate deviation favoring PLAN
+  §6.2's later, more specific resolution over the design doc's earlier draft.
+
 ## Suggested next step
 
-PLAN is locked: all 10 Open Design Questions resolved (see §6.2), file-by-file plan fixed (§6.4),
-edge cases + filesystem-safety non-regression confirmed (§6.7-6.8), sequencing validated (§6.9).
-BUILD is mostly complete but REVIEW found one 🔴 blocker (Graph tab unbuilt) — see §8. Do not
-proceed to `/qa` or ship until the blocker is resolved and `/review` is re-run. `/cso` is not
-required for this feature (confirmed §6.8).
+Graph tab (plan step 5) is now built and wired; both 🟡 review items are fixed/confirmed. This is
+committed separately as `4659669` on `feat/symbion-dark-redesign` (not amended into `ced75a1`).
+Re-run `/review` (code-reviewer + architect) against this commit before proceeding to `/qa`. `/cso`
+remains not required for this feature (confirmed §6.8; this fix pass added no new RPC/fs-write
+surface).

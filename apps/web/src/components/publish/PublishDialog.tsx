@@ -42,32 +42,49 @@ export function PublishDialog({ project, onClose }: PublishDialogProps) {
   }
 
   return (
-    <Dialog open onClose={onClose} className="w-[520px]">
+    <Dialog open onClose={onClose} className="w-[500px]">
       <DialogHeader>
         <DialogTitle>Xuất bản</DialogTitle>
       </DialogHeader>
 
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">Phiên bản</label>
+          <label className="mb-1 block text-sm font-medium text-text-body">Phiên bản</label>
           <input
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+            className="h-9 w-full rounded-sm border border-border-input bg-bg-input px-3 text-sm text-text-body"
             value={version}
             onChange={(e) => setVersion(e.target.value)}
           />
         </div>
 
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={targets.includes("claude")} onChange={() => toggleTarget("claude")} />
-            Claude
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={targets.includes("codex")} onChange={() => toggleTarget("codex")} />
-            Codex <span className="text-xs text-amber-600">(gộp vào AGENTS.md · lossy)</span>
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => toggleTarget("claude")}
+              className={`rounded-panel border px-3 py-2.5 text-left text-sm transition-colors ${
+                targets.includes("claude")
+                  ? "border-brand-accent bg-brand-accent-soft text-text-strong"
+                  : "border-border-input text-text-dim hover:bg-white/[.04]"
+              }`}
+            >
+              <span className="font-medium">{targets.includes("claude") ? "☑" : "☐"} Claude</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleTarget("codex")}
+              className={`rounded-panel border px-3 py-2.5 text-left text-sm transition-colors ${
+                targets.includes("codex")
+                  ? "border-brand-accent bg-brand-accent-soft text-text-strong"
+                  : "border-border-input text-text-dim hover:bg-white/[.04]"
+              }`}
+            >
+              <span className="font-medium">{targets.includes("codex") ? "☑" : "☐"} Codex</span>
+              <span className="ml-1 text-xs text-warning">(gộp vào AGENTS.md · lossy)</span>
+            </button>
+          </div>
           {targets.includes("codex") && (
-            <label className="ml-6 flex items-center gap-2 text-xs">
+            <label className="ml-1 flex items-center gap-2 text-xs text-text-dim">
               <input
                 type="checkbox"
                 checked={codexAcknowledged}

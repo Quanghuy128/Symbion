@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { CanonicalArtifact } from "@symbion/core";
 import { extractAgentMentions } from "@symbion/core";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { GenerateBodyButton } from "@/components/GenerateBodyButton";
 import { ModelPicker } from "@/components/ModelPicker";
 import { GenerateBodyDisclosure } from "@/components/GenerateBodyDisclosure";
@@ -25,23 +24,18 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
     onChange({ ...artifact, [key]: value });
   }
 
-  function insertArguments() {
-    const nextBody = `${artifact.body}${artifact.body.endsWith("\n") || artifact.body === "" ? "" : "\n"}$ARGUMENTS`;
-    onChange({ ...artifact, body: nextBody, usesArguments: true });
-  }
-
   const mentions = extractAgentMentions(artifact.body);
   const agentNames = new Set(allArtifacts.filter((a) => a.kind === "agent").map((a) => a.name));
 
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1 block text-sm font-medium">command name (→ /name)</label>
+        <label className="mb-1 block text-sm font-medium text-text-body">command name (→ /name)</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="analyze" />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">description *</label>
+        <label className="mb-1 block text-sm font-medium text-text-body">description *</label>
         <Input
           value={artifact.description}
           onChange={(e) => update("description", e.target.value)}
@@ -51,11 +45,8 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium">Nội dung</label>
+          <label className="text-sm font-medium text-text-body">Nội dung</label>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={insertArguments}>
-              [Chèn $ARGUMENTS]
-            </Button>
             <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
               kind="command"
@@ -69,7 +60,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
           </div>
         </div>
         <textarea
-          className="h-40 w-full rounded-md border border-border bg-background p-2 text-sm"
+          className="h-40 w-full rounded-sm border border-border-input bg-bg-input p-2 text-sm text-text-body"
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
@@ -78,9 +69,9 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       {mentions.length > 0 && (
         <div className="text-xs">
-          <span className="text-muted-foreground">Agents tham chiếu: </span>
+          <span className="text-text-muted">Agents tham chiếu: </span>
           {mentions.map((m) => (
-            <span key={m} className={agentNames.has(m) ? "text-green-600" : "text-amber-600"}>
+            <span key={m} className={agentNames.has(m) ? "text-success" : "text-warning"}>
               • {m} {agentNames.has(m) ? "✓" : "(không tồn tại)"}{" "}
             </span>
           ))}

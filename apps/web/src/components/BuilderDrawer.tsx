@@ -24,6 +24,7 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveArtifact = useArtifactStore((s) => s.saveArtifact);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
+  const showToast = useArtifactStore((s) => s.showToast);
 
   const otherArtifacts = allArtifacts.filter((a) => a.id !== artifact.id);
   const issues = validateArtifact(artifact, { allArtifacts: [...otherArtifacts, artifact] });
@@ -34,6 +35,7 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
     setSaveError(null);
     try {
       await saveArtifact(artifact);
+      showToast("Đã lưu.", "success");
       onClose();
     } catch (err) {
       // E9: surface the failure instead of silently swallowing it — the
@@ -47,66 +49,74 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
   }
 
   return (
-    <div className="fixed inset-y-0 right-0 z-40 flex w-[860px] border-l border-border bg-background shadow-xl">
-      <div className="flex w-1/2 flex-col p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">
-            {artifact.kind === "agent" ? "Agent builder" : "Workflow builder"}
-          </h2>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            ✕
-          </Button>
-        </div>
+    <>
+      {/* Backdrop — net-new (today's drawer had none). fadeIn + click-outside-to-close. */}
+      <div className="fixed inset-0 z-40 animate-fadeIn bg-black/50" onClick={onClose} />
 
-        <div className="mb-4 flex gap-1 border-b border-border">
-          <button
-            className={`px-3 py-2 text-sm ${tab === "form" ? "border-b-2 border-primary font-medium" : "text-muted-foreground"}`}
-            onClick={() => setTab("form")}
-          >
-            Theo mô tả
-          </button>
-          <button
-            className={`px-3 py-2 text-sm ${tab === "markdown" ? "border-b-2 border-primary font-medium" : "text-muted-foreground"}`}
-            onClick={() => setTab("markdown")}
-          >
-            Theo markdown
-          </button>
-        </div>
+      <div
+        className="fixed inset-y-0 right-0 z-40 flex w-[880px] max-w-[96vw] animate-slideIn border-l border-border-hairline bg-bg-panel shadow-drawer"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex w-1/2 flex-col p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-[15px] font-bold text-text-strong">
+              {artifact.kind === "agent" ? "Agent builder" : "Workflow builder"}
+            </h2>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              ✕
+            </Button>
+          </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {tab === "form" ? (
-            artifact.kind === "agent" ? (
-              <AgentForm artifact={artifact} onChange={setArtifact} />
+          <div className="mb-4 flex gap-1 border-b border-border-hairline">
+            <button
+              className={`px-3 py-2 text-sm ${tab === "form" ? "border-b-2 border-brand-accent font-medium text-text-strong" : "text-text-dim"}`}
+              onClick={() => setTab("form")}
+            >
+              Theo mô tả
+            </button>
+            <button
+              className={`px-3 py-2 text-sm ${tab === "markdown" ? "border-b-2 border-brand-accent font-medium text-text-strong" : "text-text-dim"}`}
+              onClick={() => setTab("markdown")}
+            >
+              Theo markdown
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {tab === "form" ? (
+              artifact.kind === "agent" ? (
+                <AgentForm artifact={artifact} onChange={setArtifact} />
+              ) : (
+                <WorkflowForm artifact={artifact} allArtifacts={otherArtifacts} onChange={setArtifact} />
+              )
             ) : (
-              <WorkflowForm artifact={artifact} allArtifacts={otherArtifacts} onChange={setArtifact} />
-            )
-          ) : (
-            <MarkdownTab artifact={artifact} onChange={setArtifact} />
-          )}
-        </div>
-
-        <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-          <div className="text-xs text-destructive">
-            {blockingErrors.map((e, i) => (
-              <div key={i}>✗ {e.message}</div>
-            ))}
-            {!daemonConnected && <div>⚠ Mất kết nối daemon — không thể lưu.</div>}
-            {saveError && <div>✗ Lưu thất bại: {saveError}</div>}
+              <MarkdownTab artifact={artifact} onChange={setArtifact} />
+            )}
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              Hủy
-            </Button>
-            <Button disabled={blockingErrors.length > 0 || saving || !daemonConnected} onClick={handleSave}>
-              {saving ? "Đang lưu…" : "Lưu"}
-            </Button>
+
+          <div className="mt-4 flex items-center justify-between border-t border-border-hairline pt-4">
+            <div className="text-xs text-danger">
+              {blockingErrors.map((e, i) => (
+                <div key={i}>✗ {e.message}</div>
+              ))}
+              {!daemonConnected && <div>⚠ Mất kết nối daemon — không thể lưu.</div>}
+              {saveError && <div>✗ Lưu thất bại: {saveError}</div>}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>
+                Hủy
+              </Button>
+              <Button disabled={blockingErrors.length > 0 || saving || !daemonConnected} onClick={handleSave}>
+                {saving ? "Đang lưu…" : "Lưu"}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="w-1/2">
-        <LivePreviewPane artifact={artifact} allArtifacts={[...otherArtifacts, artifact]} />
+        <div className="w-1/2">
+          <LivePreviewPane artifact={artifact} allArtifacts={[...otherArtifacts, artifact]} />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

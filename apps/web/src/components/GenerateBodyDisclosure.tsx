@@ -43,5 +43,5 @@ export function firstUseDisclosureCopy(providerId: ProviderId | null): string {
  * by GenerateBodyButton and triggered by the *first click* of the generate button.
  */
 export function GenerateBodyDisclosure({ providerId }: GenerateBodyDisclosureProps) {
-  return <p className="text-xs text-muted-foreground">{persistentDisclosureCopy(providerId)}</p>;
+  return <p className="text-xs text-text-muted">{persistentDisclosureCopy(providerId)}</p>;
 }

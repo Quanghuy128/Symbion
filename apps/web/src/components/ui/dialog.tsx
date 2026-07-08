@@ -24,9 +24,15 @@ export function Dialog({ open, onClose, children, className }: DialogProps) {
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center animate-fadeIn bg-black/50"
+      onClick={onClose}
+    >
       <div
-        className={cn("rounded-lg border border-border bg-background p-6 shadow-lg", className)}
+        className={cn(
+          "animate-popIn rounded-dialog border border-border-hairline bg-bg-panel p-6 text-text-body shadow-dialog",
+          className
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -40,7 +46,7 @@ export function DialogHeader({ children }: { children: React.ReactNode }) {
 }
 
 export function DialogTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-lg font-semibold">{children}</h2>;
+  return <h2 className="text-[15px] font-bold text-text-strong">{children}</h2>;
 }
 
 export function DialogFooter({ children }: { children: React.ReactNode }) {

@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { CanonicalArtifact } from "@symbion/core";
 import { extractAgentMentions } from "@symbion/core";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { GenerateBodyButton } from "@/components/GenerateBodyButton";
 import { ModelPicker } from "@/components/ModelPicker";
 import { GenerateBodyDisclosure } from "@/components/GenerateBodyDisclosure";
@@ -23,11 +22,6 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
   function update<K extends keyof CanonicalArtifact>(key: K, value: CanonicalArtifact[K]) {
     onChange({ ...artifact, [key]: value });
-  }
-
-  function insertArguments() {
-    const nextBody = `${artifact.body}${artifact.body.endsWith("\n") || artifact.body === "" ? "" : "\n"}$ARGUMENTS`;
-    onChange({ ...artifact, body: nextBody, usesArguments: true });
   }
 
   const mentions = extractAgentMentions(artifact.body);
@@ -53,9 +47,6 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
         <div className="mb-1 flex items-center justify-between">
           <label className="text-sm font-medium text-text-body">Nội dung</label>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={insertArguments}>
-              [Chèn $ARGUMENTS]
-            </Button>
             <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
               kind="command"

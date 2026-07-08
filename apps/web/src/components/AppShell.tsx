@@ -28,8 +28,8 @@ export function AppShell() {
     if (token) {
       initDaemonSession(token, port);
     }
-    loadProjects().catch(() => {
-      useArtifactStore.getState().setDaemonConnected(false);
+    loadProjects().catch((err) => {
+      useArtifactStore.getState().reportConnectionError(err);
     });
 
     // Cross-route handoff from /templates (templates-marketplace PLAN §3): the

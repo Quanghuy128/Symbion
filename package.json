@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:core": "vitest run --project core",
     "test:daemon": "vitest run --project daemon",
+    "test:web": "vitest run --project web",
     "test:e2e": "npm run build && playwright test",
     "start": "npm run build -w @symbion/daemon && node apps/daemon/dist/index.js",
     "dev:daemon": "npm run dev -w @symbion/daemon",

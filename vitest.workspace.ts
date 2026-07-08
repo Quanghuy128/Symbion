@@ -15,4 +15,11 @@ export default defineWorkspace([
       root: "./apps/daemon",
     },
   },
+  {
+    extends: "./apps/web/vitest.config.ts",
+    test: {
+      name: "web",
+      root: "./apps/web",
+    },
+  },
 ]);

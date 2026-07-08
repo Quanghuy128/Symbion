@@ -1,6 +1,6 @@
 # Feature: Symbion web UI — dark left-rail redesign (port from locked prototype)
 
-## Phase: PLAN — complete
+## Phase: DONE — shipped via PR
 
 ## 5. DESIGN — output
 
@@ -568,10 +568,67 @@ correctly in `ced75a1` and were out of scope for this fix pass.
   doc's component contracts" — flagged explicitly above as a deliberate deviation favoring PLAN
   §6.2's later, more specific resolution over the design doc's earlier draft.
 
+## 11. RE-REVIEW (post fix-pass)
+
+Both `code-reviewer` and `architect` independently re-reviewed commits `4659669`+`4525325` against
+the actual diff (not the fix-pass's own self-report above) and both returned **PASS**, with no
+blockers or should-fix items remaining:
+
+- Graph tab genuinely complete: `nodeTypes`/`edgeTypes` confirmed as real JSX props on
+  `<ReactFlow>` (not declared-and-unused — the exact prior failure mode, re-checked explicitly),
+  `GraphStatusChips` confirmed mounted in the render tree, light-theme hex literals confirmed
+  replaced with dark tokens.
+- Read-only invariant held (`nodesDraggable={false}`/`nodesConnectable={false}` unchanged
+  byte-for-byte, no `onConnect`, no write-capable interaction added).
+- `GraphStatusChips`'s boolean-pair contract confirmed as correctly following PLAN §6.2's later,
+  authoritative resolution over the design doc's earlier speculative sketch — architect explicitly
+  ruled this is not drift, since the design doc itself marked that prop shape "TBD — see Open Q 6.2."
+- `AnimatedEdge.tsx`'s stagger (≤15 edges, 40ms) confirmed to rely on the single existing global
+  `prefers-reduced-motion` block — no second mechanism invented.
+- `ConflictResolver.tsx`'s Strict-Mode ref-mutation bug confirmed fixed correctly.
+- Scope discipline confirmed exact: `git diff ced75a1..HEAD --stat` touches only the 4 named code
+  files + STATE docs; zero diff on `packages/core`, `apps/daemon`, `package.json`,
+  `useArtifactStore.ts` — both reviewers verified this independently via direct diff, not by
+  trusting the commit message.
+- Bisectability confirmed restored: `ced75a1` → `4659669` → `4525325` is a real, revertible commit
+  sequence on this feature's own branch (`feat/symbion-dark-redesign`) — the process gap flagged in
+  the first review round (uncommitted 36-file blob on the wrong branch) is closed.
+- `npm run build` independently re-run by both reviewers, passes clean.
+
+**Aggregate: both PASS.** No remaining findings. Feature is materially complete against the locked
+plan — all 10 Open Design Questions resolved on paper AND now independently verified built.
+
+## 12. QA
+
+**Mechanical checks — PASS:**
+- `npm run build` (root) — passes clean: type-check + `next build` compiles and generates all 4
+  static routes (`/`, `/settings`, `/templates`, `/_not-found`) with no errors.
+- `npm run dev` (apps/web) started; all 3 routes (`/`, `/templates`, `/settings`) return HTTP 200.
+  Dev server compile logs show zero errors/warnings across all 3 routes' first compile.
+- Confirmed at the source-of-truth level (not just via reviewer claims): `apps/web/tailwind.config.ts`
+  contains the exact DESIGN.md hex values (`bg-rail: "#0e1014"`, `command: "#818cf8"`,
+  `agent: "#a78bfa"`, etc.) — the token plumbing is real, not aspirational.
+
+**Not verified — no browser available in this environment:**
+- A live visual/manual check (chrome-devtools) was attempted to screenshot the running app and
+  exercise the Graph tab's hover-highlight/dim + edge-stagger animation live — this is the one item
+  both `code-reviewer` and `architect` explicitly flagged as code-level-only, not live-verified, in
+  §11. The attempt failed: no Chrome instance is reachable from this sandbox
+  (`Could not connect to Chrome... fetch failed`). This QA pass is therefore **mechanical PASS,
+  visual UNVERIFIED** — stating this plainly rather than claiming a screenshot check that did not
+  happen. Recommend the user (or a follow-up QA session with browser access) do a manual pass on:
+  the rail's accent-spine tick pattern, the BuilderDrawer's backdrop+slideIn, the Publish diff's
+  staggered row reveal, and specifically the Graph tab's hover-highlight/dim + capped edge draw-in,
+  before treating this feature as fully signed off end-to-end.
+
+**Verdict: PASS on all mechanical/testable-without-a-browser criteria.** No FAIL — proceeding to
+ship, with the visual-verification gap called out explicitly above (not silently skipped) per
+CLAUDE.md's "never silently" principle, applied here to verification claims as much as to writes.
+
 ## Suggested next step
 
-Graph tab (plan step 5) is now built and wired; both 🟡 review items are fixed/confirmed. This is
-committed separately as `4659669` on `feat/symbion-dark-redesign` (not amended into `ced75a1`).
-Re-run `/review` (code-reviewer + architect) against this commit before proceeding to `/qa`. `/cso`
-remains not required for this feature (confirmed §6.8; this fix pass added no new RPC/fs-write
-surface).
+QA is mechanically green; visual verification is an explicitly flagged gap (see §12), not a
+blocker — none of the 3 review passes (2 review rounds + this QA pass) found any behavioral or
+architectural defect, only an environment limitation on live-browser checking. Proceed to `/ship`.
+`/cso` is not required for this feature (confirmed §6.8, reaffirmed across both review rounds — no
+RPC/fs-write/secrets surface touched anywhere in this feature).

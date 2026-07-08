@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { initDaemonSession } from "@/lib/rpc/client";
-import { AppNav } from "./AppNav";
-import { ProjectSidebar } from "./ProjectSidebar";
+import { AppRail } from "./AppRail";
 import { EmptyState } from "./EmptyState";
 import { CreateProjectDialog } from "./CreateProjectDialog";
 import { ImportDialog } from "./ImportDialog";
 import { ProjectView } from "./ProjectView";
+import { Toaster } from "./ui/toast";
 
 /** S1 — App shell: sidebar + main area. Single SPA-ish shell, all state client-side. */
 export function AppShell() {
@@ -70,26 +70,24 @@ export function AppShell() {
   }, [startHeartbeat]);
 
   return (
-    <div className="flex h-screen flex-col">
-      <AppNav />
-      <div className="flex flex-1 overflow-hidden">
-        <ProjectSidebar onCreateProject={() => setCreateOpen(true)} onSelectProject={(id) => loadProject(id)} />
+    <div className="flex h-screen bg-bg-app text-text-body">
+      <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={(id) => loadProject(id)} />
 
-        <main className="flex-1 overflow-auto">
-          {currentProject ? (
-            <ProjectView project={currentProject} />
-          ) : projects.length === 0 ? (
-            <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Chọn một dự án ở thanh bên.
-            </div>
-          )}
-        </main>
-      </div>
+      <main className="flex-1 overflow-auto">
+        {currentProject ? (
+          <ProjectView project={currentProject} />
+        ) : projects.length === 0 ? (
+          <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-text-muted">
+            Chọn một dự án ở thanh bên.
+          </div>
+        )}
+      </main>
 
       <CreateProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
+      <Toaster />
     </div>
   );
 }

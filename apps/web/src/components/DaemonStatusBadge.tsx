@@ -2,20 +2,25 @@
 
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 
-/** S1 shell footer status: red blocking banner on disconnect (E9). */
+/**
+ * AppRail footer status pill. Q6 resolution (docs/loops/symbion-dark-redesign
+ * -STATE.md §6.2): promote this single indicator to be visually louder on
+ * disconnect (full-width warning-token background) rather than adding a
+ * second top-of-main banner — there is exactly one disconnect indicator.
+ */
 export function DaemonStatusBadge() {
   const connected = useArtifactStore((s) => s.daemonConnected);
 
   if (connected) {
     return (
-      <div className="px-3 py-2 text-xs text-muted-foreground">
-        daemon ● connected
+      <div className="px-3 py-2.5 font-mono text-[11.5px] text-text-dim">
+        <span className="text-success">●</span> daemon · connected
       </div>
     );
   }
 
   return (
-    <div className="bg-destructive px-3 py-2 text-xs font-medium text-white">
+    <div className="w-full bg-danger/90 px-3 py-2.5 text-[11.5px] font-medium text-white">
       ⚠ daemon mất kết nối — Lưu/Xuất bản đang tạm khoá. Đang thử kết nối lại…
     </div>
   );

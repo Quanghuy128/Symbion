@@ -1,23 +1,103 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Symbion dark left-rail redesign — Tailwind tokens ported from DESIGN.md
+ * (docs/loops/symbion-dark-redesign-design.md §7) + the 10 PLAN resolutions
+ * in docs/loops/symbion-dark-redesign-STATE.md §6.2. Dark-only (Q7): no
+ * `.dark`-scoped variants are used anywhere in the app, `darkMode: "class"`
+ * is kept only because removing it is out of scope for this presentation-only
+ * pass (no code path ever applies `.dark`).
+ */
 const config: Config = {
   darkMode: "class",
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        muted: "hsl(var(--muted))",
-        "muted-foreground": "hsl(var(--muted-foreground))",
-        primary: "hsl(var(--primary))",
-        "primary-foreground": "hsl(var(--primary-foreground))",
-        destructive: "hsl(var(--destructive))",
-        accent: "hsl(var(--accent))",
+        // Legacy semantic tokens (still consumed by existing className call
+        // sites that haven't been migrated to the new named tokens below —
+        // e.g. `border-border`, `bg-background`, `text-muted-foreground`).
+        // Now backed by the SAME dark-token values as bg-app/border-hairline/
+        // etc so old + new classnames render identically during migration.
+        border: "rgba(var(--border), 0.06)",
+        background: "rgb(var(--background))",
+        foreground: "rgb(var(--foreground))",
+        muted: "rgb(var(--muted))",
+        "muted-foreground": "rgb(var(--muted-foreground))",
+        primary: "rgb(var(--primary))",
+        "primary-foreground": "rgb(var(--primary-foreground))",
+        destructive: "rgb(var(--destructive))",
+        accent: "rgb(var(--accent))",
+
+        // DESIGN.md §7 token set — new named colors for the redesign.
+        "bg-app": "#0a0b0e",
+        "bg-rail": "#0e1014",
+        "bg-panel": "#13151a",
+        "bg-surface": "#15171d",
+        "bg-menu": "#1b1e25",
+        "bg-input": "#0d0f13",
+        "bg-code": "#08090c",
+        "border-hairline": "rgba(255,255,255,.06)",
+        "border-subtle": "rgba(255,255,255,.05)",
+        "border-input": "rgba(255,255,255,.10)",
+        "border-menu": "rgba(255,255,255,.09)",
+        "text-strong": "#f3f4f6",
+        "text-body": "#e5e7eb",
+        "text-secondary": "#c5cad3",
+        "text-muted": "#9aa0ab",
+        "text-dim": "#8a909b",
+        "text-faint": "#565c68",
+        "brand-accent": "#6366f1",
+        "brand-accent-soft": "rgba(99,102,241,.16)",
+        "accent-text": "#a5b4fc",
+        "accent-text-hi": "#c7d2fe",
+        command: "#818cf8",
+        "command-hi": "#a5b4fc",
+        agent: "#a78bfa",
+        "agent-hi": "#c4b5fd",
+        skill: "#22d3ee",
+        success: "#4ade80",
+        warning: "#fbbf24",
+        danger: "#f87171",
+        "danger-hi": "#fca5a5",
+        "overwrite-btn": "#dc2626",
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",
+        sm: "8px",
+        "nav-item": "9px",
+        panel: "12px",
+        dialog: "16px",
+        pill: "20px",
+      },
+      boxShadow: {
+        dropdown: "0 14px 40px rgba(0,0,0,.5)",
+        dialog: "0 30px 80px rgba(0,0,0,.6)",
+        drawer: "-20px 0 60px rgba(0,0,0,.5)",
+        toast: "0 14px 40px rgba(0,0,0,.5)",
+      },
+      keyframes: {
+        fadeIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        slideIn: {
+          from: { transform: "translateX(24px)", opacity: "0" },
+          to: { transform: "translateX(0)", opacity: "1" },
+        },
+        popIn: {
+          from: { transform: "scale(.97) translateY(6px)", opacity: "0" },
+          to: { transform: "scale(1) translateY(0)", opacity: "1" },
+        },
+      },
+      animation: {
+        fadeIn: "fadeIn .16s ease both",
+        slideIn: "slideIn .2s cubic-bezier(.2,.8,.2,1) both",
+        popIn: "popIn .16s cubic-bezier(.2,.8,.2,1) both",
       },
     },
   },

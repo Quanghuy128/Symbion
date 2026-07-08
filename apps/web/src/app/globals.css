@@ -2,32 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Symbion dark left-rail redesign — token set ported verbatim from DESIGN.md
+ * (docs/loops/symbion-dark-redesign-design.md §7). Dark-only: darkMode:"class"
+ * is declared in tailwind.config.ts but never applied anywhere in the app
+ * (Q7 resolution, docs/loops/symbion-dark-redesign-STATE.md §6.2) — the light
+ * `:root` variable pair that used to live here has been deleted entirely
+ * rather than kept as dead code.
+ */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --border: 214 32% 91%;
-  --primary: 222 47% 11%;
-  --primary-foreground: 210 40% 98%;
-  --destructive: 0 84% 60%;
-  --accent: 210 40% 96%;
-  --radius: 0.5rem;
-}
-
-.dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
-  --border: 217 33% 22%;
-  --primary: 210 40% 98%;
-  --primary-foreground: 222 47% 11%;
-  --destructive: 0 63% 31%;
-  --accent: 217 33% 17%;
+  --background: 10 11 14; /* bg-app #0a0b0e, RGB triplet for hsl()-free usage */
+  --foreground: 243 244 246; /* text-strong #f3f4f6 */
+  --muted: 27 30 37; /* bg-menu #1b1e25 */
+  --muted-foreground: 154 160 171; /* text-muted #9aa0ab */
+  --border: 255 255 255; /* combined with alpha below for hairline */
+  --primary: 99 102 241; /* accent #6366f1 */
+  --primary-foreground: 255 255 255;
+  --destructive: 248 113 113; /* danger #f87171 */
+  --accent: 27 30 37; /* bg-menu, generic muted-bg surface (unrelated to brand accent below) */
+  --radius: 8px;
 }
 
 body {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+code,
+pre,
+kbd,
+.font-mono {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom scrollbar (per DESIGN.md's "scrollbar" token family) — thin, dark, subtle. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+
+/*
+ * Reduced-motion baseline (Q10) — collapses every named motion token
+ * (fadeIn/slideIn/popIn) plus the graph edge draw-in / diff-row stagger to
+ * an instant, opacity-only transition. Applied globally rather than
+ * per-component so no individual animation class needs its own guard.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

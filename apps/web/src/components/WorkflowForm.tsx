@@ -36,12 +36,12 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1 block text-sm font-medium">command name (→ /name)</label>
+        <label className="mb-1 block text-sm font-medium text-text-body">command name (→ /name)</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="analyze" />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">description *</label>
+        <label className="mb-1 block text-sm font-medium text-text-body">description *</label>
         <Input
           value={artifact.description}
           onChange={(e) => update("description", e.target.value)}
@@ -51,7 +51,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium">Nội dung</label>
+          <label className="text-sm font-medium text-text-body">Nội dung</label>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={insertArguments}>
               [Chèn $ARGUMENTS]
@@ -69,7 +69,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
           </div>
         </div>
         <textarea
-          className="h-40 w-full rounded-md border border-border bg-background p-2 text-sm"
+          className="h-40 w-full rounded-sm border border-border-input bg-bg-input p-2 text-sm text-text-body"
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
@@ -78,9 +78,9 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       {mentions.length > 0 && (
         <div className="text-xs">
-          <span className="text-muted-foreground">Agents tham chiếu: </span>
+          <span className="text-text-muted">Agents tham chiếu: </span>
           {mentions.map((m) => (
-            <span key={m} className={agentNames.has(m) ? "text-green-600" : "text-amber-600"}>
+            <span key={m} className={agentNames.has(m) ? "text-success" : "text-warning"}>
               • {m} {agentNames.has(m) ? "✓" : "(không tồn tại)"}{" "}
             </span>
           ))}

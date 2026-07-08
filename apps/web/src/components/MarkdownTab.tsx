@@ -51,11 +51,11 @@ export function MarkdownTab({ artifact, onChange }: MarkdownTabProps) {
 
   return (
     <div className="space-y-2">
-      <CodeMirror value={raw} height="360px" extensions={[markdown()]} onChange={handleChange} />
+      <CodeMirror value={raw} height="360px" theme="dark" extensions={[markdown()]} onChange={handleChange} />
       {error ? (
-        <p className="text-xs text-destructive">✗ {error} (Save tạm khoá, dùng bản hợp lệ gần nhất)</p>
+        <p className="text-xs text-danger">✗ {error} (Save tạm khoá, dùng bản hợp lệ gần nhất)</p>
       ) : (
-        <p className="text-xs text-green-600">✓ markdown hợp lệ, đã đồng bộ vào IR</p>
+        <p className="text-xs text-success">✓ markdown hợp lệ, đã đồng bộ vào IR</p>
       )}
     </div>
   );

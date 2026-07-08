@@ -34,10 +34,10 @@ export function WorkflowDetectionPanel({
   // Codex-only, informational case (Q5): no import action available.
   if (!importAvailable) {
     return (
-      <div className="space-y-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
-        <p className="font-medium">⚠ Đã phát hiện workflow có sẵn</p>
-        <p className="text-xs text-muted-foreground">Tìm thấy: {foundParts.join(", ")}</p>
-        <p className="text-xs text-muted-foreground">
+      <div className="space-y-2 rounded-panel border border-border-hairline bg-white/[.03] p-3 text-sm">
+        <p className="font-medium text-text-body">⚠ Đã phát hiện workflow có sẵn</p>
+        <p className="text-xs text-text-muted">Tìm thấy: {foundParts.join(", ")}</p>
+        <p className="text-xs text-text-muted">
           Symbion chưa hỗ trợ nhập (import) từ AGENTS.md ở phiên bản này. File này sẽ không bị ảnh hưởng.
         </p>
         <div className="flex justify-end">
@@ -50,13 +50,13 @@ export function WorkflowDetectionPanel({
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
-      <p className="font-medium">⚠ Đã phát hiện workflow có sẵn</p>
-      <p className="text-xs text-muted-foreground">
+    <div className="space-y-2 rounded-panel border border-border-hairline bg-white/[.03] p-3 text-sm">
+      <p className="font-medium text-text-body">⚠ Đã phát hiện workflow có sẵn</p>
+      <p className="text-xs text-text-muted">
         Tìm thấy: {foundParts.join(", ")}
         {hasAgentsMd && hasClaudeDir ? " (chỉ hiển thị, chưa hỗ trợ nhập)" : ""}
       </p>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-text-muted">
         Bạn có muốn nhập (import) các agent/command đã có vào dự án này không? File gốc trong repo sẽ KHÔNG bị chỉnh sửa.
       </p>
       <div className="flex justify-end gap-2">

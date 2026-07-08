@@ -96,18 +96,18 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   }
 
   if (!providerId) {
-    return <span className="text-xs text-muted-foreground">Chưa chọn nhà cung cấp AI</span>;
+    return <span className="text-xs text-text-muted">Chưa chọn nhà cung cấp AI</span>;
   }
 
   // Branch 1: unreachable / thrown RpcError — unchanged.
   if (loadError) {
-    return <span className="text-xs text-destructive">{loadError}</span>;
+    return <span className="text-xs text-danger">{loadError}</span>;
   }
 
   // Branch 2: reachable, but /api/tags itself failed.
   if (outcome === "fetch-failed") {
     return (
-      <span className="text-xs text-destructive">
+      <span className="text-xs text-danger">
         {errorDetail || "Không thể lấy danh sách mô hình từ Ollama."}
       </span>
     );
@@ -117,15 +117,17 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   if (outcome === "empty") {
     return (
       <div className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">
+        <span className="text-text-muted">
           Chưa có model nào được tải trên Ollama. Chạy lệnh sau rồi quay lại đây:
         </span>
         <div className="flex items-center gap-2">
-          <code className="select-all rounded border border-border bg-muted px-2 py-1">{SUGGESTED_PULL_COMMAND}</code>
+          <code className="select-all rounded-sm border border-border-input bg-bg-code px-2 py-1 text-text-body">
+            {SUGGESTED_PULL_COMMAND}
+          </code>
           <button
             type="button"
             aria-label="Copy lệnh ollama pull"
-            className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 hover:bg-muted"
+            className="inline-flex items-center gap-1 rounded-sm border border-border-input px-2 py-1 text-text-dim hover:bg-white/[.06]"
             onClick={handleCopyPullCommand}
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -140,7 +142,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   return (
     <select
       aria-label="Chọn mô hình AI"
-      className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+      className="h-8 rounded-sm border border-border-input bg-bg-input px-2 text-xs text-text-body"
       value={value}
       disabled={disabled || models.length === 0}
       onChange={(e) => onChange(e.target.value)}

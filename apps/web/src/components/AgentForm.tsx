@@ -48,12 +48,12 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1 block text-sm font-medium">name *</label>
+        <label className="mb-1 block text-sm font-medium text-text-body">name *</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="code-reviewer" />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">description *</label>
+        <label className="mb-1 block text-sm font-medium text-text-body">description *</label>
         <Input
           value={artifact.description}
           onChange={(e) => update("description", e.target.value)}
@@ -62,17 +62,17 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">tools</label>
+        <label className="mb-1 block text-sm font-medium text-text-body">tools</label>
         <div className="flex flex-wrap gap-2">
           {KNOWN_TOOLS.map((tool) => (
             <button
               key={tool}
               type="button"
               onClick={() => toggleTool(tool)}
-              className={`rounded border px-2 py-1 text-xs ${
+              className={`rounded-pill border px-2 py-1 text-xs ${
                 (artifact.tools ?? []).includes(tool)
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border"
+                  ? "border-brand-accent bg-brand-accent-soft text-accent-text-hi"
+                  : "border-border-input text-text-dim"
               }`}
             >
               {tool}
@@ -83,7 +83,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium">Nội dung</label>
+          <label className="text-sm font-medium text-text-body">Nội dung</label>
           <div className="flex items-center gap-2">
             <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
@@ -98,7 +98,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
           </div>
         </div>
         <textarea
-          className="h-40 w-full rounded-md border border-border bg-background p-2 text-sm"
+          className="h-40 w-full rounded-sm border border-border-input bg-bg-input p-2 text-sm text-text-body"
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
@@ -108,7 +108,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
       <div>
         <button
           type="button"
-          className="text-sm font-medium text-muted-foreground"
+          className="text-sm font-medium text-text-dim"
           onClick={() => setAdvancedOpen((v) => !v)}
         >
           {advancedOpen ? "▾" : "▸"} Nâng cao

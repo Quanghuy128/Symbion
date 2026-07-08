@@ -60,7 +60,7 @@ export function GenerateDescriptionButton({ currentDescription, onGenerate, onAp
         <DialogHeader>
           <DialogTitle>Thay thế mô tả?</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-text-muted">
           Văn bản mô tả hiện tại sẽ được thay thế — tiếp tục?
         </p>
         <DialogFooter>

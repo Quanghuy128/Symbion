@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useState } from "react";
 import type { DiffFile } from "@symbion/core";
 import { Button } from "@/components/ui/button";
 
@@ -12,16 +12,19 @@ export interface ConflictResolverProps {
 
 /**
  * Per-conflict-file resolver row: Giữ bản trên đĩa (default, safest) / Ghi đè.
- * `hasRevealedRef` guards the popIn expand animation to first-mount only —
+ * `shouldAnimate` guards the popIn expand animation to first-mount only —
  * per PLAN §6.4/§6.9 step 4b, re-toggling Keep/Overwrite must not replay it.
- * A ref (not state) is deliberate: reading/flipping it must not itself
- * trigger a re-render, and the flag only needs to be correct for the CURRENT
- * render's className decision, computed once per mount via lazy init.
+ * Implemented as state (lazily initialized to `true`, flipped to `false` in
+ * an effect after mount) rather than mutating a ref during the render body —
+ * mutating a ref during render flips it on React 18 Strict Mode's dev-only
+ * double-invocation before the real mount runs, silently skipping the
+ * animation in dev (code-reviewer finding, /review pass).
  */
 export function ConflictResolver({ file, resolution, onResolve }: ConflictResolverProps) {
-  const hasRevealedRef = useRef(false);
-  const shouldAnimate = !hasRevealedRef.current;
-  hasRevealedRef.current = true;
+  const [shouldAnimate, setShouldAnimate] = useState(() => true);
+  useEffect(() => {
+    setShouldAnimate(false);
+  }, []);
 
   return (
     <div

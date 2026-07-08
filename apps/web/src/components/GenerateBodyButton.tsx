@@ -198,7 +198,7 @@ export function GenerateBodyButton({
       <ProviderStatusPill providerId={providerId} />
 
       {!providerId && daemonConnected && (
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-text-muted">
           Chưa chọn nhà cung cấp AI —{" "}
           <Link href="/settings" className="underline">
             vào Cài đặt để chọn
@@ -208,7 +208,7 @@ export function GenerateBodyButton({
       )}
 
       {errorCode && (
-        <div className="mt-1 flex items-center gap-2 text-xs text-destructive">
+        <div className="mt-1 flex items-center gap-2 text-xs text-danger">
           <span>{errorMessage || ERROR_MESSAGES[errorCode] || DEFAULT_ERROR_MESSAGE}</span>
           {errorCode === "llm-timeout" && (
             <button type="button" className="underline" onClick={handleRetry} disabled={busy || cooldown}>
@@ -230,7 +230,7 @@ export function GenerateBodyButton({
         <DialogHeader>
           <DialogTitle>Thay thế nội dung?</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-text-muted">
           Nội dung hiện tại sẽ được thay thế bằng nội dung do AI tạo ra — tiếp tục?
         </p>
         <DialogFooter>
@@ -245,7 +245,7 @@ export function GenerateBodyButton({
         <DialogHeader>
           <DialogTitle>Sử dụng AI để tạo nội dung</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">{firstUseDisclosureCopy(providerId)}</p>
+        <p className="text-sm text-text-muted">{firstUseDisclosureCopy(providerId)}</p>
         <DialogFooter>
           <Button onClick={handleDisclosureAck}>Đã hiểu</Button>
         </DialogFooter>

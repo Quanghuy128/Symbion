@@ -42,6 +42,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   const createProject = useArtifactStore((s) => s.createProject);
   const importArtifacts = useArtifactStore((s) => s.importArtifacts);
   const projects = useArtifactStore((s) => s.projects);
+  const showToast = useArtifactStore((s) => s.showToast);
 
   const [step, setStep] = useState<Step>("form");
   const [declined, setDeclined] = useState(false);
@@ -167,6 +168,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
       await createProject(name.trim(), path.trim());
       resetAll();
       onClose();
+      showToast("Đã tạo dự án.", "success");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -246,11 +248,11 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-sm font-medium">Tên dự án</label>
+          <label className="mb-1 block text-sm font-medium text-text-body">Tên dự án</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My API Service" />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">Đường dẫn repo</label>
+          <label className="mb-1 block text-sm font-medium text-text-body">Đường dẫn repo</label>
           <div className="flex gap-2">
             <Input
               value={path}
@@ -263,9 +265,9 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
             </Button>
           </div>
           {validation && step === "form" && (
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
               {validation.reason === "unc-unsupported" ? (
-                <span className="text-destructive">
+                <span className="text-danger">
                   ⚠ UNC paths (\\server\share\...) chưa được hỗ trợ. Hãy dùng đường dẫn ổ đĩa, ví dụ
                   C:\Users\me\code\my-service
                 </span>
@@ -303,8 +305,8 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
         )}
 
         {step === "detected" && scanError && (
-          <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-            <p className="text-destructive">⚠ Quét .claude/ thất bại: {scanError}</p>
+          <div className="space-y-2 rounded-panel border border-danger/40 bg-danger/10 p-3 text-sm">
+            <p className="text-danger">⚠ Quét .claude/ thất bại: {scanError}</p>
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="outline" onClick={handleDecline}>
                 Tạo dự án trống
@@ -320,7 +322,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
         {step === "review" && scanned && <ImportReviewStep scanned={scanned} selected={selected} onToggle={toggle} />}
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
       </div>
 
       <DialogFooter>

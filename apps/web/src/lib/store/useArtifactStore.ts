@@ -23,6 +23,15 @@ const HEARTBEAT_INTERVAL_MS = 4000;
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+/** Symbion dark left-rail redesign (Q4): minimal single-slot toast state —
+ *  not a queue/list, matches README's "one confirm-toast per action" usage
+ *  pattern (docs/loops/symbion-dark-redesign-STATE.md §6.2 Q4). */
+export interface ToastState {
+  id: string;
+  message: string;
+  variant?: "success" | "error";
+}
+
 interface ArtifactStoreState {
   projects: Array<{ id: string; name: string; path: string }>;
   currentProject: ProjectStore | null;
@@ -45,6 +54,10 @@ interface ArtifactStoreState {
    *  in-memory token, or a tab left open across a daemon restart
    *  (boot-terminal-ux FR-A.2/A.2b). */
   sessionValid: boolean;
+  /** Q4: the only store-shape addition in this feature. Single-slot — a new
+   *  showToast() call replaces whatever toast is currently showing rather
+   *  than queuing. null = no toast visible. */
+  toast: ToastState | null;
 
   loadProjects: () => Promise<void>;
   createProject: (name: string, path: string) => Promise<ProjectStore>;
@@ -87,6 +100,10 @@ interface ArtifactStoreState {
    *  non-401 error) fails closed: both flags become false — an unknown
    *  failure mode must never be silently upgraded to "connected." */
   reportConnectionError: (err: unknown) => void;
+  /** Q4: shows a single toast, replacing any currently-visible one. */
+  showToast: (message: string, variant?: "success" | "error") => void;
+  /** Q4: dismisses the current toast (auto-dismiss timer or manual close). */
+  dismissToast: () => void;
   /** Starts the periodic `ping` heartbeat that classifies daemonReachable/
    *  sessionValid (and the derived daemonConnected) on every tick (E9,
    *  extended per FR-A.2b). Idempotent — calling twice does not start a
@@ -102,6 +119,7 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
   daemonConnected: true,
   daemonReachable: true,
   sessionValid: true,
+  toast: null,
 
   async loadProjects() {
     const result = await callRpc<{}, ListProjectsResult>("listProjects", {});
@@ -189,6 +207,14 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
     // Fail closed: network throw, timeout, or any other unrecognized error
     // shape is treated as "not usable" — never silently upgraded to connected.
     set({ daemonReachable: false, sessionValid: false, daemonConnected: false });
+  },
+
+  showToast(message, variant) {
+    set({ toast: { id: crypto.randomUUID(), message, variant } });
+  },
+
+  dismissToast() {
+    set({ toast: null });
   },
 
   startHeartbeat() {

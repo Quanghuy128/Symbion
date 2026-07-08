@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { CanonicalArtifact, ProjectStore } from "@symbion/core";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { RowMenu, ROW_MENU_DIVIDER } from "@/components/ui/row-menu";
 import { BuilderDrawer } from "./BuilderDrawer";
 import { DependencyGraph } from "./DependencyGraph";
 import { PublishDialog } from "./publish/PublishDialog";
@@ -32,17 +34,60 @@ export function ProjectView({ project }: ProjectViewProps) {
   const [publishing, setPublishing] = useState(false);
   const [runCommandFor, setRunCommandFor] = useState<CanonicalArtifact | null>(null);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
+  const deleteArtifact = useArtifactStore((s) => s.deleteArtifact);
+  const showToast = useArtifactStore((s) => s.showToast);
+
+  // PLAN §6.4/§6.6: kept component-local, deliberately NOT in useArtifactStore —
+  // ephemeral per-view UI state with no cross-component/cross-route consumer.
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  // Second-click-to-confirm delete step (PLAN §6.4/§6.7) — id of the row
+  // currently showing "Xác nhận xoá?" instead of its normal content.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteErrorId, setDeleteErrorId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const agents = project.artifacts.filter((a) => a.kind === "agent");
   const commands = project.artifacts.filter((a) => a.kind === "command");
   const isEmpty = project.artifacts.length === 0;
 
+  function requestDelete(id: string) {
+    setConfirmDeleteId(id);
+    setDeleteErrorId(null);
+    setDeleteError(null);
+  }
+
+  function cancelDelete() {
+    setConfirmDeleteId(null);
+  }
+
+  async function confirmDelete(artifact: CanonicalArtifact) {
+    setDeletingId(artifact.id);
+    setDeleteErrorId(null);
+    setDeleteError(null);
+    try {
+      await deleteArtifact(artifact.id);
+      setConfirmDeleteId(null);
+      showToast("Đã xoá.", "success");
+    } catch (err) {
+      // Never fail silently (CLAUDE.md "never write silently", extended to
+      // deletes per PLAN §6.7) — surface inline near the row, same
+      // saveError-style local pattern as BuilderDrawer.tsx. Row is NOT
+      // removed from the list on failure.
+      const message = err instanceof Error ? err.message : "Xoá thất bại — không rõ lý do.";
+      setDeleteErrorId(artifact.id);
+      setDeleteError(message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2">
+      <div className="flex items-center justify-between border-b border-border-hairline px-8 py-5">
         <div>
-          <h1 className="font-semibold">{project.name}</h1>
-          <p className="text-xs text-muted-foreground">{project.path}</p>
+          <h1 className="text-[23px] font-bold tracking-[-.02em] text-text-strong">{project.name}</h1>
+          <p className="font-mono text-[12.5px] text-text-faint">{project.path}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setTab(tab === "list" ? "graph" : "list")}>
@@ -54,7 +99,7 @@ export function ProjectView({ project }: ProjectViewProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="mx-auto w-full max-w-[1000px] flex-1 overflow-y-auto px-8 py-8">
         {isEmpty ? (
           <div className="flex h-full items-center justify-center gap-2">
             <Button onClick={() => setEditing(newArtifact("agent"))}>+ Thêm agent</Button>
@@ -63,51 +108,138 @@ export function ProjectView({ project }: ProjectViewProps) {
         ) : tab === "graph" ? (
           <DependencyGraph artifacts={project.artifacts} />
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             <section>
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">WORKFLOWS / COMMANDS ({commands.length})</h2>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-[10.5px] font-bold uppercase tracking-[.09em] text-text-faint">
+                  Workflows / Commands ({commands.length})
+                </h2>
                 <Button size="sm" variant="outline" onClick={() => setEditing(newArtifact("command"))}>
                   + Thêm workflow
                 </Button>
               </div>
-              <ul className="space-y-1">
+              <ul className="space-y-2">
                 {commands.map((c) => (
                   <li
                     key={c.id}
-                    className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm"
+                    className="rounded-panel border border-border-hairline bg-bg-panel px-4 py-3 text-sm"
                   >
-                    <button className="flex-1 text-left" onClick={() => setEditing(c)}>
-                      <span>{c.meta.status === "draft" ? "○" : "●"} /{c.name}</span>{" "}
-                      <span className="text-muted-foreground">{c.description}</span>
-                      {c.meta.status === "draft" && <span className="ml-2 text-xs text-amber-600">·draft</span>}
-                    </button>
-                    <button
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => setRunCommandFor(c)}
-                    >
-                      ⋯
-                    </button>
+                    {confirmDeleteId === c.id ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-body">Xác nhận xoá /{c.name}?</span>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={cancelDelete}>
+                            Hủy
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={deletingId === c.id}
+                            onClick={() => confirmDelete(c)}
+                          >
+                            {deletingId === c.id ? "Đang xoá…" : "Xoá"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                        <button className="min-w-0 flex-1 text-left" onClick={() => setEditing(c)}>
+                          <span className={c.meta.status === "draft" ? "text-command" : "text-command-hi"}>
+                            {c.meta.status === "draft" ? "○" : "●"} /{c.name}
+                          </span>{" "}
+                          <span className="text-text-muted">{c.description}</span>
+                          {c.meta.status === "draft" && (
+                            <Badge variant="draft" className="ml-2">
+                              draft
+                            </Badge>
+                          )}
+                        </button>
+                        <RowMenu
+                          open={openMenuId === c.id}
+                          onOpenChange={(open) => setOpenMenuId(open ? c.id : null)}
+                          items={[
+                            { label: "Edit", onSelect: () => setEditing(c) },
+                            { label: "Copy run command", onSelect: () => setRunCommandFor(c) },
+                            ROW_MENU_DIVIDER,
+                            {
+                              label: "Delete",
+                              danger: true,
+                              disabled: !daemonConnected,
+                              onSelect: () => requestDelete(c.id),
+                            },
+                          ]}
+                        />
+                      </div>
+                    )}
+                    {deleteErrorId === c.id && deleteError && (
+                      <p className="mt-2 text-xs text-danger">✗ Xoá thất bại: {deleteError}</p>
+                    )}
                   </li>
                 ))}
               </ul>
             </section>
 
             <section>
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">AGENTS ({agents.length})</h2>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-[10.5px] font-bold uppercase tracking-[.09em] text-text-faint">
+                  Agents ({agents.length})
+                </h2>
                 <Button size="sm" variant="outline" onClick={() => setEditing(newArtifact("agent"))}>
                   + Thêm agent
                 </Button>
               </div>
-              <ul className="space-y-1">
+              <ul className="space-y-2">
                 {agents.map((a) => (
-                  <li key={a.id} className="rounded border border-border px-3 py-2 text-sm">
-                    <button className="w-full text-left" onClick={() => setEditing(a)}>
-                      <span>{a.meta.status === "draft" ? "○" : "●"} {a.name}</span>{" "}
-                      <span className="text-muted-foreground">{(a.tools ?? []).join(",")}</span>
-                      {a.meta.status === "draft" && <span className="ml-2 text-xs text-amber-600">·draft</span>}
-                    </button>
+                  <li key={a.id} className="rounded-panel border border-border-hairline bg-bg-panel px-4 py-3 text-sm">
+                    {confirmDeleteId === a.id ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-body">Xác nhận xoá {a.name}?</span>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={cancelDelete}>
+                            Hủy
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={deletingId === a.id}
+                            onClick={() => confirmDelete(a)}
+                          >
+                            {deletingId === a.id ? "Đang xoá…" : "Xoá"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                        <button className="min-w-0 flex-1 text-left" onClick={() => setEditing(a)}>
+                          <span className={a.meta.status === "draft" ? "text-agent" : "text-agent-hi"}>
+                            {a.meta.status === "draft" ? "○" : "●"} {a.name}
+                          </span>{" "}
+                          <span className="text-text-muted">{(a.tools ?? []).join(", ")}</span>
+                          {a.meta.status === "draft" && (
+                            <Badge variant="draft" className="ml-2">
+                              draft
+                            </Badge>
+                          )}
+                        </button>
+                        <RowMenu
+                          open={openMenuId === a.id}
+                          onOpenChange={(open) => setOpenMenuId(open ? a.id : null)}
+                          items={[
+                            { label: "Edit", onSelect: () => setEditing(a) },
+                            ROW_MENU_DIVIDER,
+                            {
+                              label: "Delete",
+                              danger: true,
+                              disabled: !daemonConnected,
+                              onSelect: () => requestDelete(a.id),
+                            },
+                          ]}
+                        />
+                      </div>
+                    )}
+                    {deleteErrorId === a.id && deleteError && (
+                      <p className="mt-2 text-xs text-danger">✗ Xoá thất bại: {deleteError}</p>
+                    )}
                   </li>
                 ))}
               </ul>

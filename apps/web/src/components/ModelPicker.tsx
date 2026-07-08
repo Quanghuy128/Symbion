@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check } from "lucide-react";
 import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
 import type { ListModelsOutcome, ListModelsParams, ListModelsResult, LlmModelOption, ProviderId } from "@/lib/rpc/types";
+import { Tooltip } from "@/components/ui/tooltip";
 
 export interface ModelPickerProps {
   providerId: ProviderId | null;
@@ -38,8 +38,11 @@ const SUGGESTED_PULL_COMMAND = `ollama pull ${SUGGESTED_PULL_TAG}`;
  * 2. `outcome === "fetch-failed"` — Ollama reachable but `/api/tags` itself failed
  *    (malformed JSON / non-2xx) — a distinct destructive-text render, no disabled
  *    `<select>` underneath.
- * 3. `outcome === "empty"` — Ollama reachable, zero models pulled — actionable
- *    empty-state with an `ollama pull <tag>` suggestion + Copy button.
+ * 3. `outcome === "empty"` — Ollama reachable, zero models pulled. Previously an
+ *    always-visible inline banner (empty-state block + `ollama pull <tag>` snippet +
+ *    Copy button); per symbion-dark-redesign fix 3 this is now a disabled `<select>`
+ *    with a `border-danger` outline and a hover/focus `Tooltip` carrying the exact
+ *    same message + pull command (no information lost, just moved on-demand).
  * 4. `outcome === "ok"` — populated `<select>`, unchanged structurally except an
  *    optional-tier render guard (no "(undefined)" / crash for tierless entries).
  */
@@ -48,7 +51,6 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   const [outcome, setOutcome] = useState<ListModelsOutcome | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!providerId) {
@@ -59,7 +61,6 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
       return;
     }
     let cancelled = false;
-    setCopied(false);
     callRpc<ListModelsParams, ListModelsResult>("listModels", { providerId })
       .then((result) => {
         if (cancelled) return;
@@ -86,53 +87,54 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerId]);
 
-  async function handleCopyPullCommand() {
-    try {
-      await navigator.clipboard.writeText(SUGGESTED_PULL_COMMAND);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  }
-
   if (!providerId) {
-    return <span className="text-xs text-muted-foreground">Chưa chọn nhà cung cấp AI</span>;
+    return <span className="text-xs text-text-muted">Chưa chọn nhà cung cấp AI</span>;
   }
 
   // Branch 1: unreachable / thrown RpcError — unchanged.
   if (loadError) {
-    return <span className="text-xs text-destructive">{loadError}</span>;
+    return <span className="text-xs text-danger">{loadError}</span>;
   }
 
   // Branch 2: reachable, but /api/tags itself failed.
   if (outcome === "fetch-failed") {
     return (
-      <span className="text-xs text-destructive">
+      <span className="text-xs text-danger">
         {errorDetail || "Không thể lấy danh sách mô hình từ Ollama."}
       </span>
     );
   }
 
-  // Branch 3: reachable, zero models pulled — actionable empty-state.
+  // Branch 3: reachable, zero models pulled. Previously an always-visible inline
+  // banner; now a red-outlined disabled <select> with the same message + pull
+  // command surfaced on-demand via a hover/focus Tooltip (no info lost).
   if (outcome === "empty") {
     return (
-      <div className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">
-          Chưa có model nào được tải trên Ollama. Chạy lệnh sau rồi quay lại đây:
-        </span>
-        <div className="flex items-center gap-2">
-          <code className="select-all rounded border border-border bg-muted px-2 py-1">{SUGGESTED_PULL_COMMAND}</code>
-          <button
-            type="button"
-            aria-label="Copy lệnh ollama pull"
-            className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 hover:bg-muted"
-            onClick={handleCopyPullCommand}
+      <Tooltip
+        content={
+          <span className="flex flex-col gap-1">
+            <span>Chưa có model nào được tải trên Ollama. Chạy lệnh sau rồi quay lại đây:</span>
+            <code className="select-all rounded-sm border border-border-input bg-bg-code px-2 py-1 text-text-body">
+              {SUGGESTED_PULL_COMMAND}
+            </code>
+          </span>
+        }
+      >
+        {/* tabIndex on this span (rather than the disabled <select>, which cannot
+            receive focus) keeps the tooltip reachable via keyboard (Tab). */}
+        <span tabIndex={0} className="inline-flex">
+          <select
+            aria-label="Chọn mô hình AI"
+            title={`Chưa có model nào được tải trên Ollama. Chạy lệnh sau rồi quay lại đây: ${SUGGESTED_PULL_COMMAND}`}
+            className="h-8 rounded-sm border border-danger bg-bg-input px-2 text-xs text-text-body focus:outline-none focus:ring-1 focus:ring-danger"
+            disabled
+            value=""
+            onChange={() => {}}
           >
-            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-            {copied ? "Đã copy" : "Copy"}
-          </button>
-        </div>
-      </div>
+            <option value="">Chưa có model nào được tải</option>
+          </select>
+        </span>
+      </Tooltip>
     );
   }
 
@@ -140,7 +142,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   return (
     <select
       aria-label="Chọn mô hình AI"
-      className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+      className="h-8 rounded-sm border border-border-input bg-bg-input px-2 text-xs text-text-body"
       value={value}
       disabled={disabled || models.length === 0}
       onChange={(e) => onChange(e.target.value)}

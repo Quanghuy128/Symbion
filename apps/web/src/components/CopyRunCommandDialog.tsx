@@ -47,16 +47,16 @@ export function CopyRunCommandDialog({ command, onClose }: CopyRunCommandDialogP
         <Input placeholder="Model (tùy chọn)" value={model} onChange={(e) => setModel(e.target.value)} />
         <Input placeholder="Option (tùy chọn, ví dụ --gate)" value={option} onChange={(e) => setOption(e.target.value)} />
 
-        <div className="rounded border border-border bg-muted p-2">
-          <code className="select-all text-sm">{prompt}</code>
+        <div className="rounded-panel border border-border-input bg-bg-code p-2">
+          <code className="select-all text-sm text-text-body">{prompt}</code>
         </div>
 
         {clipboardBlocked && (
-          <p className="text-xs text-amber-600">
+          <p className="text-xs text-warning">
             Clipboard bị chặn — đã chọn sẵn văn bản, nhấn ⌘C / Ctrl+C để copy.
           </p>
         )}
-        {copied && <p className="text-xs text-green-600">Đã copy vào clipboard.</p>}
+        {copied && <p className="text-xs text-success">Đã copy vào clipboard.</p>}
       </div>
 
       <DialogFooter>

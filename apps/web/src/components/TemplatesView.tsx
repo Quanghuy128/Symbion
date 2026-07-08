@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AUTHOR_REGISTRY } from "@symbion/core";
 import { DaemonRpcError, initDaemonSession } from "@/lib/rpc/client";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import type { FetchAuthorTemplatesOutcome } from "@/lib/rpc/types";
-import { AppNav } from "./AppNav";
+import { AppRail } from "./AppRail";
+import { Toaster } from "./ui/toast";
 import { AuthorTabs } from "./AuthorTabs";
 import { AuthorFetchLoadingState } from "./AuthorFetchLoadingState";
 import { AuthorFetchErrorPanel } from "./AuthorFetchErrorPanel";
@@ -35,6 +37,7 @@ const AUTHOR_TABS = AUTHOR_REGISTRY.map((a) => ({ id: a.id, label: a.displayName
  * gone on page refresh, never written to disk.
  */
 export function TemplatesView() {
+  const router = useRouter();
   const startHeartbeat = useArtifactStore((s) => s.startHeartbeat);
   const loadProjects = useArtifactStore((s) => s.loadProjects);
   const fetchAuthorTemplates = useArtifactStore((s) => s.fetchAuthorTemplates);
@@ -119,8 +122,11 @@ export function TemplatesView() {
   const skippedFor = (prefix: string) => (isGithubAuthor ? [] : skipped.filter((s) => s.relPath.startsWith(prefix)));
 
   return (
-    <div className="flex h-screen flex-col">
-      <AppNav />
+    <div className="flex h-screen bg-bg-app text-text-body">
+      <AppRail
+        onCreateProject={() => router.push("/?createProject=1")}
+        onSelectProject={(id) => router.push(`/?openProject=${encodeURIComponent(id)}`)}
+      />
       <main className="flex-1 overflow-auto p-6">
         <div className="mx-auto max-w-4xl space-y-6">
           <div>
@@ -196,6 +202,7 @@ export function TemplatesView() {
       {selectedTemplate && (
         <TemplatePreviewModal template={selectedTemplate} onClose={() => setSelectedTemplate(null)} />
       )}
+      <Toaster />
     </div>
   );
 }

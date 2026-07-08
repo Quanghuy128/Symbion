@@ -9,8 +9,8 @@ export interface ImportScanningStateProps {
 /** S3 — transient loading row shown while scanClaudeDir is in flight. */
 export function ImportScanningState(_props: ImportScanningStateProps) {
   return (
-    <div className="flex items-center justify-center gap-2 rounded-md border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+    <div className="flex items-center justify-center gap-2 rounded-panel border border-border-hairline bg-white/[.03] p-6 text-sm text-text-muted">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted border-t-transparent" />
       Đang quét .claude/…
     </div>
   );

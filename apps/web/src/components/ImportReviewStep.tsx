@@ -19,11 +19,11 @@ export interface ImportReviewStepProps {
  */
 export function ImportReviewStep({ scanned, selected, onToggle }: ImportReviewStepProps) {
   return (
-    <div className="space-y-2 text-sm">
-      <p>✓ {scanned.agents.length} agents</p>
-      <p>✓ {scanned.commands.length} commands</p>
+    <div className="space-y-2 text-sm text-text-body">
+      <p className="text-success">✓ {scanned.agents.length} agents</p>
+      <p className="text-success">✓ {scanned.commands.length} commands</p>
       {scanned.skipped.map((s) => (
-        <p key={s.relPath} className="text-xs text-amber-600">
+        <p key={s.relPath} className="text-xs text-warning">
           ⚠ {s.relPath} không parse được → bỏ qua ({s.reason})
         </p>
       ))}

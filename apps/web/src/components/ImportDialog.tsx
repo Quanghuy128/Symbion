@@ -92,7 +92,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
 
         {scanned && <ImportReviewStep scanned={scanned} selected={selected} onToggle={toggle} />}
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
       </div>
 
       <DialogFooter>

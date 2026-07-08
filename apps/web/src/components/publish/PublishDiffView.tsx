@@ -9,6 +9,7 @@ import type { ComputeDiffResult, WriteResult } from "@/lib/rpc/types";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { ConflictResolver } from "./ConflictResolver";
 import { PublishResultView } from "./PublishResultView";
+import { StaggeredReveal } from "@/components/ui/staggered-reveal";
 
 export interface PublishDiffViewProps {
   project: ProjectStore;
@@ -57,8 +58,8 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
 
   if (loading || !diff) {
     return (
-      <Dialog open onClose={onClose} className="w-[720px]">
-        <p className="text-sm text-muted-foreground">Đang tính diff…</p>
+      <Dialog open onClose={onClose} className="w-[640px]">
+        <p className="text-sm text-text-muted">Đang tính diff…</p>
       </Dialog>
     );
   }
@@ -100,62 +101,69 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
     }
   }
 
+  const rows = [
+    ...writableFiles.map((file) =>
+      file.status === "conflict" ? (
+        <ConflictResolver
+          key={file.relPath}
+          file={file}
+          resolution={resolutions[file.relPath]}
+          onResolve={(resolution) => {
+            setResolutions((prev) => ({ ...prev, [file.relPath]: resolution }));
+            setSelected((prev) => {
+              const next = new Set(prev);
+              if (resolution === "overwrite") next.add(file.relPath);
+              else next.delete(file.relPath);
+              return next;
+            });
+          }}
+        />
+      ) : (
+        <label
+          key={file.relPath}
+          className="flex items-center gap-2 rounded-panel border border-border-hairline px-2 py-1 text-sm text-text-body"
+        >
+          <input type="checkbox" checked={selected.has(file.relPath)} onChange={() => toggle(file.relPath)} />
+          <span className="font-mono text-xs">{STATUS_GLYPH[file.status]}</span>
+          <span>{file.relPath}</span>
+        </label>
+      )
+    ),
+    ...diff.files
+      .filter((f) => f.status === "same")
+      .map((file) => (
+        <div key={file.relPath} className="flex items-center gap-2 px-2 py-1 text-sm text-text-faint">
+          <span className="font-mono text-xs">=</span>
+          <span>{file.relPath}</span>
+        </div>
+      )),
+  ];
+
   return (
-    <Dialog open onClose={onClose} className="w-[720px]">
+    <Dialog open onClose={onClose} className="w-[640px]">
       <DialogHeader>
         <DialogTitle>Xem trước thay đổi · {version}</DialogTitle>
       </DialogHeader>
 
       {hasInitOnNonExisting && (
-        <p className="mb-2 text-xs text-muted-foreground">Sẽ khởi tạo .claude/</p>
+        <p className="mb-2 text-xs text-text-muted">Sẽ khởi tạo .claude/</p>
       )}
 
       {firstForeignMergeFiles.length > 0 && (
-        <p className="mb-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+        <p className="mb-2 rounded-panel border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
           ℹ {firstForeignMergeFiles.map((f) => f.relPath).join(", ")} đã tồn tại và sẽ được Symbion chỉnh sửa
           lần đầu tiên (nội dung hiện có sẽ được giữ lại bên ngoài vùng quản lý).
         </p>
       )}
 
       <div className="max-h-96 space-y-2 overflow-y-auto">
-        {writableFiles.map((file) =>
-          file.status === "conflict" ? (
-            <ConflictResolver
-              key={file.relPath}
-              file={file}
-              resolution={resolutions[file.relPath]}
-              onResolve={(resolution) => {
-                setResolutions((prev) => ({ ...prev, [file.relPath]: resolution }));
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (resolution === "overwrite") next.add(file.relPath);
-                  else next.delete(file.relPath);
-                  return next;
-                });
-              }}
-            />
-          ) : (
-            <label key={file.relPath} className="flex items-center gap-2 rounded border border-border px-2 py-1 text-sm">
-              <input type="checkbox" checked={selected.has(file.relPath)} onChange={() => toggle(file.relPath)} />
-              <span className="font-mono text-xs">{STATUS_GLYPH[file.status]}</span>
-              <span>{file.relPath}</span>
-            </label>
-          )
-        )}
-        {diff.files
-          .filter((f) => f.status === "same")
-          .map((file) => (
-            <div key={file.relPath} className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
-              <span className="font-mono text-xs">=</span>
-              <span>{file.relPath}</span>
-            </div>
-          ))}
+        <StaggeredReveal>{rows}</StaggeredReveal>
       </div>
 
       {!daemonConnected && (
-        <p className="mb-2 text-xs text-destructive">⚠ Mất kết nối daemon — không thể ghi xuống đĩa.</p>
+        <p className="mb-2 text-xs text-danger">⚠ Mất kết nối daemon — không thể ghi xuống đĩa.</p>
       )}
-      {writeError && <p className="mb-2 text-xs text-destructive">✗ Ghi thất bại: {writeError}</p>}
+      {writeError && <p className="mb-2 text-xs text-danger">✗ Ghi thất bại: {writeError}</p>}
 
       <DialogFooter>
         <Button variant="outline" onClick={onBack}>

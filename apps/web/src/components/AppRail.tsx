@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { NavItem } from "./rail/NavItem";
 import { DaemonStatusBadge } from "./DaemonStatusBadge";
+import { cn } from "@/lib/utils";
 
 export interface AppRailProps {
   onCreateProject: () => void;
@@ -29,10 +30,17 @@ function readStoredRailWidth(): number {
 }
 
 const PRIMARY_NAV = [
-  { href: "/", label: "Builder" },
+  { href: "/", label: "Project" },
   { href: "/templates", label: "Templates" },
   { href: "/settings", label: "Settings" },
 ];
+
+const PROJECTS_COLLAPSED_STORAGE_KEY = "symbion:projects-collapsed";
+
+function readStoredProjectsCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(PROJECTS_COLLAPSED_STORAGE_KEY) === "1";
+}
 
 /**
  * AppRail — resizable left rail (236px default, drag-to-resize between
@@ -61,8 +69,21 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
   const isResizingRef = useRef(false);
 
+  // Projects section collapse is a pure UI preference (like railWidth) — kept
+  // component-local + persisted to localStorage rather than in useArtifactStore.
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+
   useEffect(() => {
     setRailWidth(readStoredRailWidth());
+    setProjectsCollapsed(readStoredProjectsCollapsed());
+  }, []);
+
+  const toggleProjectsCollapsed = useCallback(() => {
+    setProjectsCollapsed((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(PROJECTS_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
+      return next;
+    });
   }, []);
 
   const handlePointerMove = useCallback((e: MouseEvent) => {
@@ -127,10 +148,26 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
         ))}
       </nav>
 
-      {/* Projects section */}
+      {/* Projects section — collapsible; state persisted to localStorage. */}
       <div className="flex min-h-0 flex-1 flex-col border-t border-border-hairline px-2 py-2">
         <div className="mb-1 flex items-center justify-between px-1">
-          <span className="text-[10.5px] font-bold uppercase tracking-[.11em] text-text-faint">Projects</span>
+          <button
+            type="button"
+            onClick={toggleProjectsCollapsed}
+            aria-expanded={!projectsCollapsed}
+            className="flex flex-1 items-center gap-1 text-[10.5px] font-bold uppercase tracking-[.11em] text-text-faint hover:text-text-dim"
+          >
+            <span
+              className={cn(
+                "inline-block transition-transform",
+                projectsCollapsed ? "-rotate-90" : "rotate-0"
+              )}
+              aria-hidden
+            >
+              ▾
+            </span>
+            Projects
+          </button>
           <button
             type="button"
             onClick={onCreateProject}
@@ -141,24 +178,28 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           </button>
         </div>
 
-        {projects.length === 0 && (
-          <p className="px-1 py-1 text-xs text-text-faint">∅ no projects yet</p>
-        )}
+        {!projectsCollapsed && (
+          <>
+            {projects.length === 0 && (
+              <p className="px-1 py-1 text-xs text-text-faint">∅ no projects yet</p>
+            )}
 
-        <ul className="flex-1 space-y-0.5 overflow-y-auto">
-          {projects.map((p) => (
-            <li key={p.id}>
-              <NavItem
-                variant="project"
-                label={p.name}
-                sublabel={p.path}
-                title={p.path}
-                active={currentProject?.id === p.id}
-                onClick={() => onSelectProject(p.id)}
-              />
-            </li>
-          ))}
-        </ul>
+            <ul className="flex-1 space-y-0.5 overflow-y-auto">
+              {projects.map((p) => (
+                <li key={p.id}>
+                  <NavItem
+                    variant="project"
+                    label={p.name}
+                    sublabel={p.path}
+                    title={p.path}
+                    active={currentProject?.id === p.id}
+                    onClick={() => onSelectProject(p.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
 
       {/* Daemon status footer */}

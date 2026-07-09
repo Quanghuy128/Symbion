@@ -1,5 +1,5 @@
 {
-  "name": "@quanghuy128/symbion",
+  "name": "@andrew.ng/symbion",
   "version": "0.1.0",
   "description": "Local-daemon + web UI for authoring AI-coding autoworkflows.",
   "private": false,

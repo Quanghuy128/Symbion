@@ -26,10 +26,15 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 /** Symbion dark left-rail redesign (Q4): minimal single-slot toast state —
  *  not a queue/list, matches README's "one confirm-toast per action" usage
  *  pattern (docs/loops/symbion-dark-redesign-STATE.md §6.2 Q4). */
+/** Toast variant union. interactive-graph (design §5/§7) adds `warning` (⚠) and
+ *  `neutral` (plain) alongside the pre-existing `success` (✓) / `error` (✕).
+ *  This extends the showToast SIGNATURE only — NOT the store's data shape (A2). */
+export type ToastVariant = "success" | "error" | "warning" | "neutral";
+
 export interface ToastState {
   id: string;
   message: string;
-  variant?: "success" | "error";
+  variant?: ToastVariant;
 }
 
 interface ArtifactStoreState {
@@ -101,7 +106,7 @@ interface ArtifactStoreState {
    *  failure mode must never be silently upgraded to "connected." */
   reportConnectionError: (err: unknown) => void;
   /** Q4: shows a single toast, replacing any currently-visible one. */
-  showToast: (message: string, variant?: "success" | "error") => void;
+  showToast: (message: string, variant?: ToastVariant) => void;
   /** Q4: dismisses the current toast (auto-dismiss timer or manual close). */
   dismissToast: () => void;
   /** Starts the periodic `ping` heartbeat that classifies daemonReachable/
@@ -109,6 +114,12 @@ interface ArtifactStoreState {
    *  extended per FR-A.2b). Idempotent — calling twice does not start a
    *  second interval. Returns a stop function. */
   startHeartbeat: () => () => void;
+  /** Performs an immediate `ping` RPC and updates `daemonConnected` from the
+   *  result, independent of the heartbeat interval. Used by the DaemonRibbon
+   *  "Thử lại" (retry) button so the user gets an instant reconnect check
+   *  instead of waiting up to a full HEARTBEAT_INTERVAL_MS (code-reviewer #2).
+   *  Reuses the same `ping` RPC the heartbeat tick uses — no new daemon RPC. */
+  pingNow: () => Promise<boolean>;
   /** local-only mutation, used by the BuilderDrawer for live preview before Save. */
   upsertLocalArtifact: (artifact: CanonicalArtifact) => void;
 }
@@ -265,6 +276,17 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
         heartbeatTimer = null;
       }
     };
+  },
+
+  async pingNow() {
+    try {
+      await callRpc<{}, PingResult>("ping", {});
+      get().setDaemonConnected(true);
+      return true;
+    } catch {
+      get().setDaemonConnected(false);
+      return false;
+    }
   },
 
   upsertLocalArtifact(artifact) {

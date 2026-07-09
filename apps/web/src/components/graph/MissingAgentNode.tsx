@@ -1,28 +1,51 @@
 "use client";
 
+import { useState } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 export interface MissingAgentNodeData {
   label: string;
+  /** the dangling mention name (used to pre-name the created agent, P7). */
+  name: string;
   dimmed?: boolean;
+  /** create-agent action (design §4 G) — supplied by DependencyGraph. */
+  onCreateAgent?: (name: string) => void;
+  /** disable the create action when daemon is down (design §5 R). */
+  daemonConnected?: boolean;
 }
 
 /**
- * MissingAgentNode — placeholder node for a dangling `@mention` with no
- * matching agent (unchanged detection logic from DependencyGraph's existing
- * `missingNodes` map — only presentation is new). Dashed danger border, not
- * interactive beyond a tooltip (design doc §3.2), no hover-highlight state
- * (only real nodes participate in the highlight/dim treatment).
+ * MissingAgentNode — placeholder for a dangling `@mention` (design §3.2 state 3).
+ * NOT a connect target (isConnectable=false, E5). Hover reveals "＋ Tạo agent này"
+ * which turns the phantom into a real agent draft (P7).
  */
 export function MissingAgentNode({ data }: NodeProps<MissingAgentNodeData>) {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <div
-      title={data.label}
-      className="rounded-nav-item border border-dashed border-danger bg-danger/10 px-3 py-2 text-[12.5px] font-medium text-danger-hi transition-opacity"
+      className="relative rounded-nav-item border border-dashed border-danger bg-danger/10 px-3 py-2 text-[12.5px] font-medium text-danger-hi transition-opacity"
       style={{ opacity: data.dimmed ? 0.35 : 1 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <Handle type="target" position={Position.Left} className="!bg-danger" />
-      {data.label}
+      <Handle type="target" position={Position.Left} isConnectable={false} className="!bg-danger" />
+      <span>{data.label}</span>
+
+      {hovered && (
+        <button
+          type="button"
+          disabled={!data.daemonConnected}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onCreateAgent?.(data.name);
+          }}
+          className="absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-sm bg-brand-accent-soft px-2 py-1 text-[11px] font-medium text-accent-text hover:bg-brand-accent-soft/80 disabled:cursor-not-allowed disabled:opacity-40"
+          title={!data.daemonConnected ? "Cần kết nối daemon." : undefined}
+        >
+          ＋ Tạo agent này
+        </button>
+      )}
     </div>
   );
 }

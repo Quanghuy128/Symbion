@@ -14,7 +14,7 @@ Usage:
   symbion --version, -v  Print the installed version
   symbion --help, -h     Show this help message
 
-Install: npm i -g @quanghuy128/symbion
+Install: npm i -g ${pkg.name}
 
 Once running, the boot menu lets you open the Web UI in your browser,
 hide the daemon to run in the background, or exit.

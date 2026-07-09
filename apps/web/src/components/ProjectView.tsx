@@ -10,18 +10,7 @@ import { DependencyGraph } from "./DependencyGraph";
 import { PublishDialog } from "./publish/PublishDialog";
 import { CopyRunCommandDialog } from "./CopyRunCommandDialog";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
-
-function newArtifact(kind: "agent" | "command"): CanonicalArtifact {
-  const now = new Date().toISOString();
-  return {
-    id: crypto.randomUUID(),
-    kind,
-    name: "",
-    description: "",
-    body: "",
-    meta: { version: "draft", status: "draft", createdAt: now, updatedAt: now },
-  };
-}
+import { newArtifact } from "@/lib/newArtifact";
 
 export interface ProjectViewProps {
   project: ProjectStore;
@@ -106,7 +95,7 @@ export function ProjectView({ project }: ProjectViewProps) {
             <Button onClick={() => setEditing(newArtifact("command"))}>+ Thêm workflow</Button>
           </div>
         ) : tab === "graph" ? (
-          <DependencyGraph artifacts={project.artifacts} />
+          <DependencyGraph artifacts={project.artifacts} onEditArtifact={setEditing} />
         ) : (
           <div className="space-y-8">
             <section>

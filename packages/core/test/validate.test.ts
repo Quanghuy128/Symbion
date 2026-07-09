@@ -69,4 +69,52 @@ describe("validateArtifact", () => {
     const issues = validateArtifact(cmd, { allArtifacts: [agent, cmd] });
     expect(issues.some((i) => i.code === "mention-missing-agent")).toBe(false);
   });
+
+  it("U24 malformed `- @` line inside block -> warning (not error), Save not blocked", () => {
+    // `- @a garbage` looks like an agent line but fails grammar.
+    const body =
+      "<!-- symbion:agents -->\n## Agents\n\n- @a some garbage tail\n<!-- /symbion:agents -->";
+    const cmd = makeArtifact({ id: "c1", kind: "command", body });
+    const issues = validateArtifact(cmd, { allArtifacts: [cmd] });
+    const w = issues.find((i) => i.code === "agentblock-malformed");
+    expect(w?.level).toBe("warning");
+    expect(issues.some((i) => i.level === "error")).toBe(false);
+  });
+
+  it("U25 ×0 / non-integer count -> agentref-count-invalid warning", () => {
+    const zero =
+      "<!-- symbion:agents -->\n## Agents\n\n- @a ×0\n<!-- /symbion:agents -->";
+    const cmdZero = makeArtifact({ id: "c1", kind: "command", body: zero });
+    expect(
+      validateArtifact(cmdZero, { allArtifacts: [cmdZero] }).some(
+        (i) => i.code === "agentref-count-invalid" && i.level === "warning"
+      )
+    ).toBe(true);
+
+    const bad =
+      "<!-- symbion:agents -->\n## Agents\n\n- @a ×abc\n<!-- /symbion:agents -->";
+    const cmdBad = makeArtifact({ id: "c2", kind: "command", body: bad });
+    expect(
+      validateArtifact(cmdBad, { allArtifacts: [cmdBad] }).some(
+        (i) => i.code === "agentref-count-invalid" && i.level === "warning"
+      )
+    ).toBe(true);
+  });
+
+  it("U26 mention-missing-agent still fires for a block ref whose agent doesn't exist", () => {
+    const body =
+      "<!-- symbion:agents -->\n## Agents\n\n- @ghost\n<!-- /symbion:agents -->";
+    const cmd = makeArtifact({ id: "c1", kind: "command", body });
+    const issues = validateArtifact(cmd, { allArtifacts: [cmd] });
+    expect(issues.some((i) => i.code === "mention-missing-agent" && i.level === "warning")).toBe(true);
+  });
+
+  it("U27 adding a valid ref introduces no new error", () => {
+    const agent = makeArtifact({ id: "a1", kind: "agent", name: "qa" });
+    const body =
+      "Do work.\n\n<!-- symbion:agents -->\n## Agents\n\n- @qa ×2 — Test it\n<!-- /symbion:agents -->";
+    const cmd = makeArtifact({ id: "c1", kind: "command", name: "build", description: "d", body });
+    const issues = validateArtifact(cmd, { allArtifacts: [agent, cmd] });
+    expect(issues.some((i) => i.level === "error")).toBe(false);
+  });
 });

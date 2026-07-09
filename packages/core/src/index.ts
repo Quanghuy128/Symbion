@@ -3,6 +3,7 @@
 export * from "./ir/types.js";
 export * from "./ir/validate.js";
 export * from "./ir/refs.js";
+export * from "./ir/agentBlock.js";
 
 export * from "./adapters/types.js";
 export { claudeAdapter } from "./adapters/claude.js";

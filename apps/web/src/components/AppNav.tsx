@@ -27,7 +27,7 @@ export function AppNav() {
         Templates
       </Link>
       <Link href="/settings" className={linkClass("/settings")}>
-        Cài đặt
+        Settings
       </Link>
     </nav>
   );

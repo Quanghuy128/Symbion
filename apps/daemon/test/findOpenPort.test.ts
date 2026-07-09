@@ -53,7 +53,7 @@ describe("findOpenPort (E15)", () => {
         },
         { maxAttempts: 5 }
       )
-    ).rejects.toThrow(/Không tìm được cổng trống/);
+    ).rejects.toThrow(/Could not find a free port/);
     expect(attempted).toEqual([20128, 20129, 20130, 20131, 20132]);
   });
 

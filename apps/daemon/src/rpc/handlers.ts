@@ -71,7 +71,7 @@ function findProjectPath(projectId: string): string {
   const config = loadGlobalConfig();
   const entry = config.projects.find((p) => p.id === projectId);
   if (!entry) {
-    throw new Error(`Không tìm thấy project: ${projectId}`);
+    throw new Error(`Project not found: ${projectId}`);
   }
   return entry.path;
 }
@@ -90,7 +90,7 @@ const VALID_API_KEY_PROVIDER_IDS = new Set(["openai", "anthropic", "gemini"]);
 
 function assertValidKind(kind: unknown): asserts kind is "agent" | "command" {
   if (typeof kind !== "string" || !VALID_KINDS.has(kind)) {
-    throw new RpcError("invalid-params", `Tham số "kind" không hợp lệ: phải là "agent" hoặc "command".`);
+    throw new RpcError("invalid-params", `Invalid "kind" parameter: must be "agent" or "command".`);
   }
 }
 
@@ -98,7 +98,7 @@ function assertValidProviderId(providerId: unknown): asserts providerId is contr
   if (typeof providerId !== "string" || !VALID_PROVIDER_IDS.has(providerId)) {
     throw new RpcError(
       "invalid-params",
-      `Tham số "providerId" không hợp lệ: phải là một trong "ollama", "openai", "anthropic", "gemini".`
+      `Invalid "providerId" parameter: must be one of "ollama", "openai", "anthropic", "gemini".`
     );
   }
 }
@@ -107,7 +107,7 @@ function assertValidApiKeyProviderId(providerId: unknown): asserts providerId is
   if (typeof providerId !== "string" || !VALID_API_KEY_PROVIDER_IDS.has(providerId)) {
     throw new RpcError(
       "invalid-params",
-      `Tham số "providerId" không hợp lệ: phải là một trong "openai", "anthropic", "gemini".`
+      `Invalid "providerId" parameter: must be one of "openai", "anthropic", "gemini".`
     );
   }
 }
@@ -214,10 +214,10 @@ export const handlers = {
   createProject(params: contract.CreateProjectParams): contract.CreateProjectResult {
     const { name, path } = params;
     if (!existsSync(path) || !statSync(path).isDirectory()) {
-      throw new RpcError("invalid-path", "Đường dẫn không tồn tại hoặc không phải thư mục.");
+      throw new RpcError("invalid-path", "Path does not exist or is not a directory.");
     }
     if (projectStoreExists(path)) {
-      throw new RpcError("already-a-project", "Thư mục này đã là một dự án Symbion.");
+      throw new RpcError("already-a-project", "This folder is already a Symbion project.");
     }
 
     const id = randomId();
@@ -255,7 +255,7 @@ export const handlers = {
     if (blocking.length > 0) {
       throw new RpcError(
         "validation-failed",
-        `Không thể lưu — vi phạm lint: ${blocking.map((i) => i.message).join("; ")}`
+        `Cannot save — lint violations: ${blocking.map((i) => i.message).join("; ")}`
       );
     }
 
@@ -319,7 +319,7 @@ export const handlers = {
     if (blocking.length > 0) {
       throw new RpcError(
         "validation-failed",
-        `Không thể nhập — vi phạm lint: ${blocking.map((i) => i.message).join("; ")}`
+        `Cannot import — lint violations: ${blocking.map((i) => i.message).join("; ")}`
       );
     }
 
@@ -353,19 +353,19 @@ export const handlers = {
     const { projectId, template } = params;
 
     if (!template || (template.kind !== "agent" && template.kind !== "command")) {
-      throw new RpcError("invalid-kind", "Chỉ Agent/Command hỗ trợ Áp dụng.");
+      throw new RpcError("invalid-kind", "Only Agent/Command support Apply.");
     }
     if (typeof template.name !== "string" || template.name.trim().length === 0) {
-      throw new RpcError("invalid-template", "Template thiếu name.");
+      throw new RpcError("invalid-template", "Template is missing name.");
     }
     if (typeof template.description !== "string" || template.description.trim().length === 0) {
-      throw new RpcError("invalid-template", "Template thiếu description.");
+      throw new RpcError("invalid-template", "Template is missing description.");
     }
     if (typeof template.body !== "string" || template.body.trim().length === 0) {
-      throw new RpcError("invalid-template", "Template thiếu nội dung (body).");
+      throw new RpcError("invalid-template", "Template is missing content (body).");
     }
     if (typeof template.sourceTemplateId !== "string" || template.sourceTemplateId.trim().length === 0) {
-      throw new RpcError("invalid-template", "Template thiếu sourceTemplateId.");
+      throw new RpcError("invalid-template", "Template is missing sourceTemplateId.");
     }
 
     // templates-authors PLAN §P6: server-side defense-in-depth mirror of the
@@ -384,7 +384,7 @@ export const handlers = {
     if (isThirdParty && template.acknowledgedThirdParty !== true) {
       throw new RpcError(
         "license-not-acknowledged",
-        "Cần xác nhận đã đọc thông báo về bản quyền nội dung của tác giả khác trước khi áp dụng."
+        "You must acknowledge the notice about other authors' content copyright before applying."
       );
     }
 
@@ -435,7 +435,7 @@ export const handlers = {
     if (blocking.length > 0) {
       throw new RpcError(
         "validation-failed",
-        `Không thể áp dụng — vi phạm lint: ${blocking.map((i) => i.message).join("; ")}`
+        `Cannot apply — lint violations: ${blocking.map((i) => i.message).join("; ")}`
       );
     }
 
@@ -460,11 +460,11 @@ export const handlers = {
    */
   async fetchAuthorTemplates(params: contract.FetchAuthorTemplatesParams): Promise<contract.FetchAuthorTemplatesResult> {
     if (typeof params?.authorId !== "string" || params.authorId.trim().length === 0) {
-      throw new RpcError("invalid-author", "Thiếu authorId.");
+      throw new RpcError("invalid-author", "Missing authorId.");
     }
     const author = AUTHOR_REGISTRY.find((a) => a.id === params.authorId);
     if (!author || author.kind !== "github") {
-      throw new RpcError("invalid-author", `authorId không hợp lệ hoặc không phải nguồn GitHub: "${params.authorId}".`);
+      throw new RpcError("invalid-author", `Invalid authorId or not a GitHub source: "${params.authorId}".`);
     }
 
     const outcome = await fetchAuthorTemplatesFromGithub(author);
@@ -628,7 +628,7 @@ export const handlers = {
         // than throw, so the web layer can render a distinct, non-generic message.
         return { models: [], outcome: "fetch-failed", errorMessage: humanMessageForLlmError(err) };
       }
-      throw new RpcError("llm-unknown", "Lỗi không xác định khi lấy danh sách mô hình.");
+      throw new RpcError("llm-unknown", "Unknown error while fetching the model list.");
     }
   },
 
@@ -653,11 +653,11 @@ export const handlers = {
     for (const field of ["name", "description", "existingBody"] as const) {
       const value = params[field];
       if (typeof value !== "string" || value.length > MAX_FIELD_LEN) {
-        throw new RpcError("invalid-params", `Trường "${field}" không hợp lệ hoặc quá lớn.`);
+        throw new RpcError("invalid-params", `Field "${field}" is invalid or too large.`);
       }
     }
     if (typeof params.modelId !== "string" || params.modelId.length === 0 || params.modelId.length > 200) {
-      throw new RpcError("invalid-params", "modelId không hợp lệ.");
+      throw new RpcError("invalid-params", "Invalid modelId.");
     }
 
     const { system, user } = buildBodyGenerationPrompt({
@@ -684,7 +684,7 @@ export const handlers = {
       if (err instanceof LlmError) {
         throw new RpcError(`llm-${err.code}`, humanMessageForLlmError(err));
       }
-      throw new RpcError("llm-unknown", "Lỗi không xác định khi gọi mô hình AI.");
+      throw new RpcError("llm-unknown", "Unknown error while calling the AI model.");
     }
   },
 
@@ -747,10 +747,10 @@ export const handlers = {
     const MAX_API_KEY_LEN = 4000;
     const apiKey = params.apiKey;
     if (typeof apiKey !== "string" || apiKey.trim().length === 0 || apiKey.length > MAX_API_KEY_LEN) {
-      throw new RpcError("invalid-params", `Tham số "apiKey" không hợp lệ hoặc quá lớn.`);
+      throw new RpcError("invalid-params", `Invalid "apiKey" parameter or too large.`);
     }
     if (model !== undefined && (typeof model !== "string" || model.length > 200)) {
-      throw new RpcError("invalid-params", `Tham số "model" không hợp lệ.`);
+      throw new RpcError("invalid-params", `Invalid "model" parameter.`);
     }
 
     secretsSetProviderKey(providerId, apiKey, model ?? "");
@@ -775,7 +775,7 @@ export const handlers = {
       secretsSetActiveProvider(params.providerId as SecretsProviderId);
     } catch (err) {
       if (err instanceof ProviderNotConfiguredError) {
-        throw new RpcError("invalid-params", "Chưa cấu hình API key cho nhà cung cấp này.");
+        throw new RpcError("invalid-params", "No API key configured for this provider.");
       }
       throw err;
     }
@@ -803,21 +803,21 @@ function humanMessageForLlmError(err: LlmError): string {
   const code: LlmErrorCode = err.code;
   switch (code) {
     case "provider-not-running":
-      return "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy.";
+      return "Cannot connect to Ollama — make sure Ollama is running on your machine.";
     case "timeout":
-      return "Quá thời gian chờ (45s) — thử lại.";
+      return "Request timed out (45s) — try again.";
     case "auth":
-      return "Thiếu hoặc sai cấu hình API key cho nhà cung cấp AI.";
+      return "Missing or invalid API key for the AI provider.";
     case "rate-limit":
-      return "Bị giới hạn tần suất gọi — thử lại sau.";
+      return "Rate-limited — try again later.";
     case "not-configured":
-      return "Chưa cấu hình nhà cung cấp AI nào — vào Cài đặt để thêm.";
+      return "No AI provider configured — go to Settings to add one.";
     case "invalid-response":
-      return err.message || "Phản hồi không hợp lệ từ mô hình.";
+      return err.message || "Invalid response from the model.";
     case "network":
     case "unknown":
     default:
-      return err.message || "Lỗi không xác định, thử lại.";
+      return err.message || "Unknown error, please try again.";
   }
 }
 

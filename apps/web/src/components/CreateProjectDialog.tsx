@@ -168,7 +168,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
       await createProject(name.trim(), path.trim());
       resetAll();
       onClose();
-      showToast("Đã tạo dự án.", "success");
+      showToast("Project created.", "success");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -220,7 +220,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
       // "already-a-project".
       setError(
         createdProjectName
-          ? `Dự án "${createdProjectName}" đã được tạo nhưng nhập thất bại: ${message}. Mở dự án "${createdProjectName}" trong danh sách bên trái để nhập lại bằng "Import .claude/ từ repo".`
+          ? `Project "${createdProjectName}" was created but import failed: ${message}. Open project "${createdProjectName}" in the left list to import again via "Import .claude/ from a repo".`
           : message
       );
     } finally {
@@ -243,16 +243,16 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   return (
     <Dialog open={open} onClose={onClose} className="w-[480px]">
       <DialogHeader>
-        <DialogTitle>{step === "review" ? "Tạo dự án mới — Xem lại trước khi nhập" : "Tạo dự án mới"}</DialogTitle>
+        <DialogTitle>{step === "review" ? "New project — Review before import" : "New project"}</DialogTitle>
       </DialogHeader>
 
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-sm font-medium text-text-body">Tên dự án</label>
+          <label className="mb-1 block text-sm font-medium text-text-body">Project name</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My API Service" />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-text-body">Đường dẫn repo</label>
+          <label className="mb-1 block text-sm font-medium text-text-body">Repo path</label>
           <div className="flex gap-2">
             <Input
               value={path}
@@ -261,31 +261,31 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
               disabled={pathFieldDisabled}
             />
             <Button variant="outline" onClick={() => setBrowserOpen(true)} disabled={pathFieldDisabled}>
-              Chọn…
+              Browse…
             </Button>
           </div>
           {validation && step === "form" && (
             <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
               {validation.reason === "unc-unsupported" ? (
                 <span className="text-danger">
-                  ⚠ UNC paths (\\server\share\...) chưa được hỗ trợ. Hãy dùng đường dẫn ổ đĩa, ví dụ
+                  ⚠ UNC paths (\\server\share\...) are not supported yet. Use a drive path, e.g.
                   C:\Users\me\code\my-service
                 </span>
               ) : validation.exists ? (
                 <span>
-                  ✓ Thư mục tồn tại
+                  ✓ Folder exists
                   {validation.hasClaudeDir
                     ? declined
-                      ? " · .claude/ đã có (đã chọn tạo dự án trống)"
-                      : " · .claude/ đã có (xem xét Import)"
-                    : " · .claude/ chưa có"}
+                      ? " · .claude/ present (chose to create an empty project)"
+                      : " · .claude/ present (consider Import)"
+                    : " · no .claude/ yet"}
                 </span>
               ) : (
                 <>
-                  <span>✗ Thư mục không tồn tại</span>
+                  <span>✗ Folder does not exist</span>
                   {path.trim().length > 0 && (
                     <Button size="sm" variant="outline" disabled={creatingDir} onClick={handleCreateDir}>
-                      {creatingDir ? "Đang tạo…" : "Tạo thư mục này"}
+                      {creatingDir ? "Creating…" : "Create this folder"}
                     </Button>
                   )}
                 </>
@@ -306,13 +306,13 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
         {step === "detected" && scanError && (
           <div className="space-y-2 rounded-panel border border-danger/40 bg-danger/10 p-3 text-sm">
-            <p className="text-danger">⚠ Quét .claude/ thất bại: {scanError}</p>
+            <p className="text-danger">⚠ Scanning .claude/ failed: {scanError}</p>
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="outline" onClick={handleDecline}>
-                Tạo dự án trống
+                Create empty project
               </Button>
               <Button size="sm" onClick={handleRetryScan}>
-                Thử lại
+                Retry
               </Button>
             </div>
           </div>
@@ -327,20 +327,20 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
-          Hủy
+          Cancel
         </Button>
         {step === "form" && (
           <Button disabled={!canCreate} onClick={handleCreate}>
-            Tạo dự án
+            Create project
           </Button>
         )}
         {step === "review" && (
           <>
             <Button variant="outline" onClick={() => setStep("detected")}>
-              Quay lại
+              Back
             </Button>
             <Button disabled={selected.size === 0 || creating} onClick={handleImport}>
-              Nhập {selected.size} mục đã chọn
+              Import {selected.size} selected
             </Button>
           </>
         )}

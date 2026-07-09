@@ -11,9 +11,9 @@ export interface AuthorFetchErrorPanelProps {
 }
 
 const HEADING_BY_KIND: Record<AuthorFetchErrorPanelProps["kind"], string> = {
-  network: "⚠ Không thể tải mẫu",
-  "rate-limit": "⚠ Đã vượt giới hạn GitHub API",
-  "not-found": "⚠ Không thể tải mẫu",
+  network: "⚠ Could not load templates",
+  "rate-limit": "⚠ GitHub API rate limit exceeded",
+  "not-found": "⚠ Could not load templates",
 };
 
 /** Formats a future epoch-ms timestamp as "HH:MM (còn khoảng N phút)" —
@@ -24,7 +24,7 @@ function formatResetTime(resetAt: number): string {
   const hh = String(date.getHours()).padStart(2, "0");
   const mm = String(date.getMinutes()).padStart(2, "0");
   const minutesLeft = Math.max(0, Math.round((resetAt - Date.now()) / 60000));
-  return `${hh}:${mm} (còn khoảng ${minutesLeft} phút)`;
+  return `${hh}:${mm} (about ${minutesLeft} min left)`;
 }
 
 /**
@@ -40,16 +40,16 @@ export function AuthorFetchErrorPanel({ kind, message, resetAt, onRetry }: Autho
       <p className="text-sm font-medium">{HEADING_BY_KIND[kind]}</p>
       <p className="max-w-md text-xs text-muted-foreground">{message}</p>
       {kind === "rate-limit" && resetAt !== undefined && (
-        <p className="text-xs text-muted-foreground">Giới hạn sẽ được làm mới lúc {formatResetTime(resetAt)}.</p>
+        <p className="text-xs text-muted-foreground">The limit resets at {formatResetTime(resetAt)}.</p>
       )}
       <Button variant="outline" onClick={onRetry}>
-        Thử lại
+        Retry
       </Button>
       {kind === "rate-limit" && (
-        <p className="text-[11px] text-muted-foreground">Có thể vẫn bị giới hạn cho đến giờ làm mới ở trên.</p>
+        <p className="text-[11px] text-muted-foreground">You may still be rate-limited until the reset time above.</p>
       )}
       <p className="text-xs text-muted-foreground">
-        ℹ Tab &quot;Symbion&quot; vẫn hoạt động bình thường, không cần mạng.
+        ℹ The &quot;Symbion&quot; tab still works normally, no network needed.
       </p>
     </div>
   );

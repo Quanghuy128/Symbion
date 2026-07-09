@@ -8,7 +8,7 @@ export interface ProjectSidebarProps {
   onSelectProject: (id: string) => void;
 }
 
-/** S1 persistent sidebar: project list (QUY TRÌNH/DỰ ÁN) + CẤU HÌNH + daemon status footer. */
+/** S1 persistent sidebar: project list (QUY TRÌNH/DỰ ÁN) + CONFIGURATION + daemon status footer. */
 export function ProjectSidebar({ onCreateProject, onSelectProject }: ProjectSidebarProps) {
   const projects = useArtifactStore((s) => s.projects);
   const currentProject = useArtifactStore((s) => s.currentProject);
@@ -22,14 +22,14 @@ export function ProjectSidebar({ onCreateProject, onSelectProject }: ProjectSide
 
       <div className="flex-1 overflow-y-auto px-3 py-2">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted-foreground">QUY TRÌNH / DỰ ÁN</span>
+          <span className="text-xs font-semibold text-muted-foreground">WORKFLOWS / PROJECTS</span>
           <button onClick={onCreateProject} className="text-xs text-muted-foreground hover:text-foreground">
             +
           </button>
         </div>
 
         {projects.length === 0 && (
-          <p className="text-xs text-muted-foreground">∅ chưa có dự án</p>
+          <p className="text-xs text-muted-foreground">∅ no projects yet</p>
         )}
 
         <ul className="space-y-1">
@@ -49,9 +49,9 @@ export function ProjectSidebar({ onCreateProject, onSelectProject }: ProjectSide
         </ul>
 
         <div className="my-3 border-t border-border" />
-        <span className="text-xs font-semibold text-muted-foreground">CẤU HÌNH</span>
+        <span className="text-xs font-semibold text-muted-foreground">CONFIGURATION</span>
         <button className="mt-1 block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted">
-          ⚙ Cài đặt chung
+          ⚙ General settings
         </button>
       </div>
 

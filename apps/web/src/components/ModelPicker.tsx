@@ -14,8 +14,8 @@ export interface ModelPickerProps {
 
 const TIER_LABEL: Record<NonNullable<LlmModelOption["tier"]>, string> = {
   fast: "Nhanh",
-  balanced: "Cân bằng",
-  best: "Tốt nhất",
+  balanced: "Balanced",
+  best: "Best",
 };
 
 /** Example-only suggested tag shown in the empty-state's `ollama pull` command — small,
@@ -78,7 +78,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
         // unchanged: covers provider-not-running (thrown RpcError) and any other
         // transport-level failure — same generic message as today, AC4 unregressed.
         setLoadError(
-          err instanceof DaemonRpcError ? err.message || "Không thể tải danh sách mô hình." : "Không thể tải danh sách mô hình."
+          err instanceof DaemonRpcError ? err.message || "Could not load the model list." : "Could not load the model list."
         );
       });
     return () => {
@@ -88,7 +88,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   }, [providerId]);
 
   if (!providerId) {
-    return <span className="text-xs text-text-muted">Chưa chọn nhà cung cấp AI</span>;
+    return <span className="text-xs text-text-muted">No AI provider selected</span>;
   }
 
   // Branch 1: unreachable / thrown RpcError — unchanged.
@@ -100,7 +100,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   if (outcome === "fetch-failed") {
     return (
       <span className="text-xs text-danger">
-        {errorDetail || "Không thể lấy danh sách mô hình từ Ollama."}
+        {errorDetail || "Could not fetch the model list from Ollama."}
       </span>
     );
   }
@@ -113,7 +113,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
       <Tooltip
         content={
           <span className="flex flex-col gap-1">
-            <span>Chưa có model nào được tải trên Ollama. Chạy lệnh sau rồi quay lại đây:</span>
+            <span>No models are loaded in Ollama yet. Run the command below, then come back here:</span>
             <code className="select-all rounded-sm border border-border-input bg-bg-code px-2 py-1 text-text-body">
               {SUGGESTED_PULL_COMMAND}
             </code>
@@ -124,14 +124,14 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
             receive focus) keeps the tooltip reachable via keyboard (Tab). */}
         <span tabIndex={0} className="inline-flex">
           <select
-            aria-label="Chọn mô hình AI"
-            title={`Chưa có model nào được tải trên Ollama. Chạy lệnh sau rồi quay lại đây: ${SUGGESTED_PULL_COMMAND}`}
+            aria-label="Select AI model"
+            title={`No models are loaded in Ollama yet. Run the command below, then come back here: ${SUGGESTED_PULL_COMMAND}`}
             className="h-8 rounded-sm border border-danger bg-bg-input px-2 text-xs text-text-body focus:outline-none focus:ring-1 focus:ring-danger"
             disabled
             value=""
             onChange={() => {}}
           >
-            <option value="">Chưa có model nào được tải</option>
+            <option value="">No models loaded</option>
           </select>
         </span>
       </Tooltip>
@@ -141,7 +141,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   // Branch 4: populated dropdown (outcome === "ok").
   return (
     <select
-      aria-label="Chọn mô hình AI"
+      aria-label="Select AI model"
       className="h-8 rounded-sm border border-border-input bg-bg-input px-2 text-xs text-text-body"
       value={value}
       disabled={disabled || models.length === 0}

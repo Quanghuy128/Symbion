@@ -16,7 +16,7 @@ export interface MissingAgentNodeData {
 
 /**
  * MissingAgentNode — placeholder for a dangling `@mention` (design §3.2 state 3).
- * NOT a connect target (isConnectable=false, E5). Hover reveals "＋ Tạo agent này"
+ * NOT a connect target (isConnectable=false, E5). Hover reveals "＋ Create this agent"
  * which turns the phantom into a real agent draft (P7).
  */
 export function MissingAgentNode({ data }: NodeProps<MissingAgentNodeData>) {
@@ -41,9 +41,9 @@ export function MissingAgentNode({ data }: NodeProps<MissingAgentNodeData>) {
             data.onCreateAgent?.(data.name);
           }}
           className="absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-sm bg-brand-accent-soft px-2 py-1 text-[11px] font-medium text-accent-text hover:bg-brand-accent-soft/80 disabled:cursor-not-allowed disabled:opacity-40"
-          title={!data.daemonConnected ? "Cần kết nối daemon." : undefined}
+          title={!data.daemonConnected ? "Daemon connection required." : undefined}
         >
-          ＋ Tạo agent này
+          ＋ Create this agent
         </button>
       )}
     </div>

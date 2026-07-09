@@ -17,8 +17,8 @@ const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1/chat/completions";
 
 const OPENAI_MODELS: LlmModelOption[] = [
   { id: "gpt-4o-mini", label: "GPT-4o mini (nhanh)", tier: "fast" },
-  { id: "gpt-4o", label: "GPT-4o (cân bằng)", tier: "balanced" },
-  { id: "gpt-4.1", label: "GPT-4.1 (tốt nhất)", tier: "best" },
+  { id: "gpt-4o", label: "GPT-4o (balanced)", tier: "balanced" },
+  { id: "gpt-4.1", label: "GPT-4.1 (best)", tier: "best" },
 ];
 
 export interface OpenAiProviderOptions {
@@ -41,7 +41,7 @@ export class OpenAiProvider implements LlmProvider {
   async generate(req: LlmGenerateRequest): Promise<LlmGenerateResult> {
     const apiKey = loadProvidersConfig().providers.openai?.apiKey;
     if (!apiKey) {
-      throw new LlmError("not-configured", "Chưa cấu hình API key cho OpenAI.");
+      throw new LlmError("not-configured", "No API key configured for OpenAI.");
     }
 
     const controller = new AbortController();
@@ -68,31 +68,31 @@ export class OpenAiProvider implements LlmProvider {
         });
       } catch {
         if (controller.signal.aborted) {
-          throw new LlmError("timeout", `Quá thời gian chờ (${req.timeoutMs}ms) khi gọi OpenAI.`);
+          throw new LlmError("timeout", `Request timed out (${req.timeoutMs}ms) while calling OpenAI.`);
         }
-        throw new LlmError("network", "Lỗi mạng khi gọi OpenAI.");
+        throw new LlmError("network", "Network error while calling OpenAI.");
       }
 
       if (res.status === 401 || res.status === 403) {
-        throw new LlmError("auth", "Thiếu hoặc sai cấu hình API key cho OpenAI.");
+        throw new LlmError("auth", "Missing or invalid API key for OpenAI.");
       }
       if (res.status === 429) {
-        throw new LlmError("rate-limit", "Bị giới hạn tần suất gọi — thử lại sau.");
+        throw new LlmError("rate-limit", "Rate-limited — try again later.");
       }
       if (!res.ok) {
-        throw new LlmError("invalid-response", `OpenAI trả về lỗi HTTP ${res.status}.`);
+        throw new LlmError("invalid-response", `OpenAI returned HTTP error ${res.status}.`);
       }
 
       let json: { choices?: Array<{ message?: { content?: string } }> };
       try {
         json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
       } catch {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ OpenAI (không phải JSON).");
+        throw new LlmError("invalid-response", "Invalid response from OpenAI (not JSON).");
       }
 
       const text = json.choices?.[0]?.message?.content;
       if (typeof text !== "string") {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ OpenAI.");
+        throw new LlmError("invalid-response", "Invalid response from OpenAI.");
       }
 
       return { text };

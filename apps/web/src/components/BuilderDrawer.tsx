@@ -44,13 +44,13 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
     setSaveError(null);
     try {
       await saveArtifact(artifact);
-      showToast("Đã lưu.", "success");
+      showToast("Saved.", "success");
       onClose();
     } catch (err) {
       // E9: surface the failure instead of silently swallowing it — the
       // user needs to know Save did not happen (e.g. daemon disconnected
       // mid-edit, or a validation/IO error on the daemon side).
-      const message = err instanceof Error ? err.message : "Lưu thất bại — không rõ lý do.";
+      const message = err instanceof Error ? err.message : "Save failed — reason unknown.";
       setSaveError(message);
     } finally {
       setSaving(false);
@@ -74,7 +74,7 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
           aria-orientation="vertical"
           onPointerDown={onWidthDragStart}
           className="group absolute inset-y-0 left-0 z-20 w-1.5 -translate-x-1/2 cursor-col-resize"
-          title="Kéo để đổi bề rộng"
+          title="Drag to resize width"
         >
           <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-brand-accent opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
@@ -94,7 +94,7 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
               className={`px-3 py-2 text-sm ${tab === "form" ? "border-b-2 border-brand-accent font-medium text-text-strong" : "text-text-dim"}`}
               onClick={() => setTab("form")}
             >
-              Theo mô tả
+              By description
             </button>
             <button
               className={`px-3 py-2 text-sm ${tab === "markdown" ? "border-b-2 border-brand-accent font-medium text-text-strong" : "text-text-dim"}`}
@@ -121,15 +121,15 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
               {blockingErrors.map((e, i) => (
                 <div key={i}>✗ {e.message}</div>
               ))}
-              {!daemonConnected && <div>⚠ Mất kết nối daemon — không thể lưu.</div>}
-              {saveError && <div>✗ Lưu thất bại: {saveError}</div>}
+              {!daemonConnected && <div>⚠ Daemon disconnected — cannot save.</div>}
+              {saveError && <div>✗ Save failed: {saveError}</div>}
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose}>
-                Hủy
+                Cancel
               </Button>
               <Button disabled={blockingErrors.length > 0 || saving || !daemonConnected} onClick={handleSave}>
-                {saving ? "Đang lưu…" : "Lưu"}
+                {saving ? "Saving…" : "Save"}
               </Button>
             </div>
           </div>

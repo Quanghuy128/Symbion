@@ -45,7 +45,7 @@ export function SettingsShell() {
         onSelectProject={(id) => router.push(`/?openProject=${encodeURIComponent(id)}`)}
       />
       <main className="flex-1 overflow-auto p-6">
-        <h1 className="mb-4 text-lg font-semibold text-text-strong">Nhà cung cấp AI</h1>
+        <h1 className="mb-4 text-lg font-semibold text-text-strong">AI providers</h1>
         <ProvidersPanel />
       </main>
       <Toaster />

@@ -48,18 +48,18 @@ const KNOWN_KEYS = new Set(["name", "description", "tools"]);
 export function parseFrontmatter(raw: string): ParsedFrontmatter {
   const parsed = parseYaml(raw) as Record<string, unknown> | null;
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Frontmatter phải là một YAML object.");
+    throw new Error("Frontmatter must be a YAML object.");
   }
 
   const description = parsed["description"];
   if (typeof description !== "string") {
-    throw new Error("Frontmatter thiếu key `description` (string).");
+    throw new Error("Frontmatter is missing the `description` key (string).");
   }
 
   let name: string | undefined;
   if (parsed["name"] !== undefined) {
     if (typeof parsed["name"] !== "string") {
-      throw new Error("`name` phải là string.");
+      throw new Error("`name` must be a string.");
     }
     name = parsed["name"];
   }
@@ -75,7 +75,7 @@ export function parseFrontmatter(raw: string): ParsedFrontmatter {
     } else if (Array.isArray(raw_)) {
       tools = raw_.map((t) => String(t));
     } else {
-      throw new Error("`tools` phải là CSV string hoặc array.");
+      throw new Error("`tools` must be a CSV string or an array.");
     }
   }
 

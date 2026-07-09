@@ -39,7 +39,7 @@ export function compareVersions(a: string, b: string): number {
 export function bump(version: string, kind: BumpKind): string {
   const match = VERSION_RE.exec(version);
   if (!match) {
-    throw new Error(`Phiên bản không hợp lệ: "${version}" (cần dạng vMAJOR.MINOR.PATCH).`);
+    throw new Error(`Invalid version: "${version}" (expected the form vMAJOR.MINOR.PATCH).`);
   }
   let [major, minor, patch] = [Number(match[1]), Number(match[2]), Number(match[3])];
 

@@ -22,7 +22,7 @@ export function parseClaudeFile(
 ): CanonicalArtifact {
   const match = FRONTMATTER_RE.exec(raw);
   if (!match) {
-    throw new Error("File thiếu frontmatter (--- ... ---).");
+    throw new Error("File is missing frontmatter (--- ... ---).");
   }
   const [, fmRaw, bodyRaw] = match;
 
@@ -135,7 +135,7 @@ export function parseClaudeDir(filemap: ClaudeDirFileMap): ParsedClaudeDir {
     } else if (settingsMatch) {
       settings = { relPath, content };
     } else {
-      skipped.push({ relPath, reason: "Không nhận diện được loại file." });
+      skipped.push({ relPath, reason: "Could not recognize the file type." });
     }
   }
 

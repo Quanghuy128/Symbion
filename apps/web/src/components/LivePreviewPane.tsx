@@ -38,7 +38,7 @@ export function LivePreviewPane({ artifact, allArtifacts }: LivePreviewPaneProps
       </pre>
       <div className="border-t border-border-hairline p-2 text-xs">
         {errors.length === 0 && warnings.length === 0 && (
-          <p className="text-success">✓ frontmatter hợp lệ · filename khớp name</p>
+          <p className="text-success">✓ frontmatter valid · filename matches name</p>
         )}
         {errors.map((e, i) => (
           <p key={i} className="text-danger">

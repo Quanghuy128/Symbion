@@ -25,7 +25,7 @@ export function DaemonStatusBadge() {
 
   return (
     <div className="w-full bg-danger/90 px-3 py-2.5 text-[11.5px] font-medium text-white">
-      ⚠ daemon mất kết nối — Lưu/Xuất bản đang tạm khoá. Đang thử kết nối lại…
+      ⚠ daemon disconnected — Save/Publish temporarily locked. Reconnecting…
     </div>
   );
 }

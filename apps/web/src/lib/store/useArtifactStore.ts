@@ -156,7 +156,7 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
 
   async saveArtifact(artifact) {
     const project = get().currentProject;
-    if (!project) throw new Error("Chưa chọn dự án.");
+    if (!project) throw new Error("No project selected.");
     const result = await callRpc<{ projectId: string; artifact: CanonicalArtifact }, SaveArtifactResult>(
       "saveArtifact",
       { projectId: project.id, artifact }
@@ -166,7 +166,7 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
 
   async deleteArtifact(artifactId) {
     const project = get().currentProject;
-    if (!project) throw new Error("Chưa chọn dự án.");
+    if (!project) throw new Error("No project selected.");
     const result = await callRpc<{ projectId: string; artifactId: string }, DeleteArtifactResult>(
       "deleteArtifact",
       { projectId: project.id, artifactId }

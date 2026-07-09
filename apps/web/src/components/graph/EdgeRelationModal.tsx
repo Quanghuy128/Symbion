@@ -51,7 +51,7 @@ export function EdgeRelationModal({
       onClose();
     } catch (err) {
       // Keep the modal open + preserve input on reject (design §3.2 L).
-      setError(err instanceof Error ? err.message : "Lưu thất bại. Thử lại.");
+      setError(err instanceof Error ? err.message : "Save failed. Try again.");
     } finally {
       setSaving(false);
     }
@@ -60,7 +60,7 @@ export function EdgeRelationModal({
   return (
     <Dialog open onClose={onClose} className="w-[420px]">
       <DialogHeader>
-        <DialogTitle>Quan hệ</DialogTitle>
+        <DialogTitle>Relationship</DialogTitle>
       </DialogHeader>
 
       <p className="mb-4 text-[13px]">
@@ -71,13 +71,13 @@ export function EdgeRelationModal({
 
       <div className="space-y-4">
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-text-body">Số lượng</label>
+          <label className="mb-1.5 block text-[13px] font-medium text-text-body">Count</label>
           <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              aria-label="Giảm"
+              aria-label="Decrease"
               disabled={count <= 1}
               onClick={() => setCount((c) => Math.max(1, c - 1))}
             >
@@ -98,7 +98,7 @@ export function EdgeRelationModal({
               type="button"
               variant="outline"
               size="sm"
-              aria-label="Tăng"
+              aria-label="Increase"
               onClick={() => setCount((c) => (Number.isInteger(c) ? c + 1 : 1))}
             >
               +
@@ -106,27 +106,27 @@ export function EdgeRelationModal({
           </div>
           <p className={`mt-1 text-xs ${countValid ? "text-text-faint" : "text-danger"}`}>
             {countValid
-              ? "agent này chạy bao nhiêu lần song song."
-              : "Số lượng phải là số nguyên ≥ 1"}
+              ? "how many times this agent runs in parallel."
+              : "Count must be an integer ≥ 1"}
           </p>
         </div>
 
         <div>
           <label className="mb-1.5 block text-[13px] font-medium text-text-body">
-            Mục tiêu (tùy chọn)
+            Goal (optional)
           </label>
           <textarea
             rows={3}
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
-            placeholder="Agent này cần đạt được điều gì?"
+            placeholder="What should this agent accomplish?"
             className="flex w-full rounded-sm border border-border-input bg-bg-input px-3 py-2 text-sm text-text-body outline-none placeholder:text-text-faint focus-visible:ring-1 focus-visible:ring-brand-accent"
           />
         </div>
 
         <div>
           <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.05em] text-text-faint">
-            Xem trước cạnh
+            Edge preview
           </label>
           <div className="rounded-panel border border-border-input bg-bg-code p-3 text-[13px]">
             {decorated ? (
@@ -141,7 +141,7 @@ export function EdgeRelationModal({
               </span>
             ) : (
               <span className="text-text-faint">
-                <span className="text-agent">{agentName}</span> · Cạnh này sẽ không có nhãn
+                <span className="text-agent">{agentName}</span> · This edge will have no label
               </span>
             )}
           </div>
@@ -152,10 +152,10 @@ export function EdgeRelationModal({
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
-          Huỷ
+          Cancel
         </Button>
         <Button disabled={!countValid || saving} onClick={handleSave}>
-          {saving ? "Đang lưu…" : "Lưu"}
+          {saving ? "Saving…" : "Save"}
         </Button>
       </DialogFooter>
     </Dialog>

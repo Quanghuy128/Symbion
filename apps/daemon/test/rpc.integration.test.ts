@@ -554,7 +554,7 @@ describe("T13 store migration", () => {
     store.schemaVersion = 999;
     writeFileSync(storePath, JSON.stringify(store));
 
-    expect(() => loadProjectStore(projectRoot)).toThrow(/mới hơn/);
+    expect(() => loadProjectStore(projectRoot)).toThrow(/newer version/);
   });
 });
 

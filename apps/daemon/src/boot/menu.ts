@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 export type BootChoice = "web" | "terminal" | "tray" | "exit";
 
 const MENU_LINE = "  1) Web UI   2) Hide to Tray   3) Exit";
-const PROMPT = "  Chọn (1-3): ";
+const PROMPT = "  Choose (1-3): ";
 
 /**
  * showBootMenu — S0 terminal boot menu. Compact single-line menu (Web UI /
@@ -24,7 +24,7 @@ export async function showBootMenu(url: string): Promise<BootChoice> {
         if (choice === "1") return resolve("web");
         if (choice === "2") return resolve("tray");
         if (choice === "3") return resolve("exit");
-        console.log("  Lựa chọn không hợp lệ, thử lại.\n");
+        console.log("  Invalid choice, please try again.\n");
         ask().then(resolve);
       });
     });

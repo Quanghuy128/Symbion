@@ -36,32 +36,32 @@ test.afterEach(async () => {
 
 async function createProjectAndOpenAgentForm(page: import("@playwright/test").Page) {
   await page.goto(daemon.url);
-  await page.getByRole("button", { name: "+ Tạo dự án" }).first().click();
+  await page.getByRole("button", { name: "+ New project" }).first().click();
   await page.getByPlaceholder("My API Service").fill("e2e-genbody");
   await page.getByPlaceholder("/home/me/code/my-service").fill(daemon.projectRoot);
-  await expect(page.getByText("✓ Thư mục tồn tại")).toBeVisible();
-  await page.getByRole("button", { name: "Tạo dự án", exact: true }).click();
-  await expect(page.getByRole("button", { name: "+ Thêm agent" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "+ Thêm agent" }).first().click();
+  await expect(page.getByText("✓ Folder exists")).toBeVisible();
+  await page.getByRole("button", { name: "Create project", exact: true }).click();
+  await expect(page.getByRole("button", { name: "+ Add agent" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "+ Add agent" }).first().click();
   await expect(page.getByText("Agent builder")).toBeVisible();
 }
 
 /** Clicks the generate button; the FIRST click in a fresh browser profile opens the
  * one-time disclosure dialog instead of immediately proceeding (EC-7). Acknowledging
- * the disclosure ("Đã hiểu") itself proceeds straight to confirm-replace/the RPC call
+ * the disclosure ("Got it") itself proceeds straight to confirm-replace/the RPC call
  * (GenerateBodyButton.handleDisclosureAck calls proceedToGenerate() synchronously) —
  * so this helper must NOT click the generate button a second time after acking, that
  * would race against (and get blocked by) whatever dialog proceedToGenerate() opens. */
 async function clickGenerate(page: import("@playwright/test").Page) {
-  const generateButton = page.getByRole("button", { name: "Tạo nội dung bằng AI" });
+  const generateButton = page.getByRole("button", { name: "Generate content with AI" });
   await generateButton.click();
-  const ackButton = page.getByRole("button", { name: "Đã hiểu" });
+  const ackButton = page.getByRole("button", { name: "Got it" });
   if (await ackButton.isVisible().catch(() => false)) {
     await ackButton.click();
   }
 }
 
-test("TC-E1/TC-E2 — happy path: fills Nội dung with AI-generated text via a real outbound RPC + HTTP call", async ({
+test("TC-E1/TC-E2 — happy path: fills Content with AI-generated text via a real outbound RPC + HTTP call", async ({
   page,
 }) => {
   let requestBody: any;
@@ -95,18 +95,18 @@ test("TC-E1/TC-E2 — happy path: fills Nội dung with AI-generated text via a 
   expect(requestBody?.model).toBeTruthy();
 });
 
-test("TC-E3 (AC-1 regression) — sparkle icon is gone from beside description, present beside Nội dung", async ({
+test("TC-E3 (AC-1 regression) — sparkle icon is gone from beside description, present beside Content", async ({
   page,
 }) => {
   daemon = await bootDaemon();
   await createProjectAndOpenAgentForm(page);
 
   // No generate-style button rendered directly next to the description input.
-  await expect(page.getByRole("button", { name: "Tạo mô tả tự động" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Tạo nội dung bằng AI" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Auto-generate description" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Generate content with AI" })).toBeVisible();
 });
 
-test("TC-E4 (AC-5/EC-2) — confirm-before-replace: Hủy preserves original text, Thay thế replaces after confirm", async ({
+test("TC-E4 (AC-5/EC-2) — confirm-before-replace: Cancel preserves original text, Replace replaces after confirm", async ({
   page,
 }) => {
   const baseUrl = await startFakeOllama((_req, res) => {
@@ -120,22 +120,22 @@ test("TC-E4 (AC-5/EC-2) — confirm-before-replace: Hủy preserves original tex
   await page.locator("textarea").fill("My hand-written existing body.");
 
   await clickGenerate(page);
-  await expect(page.getByText("Thay thế nội dung?")).toBeVisible();
+  await expect(page.getByText("Replace content?")).toBeVisible();
 
   const confirmDialog = page
-    .locator("h2", { hasText: "Thay thế nội dung?" })
+    .locator("h2", { hasText: "Replace content?" })
     .locator("xpath=(ancestor::div[contains(@class, 'fixed')])[last()]");
-  await confirmDialog.getByRole("button", { name: "Hủy" }).click();
+  await confirmDialog.getByRole("button", { name: "Cancel" }).click();
 
-  await expect(page.getByText("Thay thế nội dung?")).not.toBeVisible();
+  await expect(page.getByText("Replace content?")).not.toBeVisible();
   await expect(page.locator("textarea")).toHaveValue("My hand-written existing body.");
 
-  await page.getByRole("button", { name: "Tạo nội dung bằng AI" }).click();
-  await page.getByRole("button", { name: "Thay thế" }).click();
+  await page.getByRole("button", { name: "Generate content with AI" }).click();
+  await page.getByRole("button", { name: "Replace" }).click();
   await expect(page.locator("textarea")).toHaveValue("Generated replacement body.", { timeout: 10_000 });
 });
 
-test("TC-E5 (AC-6/EC-4) — Ollama unreachable -> inline error, Nội dung unchanged, Save still works", async ({
+test("TC-E5 (AC-6/EC-4) — Ollama unreachable -> inline error, Content unchanged, Save still works", async ({
   page,
 }) => {
   // Point at a port nothing is listening on to simulate "Ollama not running".
@@ -148,10 +148,10 @@ test("TC-E5 (AC-6/EC-4) — Ollama unreachable -> inline error, Nội dung uncha
 
   await clickGenerate(page);
 
-  await expect(page.getByText(/Không thể kết nối tới Ollama/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Cannot connect to Ollama/)).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("textarea")).toHaveValue("");
 
-  await page.getByRole("button", { name: "Lưu" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Agent builder")).not.toBeVisible();
 });
 
@@ -186,7 +186,7 @@ test("TC-E6 (AC-4) — rapid double-click fires exactly one generateBody RPC req
   // exercising the double-click, so the cooldown guard doesn't mask the assertion.
   await page.waitForTimeout(4200);
 
-  const generateButton = page.getByRole("button", { name: "Tạo nội dung bằng AI" });
+  const generateButton = page.getByRole("button", { name: "Generate content with AI" });
   await Promise.all([generateButton.click(), generateButton.click()]);
   await expect(page.locator("textarea")).toHaveValue(/Slow generated body/, { timeout: 10_000 });
 
@@ -207,8 +207,8 @@ test("TC-E7 (EC-8) — daemon disconnected -> generate button disabled", async (
     await route.continue();
   });
 
-  await expect(page.getByText("daemon mất kết nối")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByRole("button", { name: "Tạo nội dung bằng AI" })).toBeDisabled();
+  await expect(page.getByText("daemon disconnected")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Generate content with AI" })).toBeDisabled();
 });
 
 test("TC-E8 (EC-7) — first click in a fresh profile shows the one-time disclosure dialog with Ollama-appropriate copy", async ({
@@ -218,22 +218,22 @@ test("TC-E8 (EC-7) — first click in a fresh profile shows the one-time disclos
   await createProjectAndOpenAgentForm(page);
 
   // Persistent micro-copy is visible even before any click (compliance-bearing disclosure).
-  await expect(page.getByText(/gửi tên\/mô tả\/nội dung hiện tại tới mô hình chạy trên máy bạn, không gửi ra ngoài/)).toBeVisible();
+  await expect(page.getByText(/sends the name\/description\/current content to a model running on your machine, nothing leaves it/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Tạo nội dung bằng AI" }).click();
+  await page.getByRole("button", { name: "Generate content with AI" }).click();
 
-  await expect(page.getByText("Sử dụng AI để tạo nội dung")).toBeVisible();
-  await expect(page.getByText(/không được gửi ra ngoài máy/)).toBeVisible();
+  await expect(page.getByText("Use AI to generate content")).toBeVisible();
+  await expect(page.getByText(/No data leaves your machine/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Đã hiểu" }).click();
-  await expect(page.getByText("Sử dụng AI để tạo nội dung")).not.toBeVisible();
+  await page.getByRole("button", { name: "Got it" }).click();
+  await expect(page.getByText("Use AI to generate content")).not.toBeVisible();
 });
 
 test("TC-E10 (AC-3) — ModelPicker offers 3 real selectable models", async ({ page }) => {
   daemon = await bootDaemon();
   await createProjectAndOpenAgentForm(page);
 
-  const picker = page.getByLabel("Chọn mô hình AI");
+  const picker = page.getByLabel("Select AI model");
   await expect(picker).toBeVisible();
   const optionCount = await picker.locator("option").count();
   expect(optionCount).toBe(3);

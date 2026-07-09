@@ -34,7 +34,7 @@ describe("buildBodyGenerationPrompt", () => {
     const commandPrompt = buildBodyGenerationPrompt({ kind: "command", ...base });
     expect(agentPrompt.system).not.toBe(commandPrompt.system);
     expect(agentPrompt.user).not.toBe(commandPrompt.user);
-    expect(commandPrompt.system.toLowerCase()).toMatch(/command|lệnh/);
+    expect(commandPrompt.system.toLowerCase()).toMatch(/command/);
     expect(agentPrompt.system.toLowerCase()).toMatch(/agent/);
   });
 
@@ -44,8 +44,8 @@ describe("buildBodyGenerationPrompt", () => {
     const { user } = buildBodyGenerationPrompt(input);
     expect(user).toContain("foo");
     // empty fields must be explicitly labeled, not left as a dangling "Label: " with nothing after it
-    expect(user).toMatch(/Mô tả ngắn: \(chưa có\)/);
-    expect(user).toMatch(/Nội dung hiện tại[^:]*: \(chưa có\)/);
+    expect(user).toMatch(/Short description: \(none\)/);
+    expect(user).toMatch(/Current content[^:]*: \(none\)/);
   });
 
   it("TC-C3b (EC-1): fully empty (name also empty) still produces a coherent prompt, never throws", () => {

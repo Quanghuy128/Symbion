@@ -13,7 +13,7 @@ export interface GraphToolbarProps {
 
 /**
  * GraphToolbar (design §4 A / surface A) — floating top-left pill:
- * `＋ Thêm ▾` (opens an add dropdown), `⤢ Vừa khung` (fitView), `?` (legend).
+ * `＋ Add ▾` (opens an add dropdown), `⤢ Fit to view` (fitView), `?` (legend).
  */
 export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDisabled }: GraphToolbarProps) {
   const [addOpen, setAddOpen] = useState(false);
@@ -42,10 +42,10 @@ export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDi
           type="button"
           disabled={disabled}
           onClick={() => setAddOpen((o) => !o)}
-          title={disabled ? "Cần kết nối daemon." : undefined}
+          title={disabled ? "Daemon connection required." : undefined}
           className="flex h-7 items-center gap-1 rounded-pill px-2.5 text-[12.5px] font-medium text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          ＋ Thêm ▾
+          ＋ Add ▾
         </button>
         {addOpen && (
           <div
@@ -62,7 +62,7 @@ export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDi
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06]"
             >
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#818cf8" }} />
-              Thêm workflow
+              Add workflow
             </button>
             <button
               type="button"
@@ -74,7 +74,7 @@ export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDi
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06]"
             >
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#a78bfa" }} />
-              Thêm agent
+              Add agent
             </button>
           </div>
         )}
@@ -86,12 +86,12 @@ export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDi
         onClick={onFitView}
         className="flex h-7 items-center gap-1 rounded-pill px-2.5 text-[12.5px] font-medium text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        ⤢ Vừa khung
+        ⤢ Fit to view
       </button>
 
       <button
         type="button"
-        aria-label="Chú thích"
+        aria-label="Legend"
         onClick={onToggleLegend}
         className="flex h-7 w-7 items-center justify-center rounded-pill text-[13px] font-medium text-text-body hover:bg-white/[.06]"
       >

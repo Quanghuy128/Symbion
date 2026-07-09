@@ -12,7 +12,7 @@ const CURRENT_SCHEMA_VERSION = 1 as const;
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(found: number) {
-    super(`store.json được tạo bởi phiên bản Symbion mới hơn (schemaVersion=${found}). Từ chối ghi đè.`);
+    super(`store.json was created by a newer version of Symbion (schemaVersion=${found}). Refusing to overwrite.`);
     this.name = "UnsupportedSchemaVersionError";
   }
 }
@@ -70,7 +70,7 @@ export function projectStoreExists(projectRoot: string): boolean {
 function migrateProjectStore(raw: Record<string, unknown>, absPath: string, rawText: string): ProjectStore {
   const schemaVersion = raw["schemaVersion"];
   if (typeof schemaVersion !== "number") {
-    throw new Error("store.json thiếu schemaVersion.");
+    throw new Error("store.json is missing schemaVersion.");
   }
   if (schemaVersion > CURRENT_SCHEMA_VERSION) {
     throw new UnsupportedSchemaVersionError(schemaVersion);
@@ -126,7 +126,7 @@ export function globalConfigPath(): string {
 function migrateGlobalConfig(raw: Record<string, unknown>, absPath: string, rawText: string): GlobalConfig {
   const schemaVersion = raw["schemaVersion"];
   if (typeof schemaVersion !== "number") {
-    throw new Error("config.json thiếu schemaVersion.");
+    throw new Error("config.json is missing schemaVersion.");
   }
   if (schemaVersion > CURRENT_SCHEMA_VERSION) {
     throw new UnsupportedSchemaVersionError(schemaVersion);

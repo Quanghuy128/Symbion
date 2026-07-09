@@ -44,7 +44,7 @@ const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
 export function parseTemplateMarkdown(raw: string, expectedKind: TemplateKind): ParseTemplateResult {
   const match = FRONTMATTER_RE.exec(raw);
   if (!match) {
-    return { ok: false, reason: "File thiếu frontmatter (--- ... ---)." };
+    return { ok: false, reason: "File is missing frontmatter (--- ... ---)." };
   }
   const [, fmRaw, bodyRaw] = match;
 
@@ -61,15 +61,15 @@ export function parseTemplateMarkdown(raw: string, expectedKind: TemplateKind): 
   // convention (render/frontmatter.ts, parse/scan.ts). Requiring it here for
   // commands would reject every correctly-authored command template.
   if (expectedKind === "agent" && (!fm.name || fm.name.trim().length === 0)) {
-    return { ok: false, reason: "Frontmatter thiếu 'name'." };
+    return { ok: false, reason: "Frontmatter is missing 'name'." };
   }
   if (!fm.description || fm.description.trim().length === 0) {
-    return { ok: false, reason: "Frontmatter thiếu 'description'." };
+    return { ok: false, reason: "Frontmatter is missing 'description'." };
   }
 
   const body = (bodyRaw ?? "").replace(/\n+$/, "").replace(/^\n+/, "");
   if (body.length === 0) {
-    return { ok: false, reason: "Body (nội dung sau frontmatter) trống." };
+    return { ok: false, reason: "Body (content after frontmatter) is empty." };
   }
 
   const parsed: ParsedTemplateContent = {

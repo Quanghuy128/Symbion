@@ -16,24 +16,24 @@ export interface ApplyResultPanelProps {
 export function ApplyResultPanel({ projectName, finalName, wasRenamed, onOpenProject, onClose }: ApplyResultPanelProps) {
   return (
     <div className="space-y-3">
-      <p className="text-sm text-green-600">✓ Đã áp dụng</p>
+      <p className="text-sm text-green-600">✓ Applied</p>
       {wasRenamed ? (
         <p className="text-sm">
-          Đã được thêm vào dự án &quot;{projectName}&quot; với tên &quot;{finalName}&quot; (đã trùng tên với mục có
-          sẵn, tự động đổi tên để không ghi đè).
+          Added to project &quot;{projectName}&quot; as &quot;{finalName}&quot; (name collided with an existing
+          one, so it was auto-renamed to avoid overwriting).
         </p>
       ) : (
         <p className="text-sm">
-          &quot;{finalName}&quot; đã được thêm vào dự án &quot;{projectName}&quot; ở dạng nháp.
+          &quot;{finalName}&quot; was added to project &quot;{projectName}&quot; as a draft.
         </p>
       )}
-      <p className="text-xs text-muted-foreground">Trạng thái: nháp (draft) — chưa ghi gì ra repo.</p>
+      <p className="text-xs text-muted-foreground">Status: draft — nothing written to the repo yet.</p>
 
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="outline" onClick={onClose}>
-          Đóng
+          Close
         </Button>
-        <Button onClick={onOpenProject}>Mở dự án →</Button>
+        <Button onClick={onOpenProject}>Open project →</Button>
       </div>
     </div>
   );

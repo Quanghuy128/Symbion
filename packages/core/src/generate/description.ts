@@ -12,7 +12,7 @@ export interface GenerateDescriptionInput {
 
 const BODY_CLAUSE_CAP = 160;
 const FINAL_CAP = 200;
-const FALLBACK = "Mô tả tự động.";
+const FALLBACK = "Auto-generated description.";
 
 /** Strip a leading markdown heading marker, e.g. "## Foo" -> "Foo". */
 function stripHeading(line: string): string {
@@ -25,7 +25,7 @@ function stripHeading(line: string): string {
  * strip occurred (so the caller can lowercase the new first character).
  */
 function stripYouArePrefix(line: string): { text: string; stripped: boolean } {
-  const re = /^(you are|bạn là)\s+/i;
+  const re = /^(you are)\s+/i;
   if (re.test(line)) {
     return { text: line.replace(re, ""), stripped: true };
   }
@@ -155,7 +155,7 @@ export function generateDescription(input: GenerateDescriptionInput): string {
     } else if (bodyClause !== undefined) {
       assembled = `Agent that ${bodyClause}.`;
     } else if (name !== "") {
-      assembled = `Mô tả cho ${name}.`;
+      assembled = `Description for ${name}.`;
     } else {
       assembled = FALLBACK;
     }
@@ -175,7 +175,7 @@ export function generateDescription(input: GenerateDescriptionInput): string {
     if (bodyClause !== undefined) {
       assembled = `Command that ${bodyClause}.`;
     } else if (name !== "") {
-      assembled = `Mô tả cho /${name}.`;
+      assembled = `Description for /${name}.`;
     } else {
       assembled = FALLBACK;
     }

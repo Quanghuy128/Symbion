@@ -29,14 +29,14 @@ export function openInBrowser(url: string, onFailure: (message: string) => void)
 
     exec(cmd, (err) => {
       if (err) {
-        onFailure(`Không tự mở được trình duyệt (${err.message}). Hãy mở thủ công đường dẫn ở trên.`);
+        onFailure(`Could not open the browser automatically (${err.message}). Please open the URL above manually.`);
       }
     });
   } catch (err) {
     // Defensive: exec() itself is not expected to throw synchronously, but
     // never let a browser-open attempt crash the boot menu loop either way.
     onFailure(
-      `Không tự mở được trình duyệt (${(err as Error).message}). Hãy mở thủ công đường dẫn ở trên.`
+      `Could not open the browser automatically (${(err as Error).message}). Please open the URL above manually.`
     );
   }
 }

@@ -11,7 +11,7 @@ export function ImportScanningState(_props: ImportScanningStateProps) {
   return (
     <div className="flex items-center justify-center gap-2 rounded-panel border border-border-hairline bg-white/[.03] p-6 text-sm text-text-muted">
       <span className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted border-t-transparent" />
-      Đang quét .claude/…
+      Scanning .claude/…
     </div>
   );
 }

@@ -22,14 +22,14 @@ const COOLDOWN_MS = 4000;
  * (e.g. "llm-invalid-response") the daemon's message carries extra, useful detail this
  * generic map would otherwise discard (see docs/learnings.md "Generate Body 404 loop"). */
 const ERROR_MESSAGES: Record<string, string> = {
-  "llm-provider-not-running": "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy.",
-  "llm-timeout": "Quá thời gian chờ (45s) — thử lại.",
-  "llm-auth": "Thiếu hoặc sai cấu hình API key cho nhà cung cấp AI.",
-  "llm-rate-limit": "Bị giới hạn tần suất gọi — thử lại sau.",
-  "llm-invalid-response": "Phản hồi không hợp lệ từ mô hình.",
-  "llm-not-configured": "Chưa cấu hình nhà cung cấp AI nào — vào Cài đặt để thêm.",
+  "llm-provider-not-running": "Cannot connect to Ollama — make sure Ollama is running on your machine.",
+  "llm-timeout": "Request timed out (45s) — try again.",
+  "llm-auth": "Missing or invalid API key for the AI provider.",
+  "llm-rate-limit": "Rate-limited — try again later.",
+  "llm-invalid-response": "Invalid response from the model.",
+  "llm-not-configured": "No AI provider configured — go to Settings to add one.",
 };
-const DEFAULT_ERROR_MESSAGE = "Lỗi không xác định, thử lại.";
+const DEFAULT_ERROR_MESSAGE = "Unknown error, please try again.";
 
 /** Error codes for which the CTA links to /settings — generalized from the old
  * Ollama-specific "Cách kết nối Ollama" link (STATE §3.2/§4d). */
@@ -181,13 +181,13 @@ export function GenerateBodyButton({
         type="button"
         variant="outline"
         size="sm"
-        aria-label="Tạo nội dung bằng AI"
+        aria-label="Generate content with AI"
         title={
           !daemonConnected
-            ? "Daemon mất kết nối"
+            ? "Daemon disconnected"
             : !providerId
-              ? "Chưa chọn nhà cung cấp AI — vào Cài đặt để chọn"
-              : "Tạo nội dung bằng AI"
+              ? "No AI provider selected — go to Settings to choose one"
+              : "Generate content with AI"
         }
         disabled={disabled}
         onClick={handleClick}
@@ -199,9 +199,9 @@ export function GenerateBodyButton({
 
       {!providerId && daemonConnected && (
         <p className="mt-1 text-xs text-text-muted">
-          Chưa chọn nhà cung cấp AI —{" "}
+          No AI provider selected —{" "}
           <Link href="/settings" className="underline">
-            vào Cài đặt để chọn
+            go to Settings to choose one
           </Link>
           .
         </p>
@@ -212,7 +212,7 @@ export function GenerateBodyButton({
           <span>{errorMessage || ERROR_MESSAGES[errorCode] || DEFAULT_ERROR_MESSAGE}</span>
           {errorCode === "llm-timeout" && (
             <button type="button" className="underline" onClick={handleRetry} disabled={busy || cooldown}>
-              Thử lại
+              Retry
             </button>
           )}
           {/* Generalized from the old Ollama-specific "Cách kết nối Ollama" CTA: any
@@ -220,7 +220,7 @@ export function GenerateBodyButton({
            *  provider-agnostic Settings page (STATE §3.2/§4d). */}
           {SETTINGS_CTA_CODES.has(errorCode) && (
             <Link href="/settings" className="underline">
-              Mở Cài đặt nhà cung cấp
+              Open provider settings
             </Link>
           )}
         </div>
@@ -228,26 +228,26 @@ export function GenerateBodyButton({
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogHeader>
-          <DialogTitle>Thay thế nội dung?</DialogTitle>
+          <DialogTitle>Replace content?</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-text-muted">
-          Nội dung hiện tại sẽ được thay thế bằng nội dung do AI tạo ra — tiếp tục?
+          The current content will be replaced with AI-generated content — continue?
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-            Hủy
+            Cancel
           </Button>
-          <Button onClick={handleConfirmReplace}>Thay thế</Button>
+          <Button onClick={handleConfirmReplace}>Replace</Button>
         </DialogFooter>
       </Dialog>
 
       <Dialog open={disclosureOpen} onClose={dismissDisclosure}>
         <DialogHeader>
-          <DialogTitle>Sử dụng AI để tạo nội dung</DialogTitle>
+          <DialogTitle>Use AI to generate content</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-text-muted">{firstUseDisclosureCopy(providerId)}</p>
         <DialogFooter>
-          <Button onClick={handleDisclosureAck}>Đã hiểu</Button>
+          <Button onClick={handleDisclosureAck}>Got it</Button>
         </DialogFooter>
       </Dialog>
     </>

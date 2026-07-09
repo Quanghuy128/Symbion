@@ -17,7 +17,7 @@ export interface AuthorTabsProps {
  */
 export function AuthorTabs({ authors, selectedId, onSelect }: AuthorTabsProps) {
   return (
-    <div className="flex gap-4 border-b border-border" role="tablist" aria-label="Tác giả mẫu">
+    <div className="flex gap-4 border-b border-border" role="tablist" aria-label="Template authors">
       {authors.map((author) => {
         const active = author.id === selectedId;
         return (

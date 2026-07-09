@@ -38,8 +38,8 @@ export function ProjectPickerStep({
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <p className="text-sm text-muted-foreground">Chưa có dự án nào — tạo dự án trước</p>
-        <Button onClick={onCreateProjectRequested}>+ Tạo dự án mới</Button>
+        <p className="text-sm text-muted-foreground">No projects yet — create one first</p>
+        <Button onClick={onCreateProjectRequested}>+ New project</Button>
       </div>
     );
   }
@@ -48,14 +48,14 @@ export function ProjectPickerStep({
     <div className="space-y-2">
       {!daemonConnected && (
         <p className="text-xs font-medium text-destructive">
-          ⚠ daemon mất kết nối — không thể áp dụng lúc này. Đang thử kết nối lại…
+          ⚠ daemon disconnected — cannot apply right now. Reconnecting…
         </p>
       )}
 
-      <Input placeholder="🔍 Tìm dự án…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
+      <Input placeholder="🔍 Search projects…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
 
       <div className="max-h-48 space-y-1 overflow-y-auto">
-        {filtered.length === 0 && <p className="text-xs text-muted-foreground">Không tìm thấy dự án phù hợp.</p>}
+        {filtered.length === 0 && <p className="text-xs text-muted-foreground">No matching projects found.</p>}
         {filtered.map((p) => (
           <label
             key={p.id}
@@ -79,8 +79,8 @@ export function ProjectPickerStep({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Mẫu sẽ được lưu vào dự án đã chọn ở dạng nháp (draft) — chưa ghi gì vào repo. Bạn vẫn cần Xuất bản sau để ghi
-        ra đĩa.
+        The template will be saved to the selected project as a draft — nothing written to the repo yet. You still need to Publish later to write
+        it to disk.
       </p>
     </div>
   );

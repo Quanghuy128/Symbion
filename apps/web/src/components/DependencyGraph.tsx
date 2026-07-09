@@ -148,23 +148,23 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
       const target = artifactById.get(conn.target);
       // Backstop guard (E1) — isValidConnection is the live feedback.
       if (!command || command.kind !== "command" || !target || target.kind !== "agent") {
-        showToast("Chỉ nối được /command → agent.", "error");
+        showToast("Only /command → agent can be linked.", "error");
         return;
       }
       const agent = target;
       // Duplicate (E2): idempotent no-op.
       if (extractAgentMentions(command.body).includes(agent.name)) {
-        showToast("Đã liên kết rồi.");
+        showToast("Already linked.");
         return;
       }
       setPendingConnection({ source: command.id, target: agent.id });
       try {
         await saveArtifact({ ...command, body: upsertAgentRef(command.body, { name: agent.name }) });
-        showToast(`Đã liên kết /${command.name} → ${agent.name}`, "success");
+        showToast(`Linked /${command.name} → ${agent.name}`, "success");
         setJustAddedId(agent.id);
         if (showHint) dismissHint();
       } catch (err) {
-        showToast(err instanceof Error ? err.message : "Lưu thất bại. Thử lại.", "error");
+        showToast(err instanceof Error ? err.message : "Save failed. Try again.", "error");
       } finally {
         setPendingConnection(null);
       }
@@ -187,9 +187,9 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
     async (ref: AgentRef) => {
       if (!modalTarget) return;
       const command = commandById.get(modalTarget.commandId);
-      if (!command) throw new Error("Không tìm thấy workflow.");
+      if (!command) throw new Error("Workflow not found.");
       await saveArtifact({ ...command, body: upsertAgentRef(command.body, ref) });
-      showToast(`Đã cập nhật liên kết ${modalTarget.agentName}.`, "success");
+      showToast(`Updated link for ${modalTarget.agentName}.`, "success");
     },
     [modalTarget, commandById, saveArtifact, showToast]
   );
@@ -200,9 +200,9 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
       if (!command) return;
       try {
         await saveArtifact({ ...command, body: removeAgentRef(command.body, agentName) });
-        showToast(`Đã bỏ liên kết ${agentName}.`);
+        showToast(`Unlinked ${agentName}.`);
       } catch (err) {
-        showToast(err instanceof Error ? err.message : "Lưu thất bại. Thử lại.", "error");
+        showToast(err instanceof Error ? err.message : "Save failed. Try again.", "error");
       }
     },
     [commandById, saveArtifact, showToast]
@@ -227,12 +227,12 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
     try {
       await deleteArtifact(artifact.id);
       setConfirmDeleteId(null);
-      showToast("Đã xoá.");
+      showToast("Deleted.");
       if (artifact.kind === "agent" && refs.length > 0) {
-        showToast(`${refs.length} workflow vẫn tham chiếu ${artifact.name}.`, "warning");
+        showToast(`${refs.length} workflow(s) still reference ${artifact.name}.`, "warning");
       }
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Xoá thất bại — không rõ lý do.");
+      setDeleteError(err instanceof Error ? err.message : "Delete failed — reason unknown.");
     } finally {
       setDeletingId(null);
     }
@@ -316,7 +316,7 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
               type: "missingAgent",
               position: { x: 320, y: (agents.length + missingIndex) * 80 },
               data: {
-                label: `⚠ ${mention} (không tồn tại)`,
+                label: `⚠ ${mention} (does not exist)`,
                 name: mention,
                 onCreateAgent: handleCreateAgent,
                 daemonConnected,

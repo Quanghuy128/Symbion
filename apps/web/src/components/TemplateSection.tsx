@@ -25,7 +25,7 @@ export function TemplateSection({ title, items, skipped, onSelect }: TemplateSec
       <h2 className="border-b border-border pb-1 text-sm font-semibold text-muted-foreground">{title}</h2>
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Chưa có mẫu nào trong mục này.</p>
+        <p className="text-xs text-muted-foreground">No templates in this section yet.</p>
       ) : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {items.map((item) => (
@@ -36,7 +36,7 @@ export function TemplateSection({ title, items, skipped, onSelect }: TemplateSec
 
       {skipped.map((s) => (
         <p key={s.relPath} className="text-xs text-amber-600">
-          ⚠ {s.relPath} không tải được → bỏ qua ({s.reason})
+          ⚠ {s.relPath} failed to load → skipped ({s.reason})
         </p>
       ))}
     </section>

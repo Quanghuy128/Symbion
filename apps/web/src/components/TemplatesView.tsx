@@ -77,7 +77,7 @@ export function TemplatesView() {
       const result = await fetchAuthorTemplates({ authorId });
       setAuthorCache((prev) => ({ ...prev, [authorId]: result.outcome }));
     } catch (err) {
-      const message = err instanceof DaemonRpcError ? err.message : "Lỗi không xác định khi tải mẫu.";
+      const message = err instanceof DaemonRpcError ? err.message : "Unknown error while loading templates.";
       setAuthorCache((prev) => ({
         ...prev,
         [authorId]: { status: "error", kind: "network", message },
@@ -132,7 +132,7 @@ export function TemplatesView() {
           <div>
             <h1 className="text-lg font-semibold">Templates</h1>
             <p className="text-sm text-muted-foreground">
-              Thư viện mẫu agent / command / skill có sẵn — xem trước rồi áp dụng vào dự án của bạn.
+              Library of ready-made agent / command / skill templates — preview then apply to your project.
             </p>
           </div>
 
@@ -177,7 +177,7 @@ export function TemplatesView() {
                   <AuthorSkippedSummary items={skipped} />
                   {items.length === 0 && (
                     <p className="text-xs text-amber-600">
-                      ⚠ Đã tải xong nhưng không có mẫu nào hợp lệ trong repo {currentAuthorMeta?.kind === "github" ? currentAuthorMeta.repoLabel : currentAuthorLabel}.
+                      ⚠ Loaded, but no valid templates were found in repo {currentAuthorMeta?.kind === "github" ? currentAuthorMeta.repoLabel : currentAuthorLabel}.
                     </p>
                   )}
                 </>
@@ -186,7 +186,7 @@ export function TemplatesView() {
           )}
 
           <div className="border-t border-border pt-3 text-xs text-muted-foreground">
-            Lấy cảm hứng từ các bộ template cộng đồng (vd. ECC){" "}
+            Get inspired by community template sets (e.g. ECC){" "}
             <a
               href="https://github.com/affaan-m/ecc"
               target="_blank"

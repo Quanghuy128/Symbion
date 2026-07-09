@@ -134,7 +134,7 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           <button
             type="button"
             onClick={onCreateProject}
-            aria-label="Tạo dự án mới"
+            aria-label="New project"
             className="flex h-5 w-5 items-center justify-center rounded-sm text-text-faint hover:bg-white/[.06] hover:text-text-dim"
           >
             +
@@ -142,7 +142,7 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
         </div>
 
         {projects.length === 0 && (
-          <p className="px-1 py-1 text-xs text-text-faint">∅ chưa có dự án</p>
+          <p className="px-1 py-1 text-xs text-text-faint">∅ no projects yet</p>
         )}
 
         <ul className="flex-1 space-y-0.5 overflow-y-auto">

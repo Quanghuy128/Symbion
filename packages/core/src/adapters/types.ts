@@ -7,7 +7,7 @@ export interface TargetCapability {
   supportsCommands: boolean; // Claude true, Codex false (lossy -> flatten)
   supportsPerAgentFile: boolean; // Claude true, Codex false (single AGENTS.md)
   fileFormat: "md-per-file" | "md-merged";
-  lossy: boolean; // Codex true -> UI shows badge + "Tôi hiểu"
+  lossy: boolean; // Codex true -> UI shows badge + "I understand"
 }
 
 export interface RenderedFile {

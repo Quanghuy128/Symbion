@@ -15,7 +15,7 @@ export interface DaemonHandle {
   stop: () => Promise<void>;
 }
 
-const URL_RE = /Symbion daemon đang chạy: (http:\/\/127\.0\.0\.1:(\d+)\/\?t=([0-9a-f]+))/;
+const URL_RE = /Symbion daemon running: (http:\/\/127\.0\.0\.1:(\d+)\/\?t=([0-9a-f]+))/;
 
 /**
  * bootDaemon — spawns the real built daemon (apps/daemon/dist/index.js) against

@@ -57,13 +57,13 @@ export function ProjectView({ project }: ProjectViewProps) {
     try {
       await deleteArtifact(artifact.id);
       setConfirmDeleteId(null);
-      showToast("Đã xoá.", "success");
+      showToast("Deleted.", "success");
     } catch (err) {
       // Never fail silently (CLAUDE.md "never write silently", extended to
       // deletes per PLAN §6.7) — surface inline near the row, same
       // saveError-style local pattern as BuilderDrawer.tsx. Row is NOT
       // removed from the list on failure.
-      const message = err instanceof Error ? err.message : "Xoá thất bại — không rõ lý do.";
+      const message = err instanceof Error ? err.message : "Delete failed — reason unknown.";
       setDeleteErrorId(artifact.id);
       setDeleteError(message);
     } finally {
@@ -80,10 +80,10 @@ export function ProjectView({ project }: ProjectViewProps) {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setTab(tab === "list" ? "graph" : "list")}>
-            {tab === "list" ? "Sơ đồ" : "Danh sách"}
+            {tab === "list" ? "Graph" : "List"}
           </Button>
           <Button size="sm" disabled={!daemonConnected} onClick={() => setPublishing(true)}>
-            Xuất bản ▸
+            Publish ▸
           </Button>
         </div>
       </div>
@@ -91,8 +91,8 @@ export function ProjectView({ project }: ProjectViewProps) {
       <div className="mx-auto w-full max-w-[1000px] flex-1 overflow-y-auto px-8 py-8">
         {isEmpty ? (
           <div className="flex h-full items-center justify-center gap-2">
-            <Button onClick={() => setEditing(newArtifact("agent"))}>+ Thêm agent</Button>
-            <Button onClick={() => setEditing(newArtifact("command"))}>+ Thêm workflow</Button>
+            <Button onClick={() => setEditing(newArtifact("agent"))}>+ Add agent</Button>
+            <Button onClick={() => setEditing(newArtifact("command"))}>+ Add workflow</Button>
           </div>
         ) : tab === "graph" ? (
           <DependencyGraph artifacts={project.artifacts} onEditArtifact={setEditing} />
@@ -104,7 +104,7 @@ export function ProjectView({ project }: ProjectViewProps) {
                   Workflows / Commands ({commands.length})
                 </h2>
                 <Button size="sm" variant="outline" onClick={() => setEditing(newArtifact("command"))}>
-                  + Thêm workflow
+                  + Add workflow
                 </Button>
               </div>
               <ul className="space-y-2">
@@ -115,10 +115,10 @@ export function ProjectView({ project }: ProjectViewProps) {
                   >
                     {confirmDeleteId === c.id ? (
                       <div className="flex items-center justify-between">
-                        <span className="text-text-body">Xác nhận xoá /{c.name}?</span>
+                        <span className="text-text-body">Confirm delete /{c.name}?</span>
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" onClick={cancelDelete}>
-                            Hủy
+                            Cancel
                           </Button>
                           <Button
                             size="sm"
@@ -126,7 +126,7 @@ export function ProjectView({ project }: ProjectViewProps) {
                             disabled={deletingId === c.id}
                             onClick={() => confirmDelete(c)}
                           >
-                            {deletingId === c.id ? "Đang xoá…" : "Xoá"}
+                            {deletingId === c.id ? "Deleting…" : "Delete"}
                           </Button>
                         </div>
                       </div>
@@ -161,7 +161,7 @@ export function ProjectView({ project }: ProjectViewProps) {
                       </div>
                     )}
                     {deleteErrorId === c.id && deleteError && (
-                      <p className="mt-2 text-xs text-danger">✗ Xoá thất bại: {deleteError}</p>
+                      <p className="mt-2 text-xs text-danger">✗ Delete failed: {deleteError}</p>
                     )}
                   </li>
                 ))}
@@ -174,7 +174,7 @@ export function ProjectView({ project }: ProjectViewProps) {
                   Agents ({agents.length})
                 </h2>
                 <Button size="sm" variant="outline" onClick={() => setEditing(newArtifact("agent"))}>
-                  + Thêm agent
+                  + Add agent
                 </Button>
               </div>
               <ul className="space-y-2">
@@ -182,10 +182,10 @@ export function ProjectView({ project }: ProjectViewProps) {
                   <li key={a.id} className="rounded-panel border border-border-hairline bg-bg-panel px-4 py-3 text-sm">
                     {confirmDeleteId === a.id ? (
                       <div className="flex items-center justify-between">
-                        <span className="text-text-body">Xác nhận xoá {a.name}?</span>
+                        <span className="text-text-body">Confirm delete {a.name}?</span>
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" onClick={cancelDelete}>
-                            Hủy
+                            Cancel
                           </Button>
                           <Button
                             size="sm"
@@ -193,7 +193,7 @@ export function ProjectView({ project }: ProjectViewProps) {
                             disabled={deletingId === a.id}
                             onClick={() => confirmDelete(a)}
                           >
-                            {deletingId === a.id ? "Đang xoá…" : "Xoá"}
+                            {deletingId === a.id ? "Deleting…" : "Delete"}
                           </Button>
                         </div>
                       </div>
@@ -227,7 +227,7 @@ export function ProjectView({ project }: ProjectViewProps) {
                       </div>
                     )}
                     {deleteErrorId === a.id && deleteError && (
-                      <p className="mt-2 text-xs text-danger">✗ Xoá thất bại: {deleteError}</p>
+                      <p className="mt-2 text-xs text-danger">✗ Delete failed: {deleteError}</p>
                     )}
                   </li>
                 ))}

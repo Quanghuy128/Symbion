@@ -114,11 +114,11 @@ export function startServer(opts: DaemonServerOptions): Promise<DaemonServerHand
     const origin = req.headers["origin"] as string | undefined;
     const host = req.headers["host"] as string | undefined;
     if (origin !== undefined && !isAllowedHost(origin, opts.port)) {
-      sendJson(res, 403, { error: { code: "origin-rejected", message: "Origin không hợp lệ." } });
+      sendJson(res, 403, { error: { code: "origin-rejected", message: "Invalid origin." } });
       return;
     }
     if (!isAllowedHost(host, opts.port)) {
-      sendJson(res, 403, { error: { code: "host-rejected", message: "Host không hợp lệ." } });
+      sendJson(res, 403, { error: { code: "host-rejected", message: "Invalid host." } });
       return;
     }
 
@@ -126,7 +126,7 @@ export function startServer(opts: DaemonServerOptions): Promise<DaemonServerHand
     try {
       body = JSON.parse(await readBody(req));
     } catch {
-      sendJson(res, 400, { error: { code: "bad-json", message: "JSON không hợp lệ." } });
+      sendJson(res, 400, { error: { code: "bad-json", message: "Invalid JSON." } });
       return;
     }
 

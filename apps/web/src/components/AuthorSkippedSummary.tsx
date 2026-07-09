@@ -27,11 +27,11 @@ export function AuthorSkippedSummary({ items }: AuthorSkippedSummaryProps) {
     <div className="text-xs text-amber-600">
       <div className="flex items-center gap-2">
         <span>
-          ⚠ {items.length} mẫu không tải được → đã bỏ qua
+          ⚠ {items.length} templates failed to load → skipped
         </span>
         {items.length > COLLAPSE_THRESHOLD && (
           <button onClick={() => setExpanded((v) => !v)} className="underline hover:text-foreground">
-            {expanded ? "Ẩn chi tiết" : "Xem chi tiết"}
+            {expanded ? "Hide details" : "Show details"}
           </button>
         )}
       </div>

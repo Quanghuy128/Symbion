@@ -19,19 +19,19 @@ describe("DaemonStatusBadge", () => {
     setConnState(true);
     render(<DaemonStatusBadge />);
     expect(screen.getByText(/connected/i)).toBeInTheDocument();
-    expect(screen.queryByText(/mất kết nối/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/disconnected/)).not.toBeInTheDocument();
   });
 
-  it("TC-BADGE-2: not reachable -> red 'daemon mất kết nối' text", () => {
+  it("TC-BADGE-2: not reachable -> red 'daemon disconnected' text", () => {
     setConnState(false);
     render(<DaemonStatusBadge />);
-    expect(screen.getByText(/mất kết nối/)).toBeInTheDocument();
+    expect(screen.getByText(/disconnected/)).toBeInTheDocument();
   });
 
   it("TC-BADGE-3: no 'session expired' / token wording exists anymore", () => {
     setConnState(false);
     render(<DaemonStatusBadge />);
     const text = document.body.textContent ?? "";
-    expect(text).not.toMatch(/quay lại terminal|phiên|token/i);
+    expect(text).not.toMatch(/back to terminal|session|token/i);
   });
 });

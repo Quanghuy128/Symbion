@@ -59,7 +59,7 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
   if (loading || !diff) {
     return (
       <Dialog open onClose={onClose} className="w-[640px]">
-        <p className="text-sm text-text-muted">Đang tính diff…</p>
+        <p className="text-sm text-text-muted">Computing diff…</p>
       </Dialog>
     );
   }
@@ -94,7 +94,7 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
       });
       setResult(writeResult);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Ghi xuống đĩa thất bại — không rõ lý do.";
+      const message = err instanceof Error ? err.message : "Writing to disk failed — reason unknown.";
       setWriteError(message);
     } finally {
       setWriting(false);
@@ -142,17 +142,17 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
   return (
     <Dialog open onClose={onClose} className="w-[640px]">
       <DialogHeader>
-        <DialogTitle>Xem trước thay đổi · {version}</DialogTitle>
+        <DialogTitle>Preview changes · {version}</DialogTitle>
       </DialogHeader>
 
       {hasInitOnNonExisting && (
-        <p className="mb-2 text-xs text-text-muted">Sẽ khởi tạo .claude/</p>
+        <p className="mb-2 text-xs text-text-muted">Will initialize .claude/</p>
       )}
 
       {firstForeignMergeFiles.length > 0 && (
         <p className="mb-2 rounded-panel border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
-          ℹ {firstForeignMergeFiles.map((f) => f.relPath).join(", ")} đã tồn tại và sẽ được Symbion chỉnh sửa
-          lần đầu tiên (nội dung hiện có sẽ được giữ lại bên ngoài vùng quản lý).
+          ℹ {firstForeignMergeFiles.map((f) => f.relPath).join(", ")} already exist and will be edited by Symbion
+          for the first time (existing content is kept outside the managed region).
         </p>
       )}
 
@@ -161,22 +161,22 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
       </div>
 
       {!daemonConnected && (
-        <p className="mb-2 text-xs text-danger">⚠ Mất kết nối daemon — không thể ghi xuống đĩa.</p>
+        <p className="mb-2 text-xs text-danger">⚠ Daemon disconnected — cannot write to disk.</p>
       )}
-      {writeError && <p className="mb-2 text-xs text-danger">✗ Ghi thất bại: {writeError}</p>}
+      {writeError && <p className="mb-2 text-xs text-danger">✗ Write failed: {writeError}</p>}
 
       <DialogFooter>
         <Button variant="outline" onClick={onBack}>
-          Quay lại
+          Back
         </Button>
         <Button variant="outline" onClick={onClose}>
-          Hủy
+          Cancel
         </Button>
         <Button
           disabled={nothingToWrite || selected.size === 0 || writing || !daemonConnected}
           onClick={handleWrite}
         >
-          {nothingToWrite ? "Không có gì để ghi" : "Ghi xuống đĩa"}
+          {nothingToWrite ? "Nothing to write" : "Write to disk"}
         </Button>
       </DialogFooter>
     </Dialog>

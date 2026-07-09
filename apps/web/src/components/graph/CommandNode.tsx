@@ -66,7 +66,7 @@ export function CommandNode({ data }: NodeProps<CommandNodeData>) {
 
       {/* Unlinked-command chip (design §5 O) — warning, never danger. */}
       {data.unlinked && (
-        <Tooltip content="Lệnh này nhắc agent bằng backtick — dùng @tên hoặc kéo cạnh để hiện liên kết.">
+        <Tooltip content="This command references an agent with backticks — use @name or drag an edge to show the link.">
           <button
             type="button"
             onClick={(e) => {
@@ -75,7 +75,7 @@ export function CommandNode({ data }: NodeProps<CommandNodeData>) {
             }}
             className="ml-1 inline-flex items-center rounded-pill bg-warning/15 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-[.05em] text-warning"
           >
-            chưa liên kết
+            not linked
           </button>
         </Tooltip>
       )}

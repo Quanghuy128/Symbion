@@ -27,7 +27,7 @@ export function resolveConfinedPath(projectRoot: string, relPath: string): strin
   rejectTraversalSegments(relPath);
 
   if (isAbsolute(relPath) || isWindowsStyleAbsolute(relPath)) {
-    throw new PathConfinementError(`Đường dẫn tuyệt đối không được phép: ${relPath}`);
+    throw new PathConfinementError(`Absolute paths are not allowed: ${relPath}`);
   }
 
   const root = resolve(projectRoot);
@@ -37,10 +37,10 @@ export function resolveConfinedPath(projectRoot: string, relPath: string): strin
   // Must resolve to a location inside root (or equal to root, which we disallow for files).
   const rel = relative(root, normalizedCandidate);
   if (rel.startsWith("..") || isAbsolute(rel)) {
-    throw new PathConfinementError(`Đường dẫn vượt ra ngoài project root: ${relPath}`);
+    throw new PathConfinementError(`Path escapes the project root: ${relPath}`);
   }
   if (rel === "") {
-    throw new PathConfinementError(`Đường dẫn không hợp lệ (trỏ vào chính project root): ${relPath}`);
+    throw new PathConfinementError(`Invalid path (points to the project root itself): ${relPath}`);
   }
 
   // Symlink-escape check: walk up from the deepest existing ancestor directory and
@@ -51,7 +51,7 @@ export function resolveConfinedPath(projectRoot: string, relPath: string): strin
     realRoot = realpathSync(root);
   } catch {
     // project root itself doesn't exist (shouldn't normally happen) — fail closed.
-    throw new PathConfinementError(`Project root không tồn tại: ${root}`);
+    throw new PathConfinementError(`Project root does not exist: ${root}`);
   }
 
   let probe = dirname(normalizedCandidate);
@@ -61,7 +61,7 @@ export function resolveConfinedPath(projectRoot: string, relPath: string): strin
       const relReal = relative(realRoot, realProbe);
       if (relReal.startsWith("..") || isAbsolute(relReal)) {
         throw new PathConfinementError(
-          `Symlink trỏ ra ngoài project root: ${relPath}`
+          `Symlink points outside the project root: ${relPath}`
         );
       }
       break;
@@ -78,6 +78,6 @@ export function resolveConfinedPath(projectRoot: string, relPath: string): strin
 export function rejectTraversalSegments(relPath: string): void {
   const segments = relPath.split(/[\\/]/);
   if (segments.includes("..")) {
-    throw new PathConfinementError(`Đường dẫn chứa ".." không được phép: ${relPath}`);
+    throw new PathConfinementError(`Paths containing ".." are not allowed: ${relPath}`);
   }
 }

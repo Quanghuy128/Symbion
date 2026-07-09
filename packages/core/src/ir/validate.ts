@@ -49,7 +49,7 @@ export function validateArtifact(
     issues.push({
       level: "error",
       code: "name-required",
-      message: "name là bắt buộc.",
+      message: "name is required.",
       artifactId: id,
       field: "name",
     });
@@ -57,7 +57,7 @@ export function validateArtifact(
     issues.push({
       level: "error",
       code: "name-unsafe",
-      message: `name "${artifact.name}" chứa ký tự không hợp lệ cho tên file.`,
+      message: `name "${artifact.name}" contains characters that are invalid for a file name.`,
       artifactId: id,
       field: "name",
     });
@@ -67,7 +67,7 @@ export function validateArtifact(
     issues.push({
       level: "error",
       code: "description-required",
-      message: "description là bắt buộc.",
+      message: "description is required.",
       artifactId: id,
       field: "description",
     });
@@ -85,7 +85,7 @@ export function validateArtifact(
       issues.push({
         level: "error",
         code: "name-duplicate",
-        message: `Đã có ${artifact.kind} khác tên "${artifact.name}".`,
+        message: `Another ${artifact.kind} named "${artifact.name}" already exists.`,
         artifactId: id,
         field: "name",
       });
@@ -98,7 +98,7 @@ export function validateArtifact(
         issues.push({
           level: "warning",
           code: "tool-unknown",
-          message: `Tool "${tool}" không nằm trong danh sách biết trước (vẫn cho phép).`,
+          message: `Tool "${tool}" is not in the known list (still allowed).`,
           artifactId: id,
           field: "tools",
         });
@@ -112,7 +112,7 @@ export function validateArtifact(
       issues.push({
         level: "warning",
         code: "arguments-missing",
-        message: "usesArguments được đánh dấu nhưng body không chứa $ARGUMENTS.",
+        message: "usesArguments is set but the body does not contain $ARGUMENTS.",
         artifactId: id,
         field: "body",
       });
@@ -127,7 +127,7 @@ export function validateArtifact(
         issues.push({
           level: "warning",
           code: "mention-missing-agent",
-          message: `@${mention} không tồn tại trong dự án (không tồn tại).`,
+          message: `@${mention} does not exist in the project.`,
           artifactId: id,
           field: "body",
         });
@@ -148,7 +148,7 @@ export function validateArtifact(
             issues.push({
               level: "warning",
               code: "agentref-count-invalid",
-              message: `Số lượng "${countToken}" trong block Agents không phải số nguyên ≥ 1.`,
+              message: `The count "${countToken}" in the Agents block is not an integer ≥ 1.`,
               artifactId: id,
               field: "body",
             });
@@ -156,7 +156,7 @@ export function validateArtifact(
             issues.push({
               level: "warning",
               code: "agentblock-malformed",
-              message: `Dòng "${rawLine}" trong block Agents không đúng cú pháp.`,
+              message: `The line "${rawLine}" in the Agents block has invalid syntax.`,
               artifactId: id,
               field: "body",
             });
@@ -168,7 +168,7 @@ export function validateArtifact(
           issues.push({
             level: "warning",
             code: "agentref-count-invalid",
-            message: `Số lượng "${okMatch[2]}" trong block Agents phải là số nguyên ≥ 1.`,
+            message: `The count "${okMatch[2]}" in the Agents block must be an integer ≥ 1.`,
             artifactId: id,
             field: "body",
           });

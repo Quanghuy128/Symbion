@@ -68,13 +68,13 @@ export function ProviderStatusPill({ providerId }: ProviderStatusPillProps) {
     <Link
       href="/settings"
       className="flex items-center gap-1 text-xs text-muted-foreground hover:underline"
-      title="Xem trạng thái kết nối nhà cung cấp AI trong Cài đặt"
+      title="View AI provider connection status in Settings"
     >
       <StatusDot status={status} />
       <span>
-        {status === "checking" && "Đang kiểm tra…"}
-        {status === "connected" && "Đã kết nối"}
-        {status === "disconnected" && "Chưa kết nối"}
+        {status === "checking" && "Checking…"}
+        {status === "connected" && "Connected"}
+        {status === "disconnected" && "Not connected"}
       </span>
       <span>{PROVIDER_LABELS[providerId]}</span>
     </Link>

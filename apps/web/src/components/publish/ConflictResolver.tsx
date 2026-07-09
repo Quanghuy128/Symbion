@@ -32,15 +32,15 @@ export function ConflictResolver({ file, resolution, onResolve }: ConflictResolv
         shouldAnimate ? "animate-popIn" : ""
       }`}
     >
-      <p className="mb-1 font-medium text-danger">! XUNG ĐỘT — {file.relPath}</p>
-      <p className="mb-2 text-text-muted">File đã bị sửa tay sau lần xuất bản gần nhất.</p>
+      <p className="mb-1 font-medium text-danger">! CONFLICT — {file.relPath}</p>
+      <p className="mb-2 text-text-muted">The file was hand-edited after the last publish.</p>
       <div className="flex gap-2">
         <Button
           size="sm"
           variant={resolution !== "overwrite" ? "default" : "outline"}
           onClick={() => onResolve("keep")}
         >
-          Giữ bản trên đĩa
+          Keep the on-disk version
         </Button>
         <Button
           size="sm"
@@ -48,7 +48,7 @@ export function ConflictResolver({ file, resolution, onResolve }: ConflictResolv
           className={resolution === "overwrite" ? "bg-overwrite-btn hover:opacity-90" : undefined}
           onClick={() => onResolve("overwrite")}
         >
-          Ghi đè
+          Overwrite
         </Button>
       </div>
     </div>

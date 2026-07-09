@@ -139,7 +139,7 @@ export function AnimatedEdge({
           {/* Pending ghost spinner (design §5 Q). */}
           {pending && (
             <span
-              aria-label="Đang lưu…"
+              aria-label="Saving…"
               className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-text-faint border-t-transparent"
             />
           )}
@@ -153,7 +153,7 @@ export function AnimatedEdge({
                 </span>
               ) : (
                 <span
-                  aria-label="Có mục tiêu"
+                  aria-label="Has a goal"
                   className="inline-block h-2 w-2 rounded-full"
                   style={{ background: "#a78bfa" }}
                 />
@@ -166,7 +166,7 @@ export function AnimatedEdge({
             <span className="ml-1 inline-flex gap-1 align-middle">
               <button
                 type="button"
-                aria-label="Sửa quan hệ"
+                aria-label="Edit relationship"
                 onClick={() => data?.onOpenModal?.()}
                 className="flex h-5 w-5 items-center justify-center rounded-full border border-border-menu bg-bg-menu text-accent-text hover:text-accent-text-hi"
               >
@@ -174,7 +174,7 @@ export function AnimatedEdge({
               </button>
               <button
                 type="button"
-                aria-label="Bỏ liên kết"
+                aria-label="Unlink"
                 onClick={() => setConfirmingDelete(true)}
                 className="flex h-5 w-5 items-center justify-center rounded-full border border-border-menu bg-bg-menu text-text-faint hover:text-danger"
               >
@@ -186,10 +186,10 @@ export function AnimatedEdge({
           {/* Inline delete-confirm (design §3.2 M). */}
           {!pending && confirmingDelete && (
             <span className="inline-flex items-center gap-1 rounded-sm border border-border-menu bg-bg-menu px-1.5 py-0.5 text-[11px] text-text-body">
-              Xoá?
+              Delete?
               <button
                 type="button"
-                aria-label="Xác nhận bỏ liên kết"
+                aria-label="Confirm unlink"
                 onClick={() => {
                   setConfirmingDelete(false);
                   data?.onDelete?.();
@@ -200,7 +200,7 @@ export function AnimatedEdge({
               </button>
               <button
                 type="button"
-                aria-label="Hủy"
+                aria-label="Cancel"
                 onClick={() => setConfirmingDelete(false)}
                 className="text-text-faint hover:text-text-body"
               >

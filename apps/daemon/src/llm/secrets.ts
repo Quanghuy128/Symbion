@@ -70,7 +70,7 @@ export function loadProvidersConfig(): ProvidersConfig {
   try {
     rawText = readFileSync(absPath, "utf-8");
   } catch (err) {
-    console.warn(`[symbion] providers.json không thể đọc được, dùng cấu hình rỗng mặc định: ${(err as Error).message}`);
+    console.warn(`[symbion] providers.json could not be read, using the default empty config: ${(err as Error).message}`);
     return defaultConfig();
   }
 
@@ -78,26 +78,26 @@ export function loadProvidersConfig(): ProvidersConfig {
   try {
     raw = JSON.parse(rawText);
   } catch {
-    console.warn("[symbion] providers.json chứa JSON không hợp lệ — dùng cấu hình rỗng mặc định.");
+    console.warn("[symbion] providers.json contains invalid JSON — using the default empty config.");
     return defaultConfig();
   }
 
   if (typeof raw !== "object" || raw === null) {
-    console.warn("[symbion] providers.json có cấu trúc không hợp lệ — dùng cấu hình rỗng mặc định.");
+    console.warn("[symbion] providers.json has an invalid structure — using the default empty config.");
     return defaultConfig();
   }
 
   const record = raw as Record<string, unknown>;
   const schemaVersion = record["schemaVersion"];
   if (typeof schemaVersion !== "number") {
-    console.warn("[symbion] providers.json thiếu schemaVersion — dùng cấu hình rỗng mặc định.");
+    console.warn("[symbion] providers.json is missing schemaVersion — using the default empty config.");
     return defaultConfig();
   }
   if (schemaVersion > CURRENT_PROVIDERS_SCHEMA_VERSION) {
     // Distinguishable warning from the "corrupt" cases above, per STATE §3.3 case 4 —
     // written by a future Symbion version; refuse to silently downgrade-interpret it.
     console.warn(
-      `[symbion] providers.json có schemaVersion=${schemaVersion} (mới hơn phiên bản hiện tại) — dùng cấu hình rỗng mặc định.`
+      `[symbion] providers.json has schemaVersion=${schemaVersion} (newer than the current version) — using the default empty config.`
     );
     return defaultConfig();
   }
@@ -135,7 +135,7 @@ export function saveProvidersConfig(config: ProvidersConfig): void {
 
 export class ProviderNotConfiguredError extends Error {
   constructor(providerId: string) {
-    super(`Chưa cấu hình API key cho nhà cung cấp này: ${providerId}`);
+    super(`No API key configured for this provider: ${providerId}`);
     this.name = "ProviderNotConfiguredError";
   }
 }

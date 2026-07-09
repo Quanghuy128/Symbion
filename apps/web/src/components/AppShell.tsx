@@ -79,7 +79,7 @@ export function AppShell() {
           <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-text-muted">
-            Chọn một dự án ở thanh bên.
+            Select a project in the sidebar.
           </div>
         )}
       </main>

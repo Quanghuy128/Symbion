@@ -83,7 +83,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium text-text-body">Nội dung</label>
+          <label className="text-sm font-medium text-text-body">Content</label>
           <div className="flex items-center gap-2">
             <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
@@ -111,7 +111,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
           className="text-sm font-medium text-text-dim"
           onClick={() => setAdvancedOpen((v) => !v)}
         >
-          {advancedOpen ? "▾" : "▸"} Nâng cao
+          {advancedOpen ? "▾" : "▸"} Advanced
         </button>
         {advancedOpen && (
           <div className="mt-2 space-y-2">
@@ -135,7 +135,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
               </div>
             ))}
             <Button variant="outline" size="sm" onClick={addCustomField}>
-              + Thêm field
+              + Add field
             </Button>
           </div>
         )}

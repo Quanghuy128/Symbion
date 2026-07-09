@@ -44,12 +44,12 @@ export function PublishDialog({ project, onClose }: PublishDialogProps) {
   return (
     <Dialog open onClose={onClose} className="w-[500px]">
       <DialogHeader>
-        <DialogTitle>Xuất bản</DialogTitle>
+        <DialogTitle>Publish</DialogTitle>
       </DialogHeader>
 
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-text-body">Phiên bản</label>
+          <label className="mb-1 block text-sm font-medium text-text-body">Version</label>
           <input
             className="h-9 w-full rounded-sm border border-border-input bg-bg-input px-3 text-sm text-text-body"
             value={version}
@@ -80,7 +80,7 @@ export function PublishDialog({ project, onClose }: PublishDialogProps) {
               }`}
             >
               <span className="font-medium">{targets.includes("codex") ? "☑" : "☐"} Codex</span>
-              <span className="ml-1 text-xs text-warning">(gộp vào AGENTS.md · lossy)</span>
+              <span className="ml-1 text-xs text-warning">(merged into AGENTS.md · lossy)</span>
             </button>
           </div>
           {targets.includes("codex") && (
@@ -90,7 +90,7 @@ export function PublishDialog({ project, onClose }: PublishDialogProps) {
                 checked={codexAcknowledged}
                 onChange={(e) => setCodexAcknowledged(e.target.checked)}
               />
-              Tôi hiểu — commands sẽ gộp/flatten vào AGENTS.md (mất per-file separation)
+              I understand — commands will be merged/flattened into AGENTS.md (loses per-file separation)
             </label>
           )}
         </div>
@@ -98,10 +98,10 @@ export function PublishDialog({ project, onClose }: PublishDialogProps) {
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
-          Hủy
+          Cancel
         </Button>
         <Button disabled={!canProceed} onClick={() => setStep("diff")}>
-          Xem trước thay đổi
+          Preview changes
         </Button>
       </DialogFooter>
     </Dialog>

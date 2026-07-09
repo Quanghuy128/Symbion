@@ -98,6 +98,17 @@ Implemented per plan:
 - Keyboard arrow-key resize on the separator is out of scope (noted in plan); pointer-only.
 - localStorage key namespaced under `symbion.` to match app convention.
 
+## BUILD (follow-up) — resize outer drawer width
+
+User follow-up: also drag the modal's LEFT (outer) edge to change the whole drawer's
+total width (form + preview grow together); inner split divider kept as-is.
+- **New** `apps/web/src/lib/hooks/useResizableWidth.ts` — pixel width for a right-anchored
+  panel; `width = innerWidth - clientX`; clamp [560, 1400] and never wider than
+  `innerWidth - 32`; persist to `symbion.builderDrawer.width`; SSR-safe.
+- `BuilderDrawer.tsx` — drawer width now `${drawerWidth}px` (dropped fixed `w-[880px]`,
+  kept `max-w-[96vw]` as CSS safety); added a left-edge drag handle (`role=separator`)
+  overlapping the border, accent line on hover.
+
 ## Done (shipped via /simplify-implementation)
 
 - **Verified:** `npm run build` clean — tsc passes for rpc-types + daemon, `next build`

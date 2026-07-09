@@ -10,6 +10,7 @@ import { MarkdownTab } from "./MarkdownTab";
 import { LivePreviewPane } from "./LivePreviewPane";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { useResizableSplit } from "@/lib/hooks/useResizableSplit";
+import { useResizableWidth } from "@/lib/hooks/useResizableWidth";
 
 export interface BuilderDrawerProps {
   artifact: CanonicalArtifact;
@@ -27,6 +28,12 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
   const showToast = useArtifactStore((s) => s.showToast);
   const { containerRef, leftPct, onDragStart } = useResizableSplit("symbion.builderDrawer.split", 50);
+  const { width: drawerWidth, onDragStart: onWidthDragStart } = useResizableWidth(
+    "symbion.builderDrawer.width",
+    880,
+    560,
+    1400,
+  );
 
   const otherArtifacts = allArtifacts.filter((a) => a.id !== artifact.id);
   const issues = validateArtifact(artifact, { allArtifacts: [...otherArtifacts, artifact] });
@@ -57,9 +64,21 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
 
       <div
         ref={containerRef}
-        className="fixed inset-y-0 right-0 z-40 flex w-[880px] max-w-[96vw] animate-slideIn border-l border-border-hairline bg-bg-panel shadow-drawer"
+        className="fixed inset-y-0 right-0 z-40 flex max-w-[96vw] animate-slideIn border-l border-border-hairline bg-bg-panel shadow-drawer"
+        style={{ width: `${drawerWidth}px` }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Left-edge handle — drag to resize the whole drawer's width. */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={onWidthDragStart}
+          className="group absolute inset-y-0 left-0 z-20 w-1.5 -translate-x-1/2 cursor-col-resize"
+          title="Kéo để đổi bề rộng"
+        >
+          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-brand-accent opacity-0 transition-opacity group-hover:opacity-100" />
+        </div>
+
         <div className="flex min-w-0 flex-col p-3" style={{ width: `${leftPct}%` }}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[15px] font-bold text-text-strong">

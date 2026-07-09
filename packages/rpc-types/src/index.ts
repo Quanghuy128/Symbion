@@ -103,6 +103,18 @@ export interface CreateProjectResult {
   project: ProjectStore;
 }
 
+export interface RemoveProjectParams {
+  id: string;
+}
+export interface RemoveProjectResult {
+  /** The updated registry after removal, so the store can replace projects[]
+   *  wholesale instead of re-fetching (mirrors listProjects' shape). */
+  projects: Array<{ id: string; name: string; path: string }>;
+  /** true if an entry was actually removed; false if `id` was unknown
+   *  (idempotent no-op). Lets the UI avoid a misleading toast on a stale id. */
+  removed: boolean;
+}
+
 export interface LoadProjectParams {
   id: string;
 }
@@ -464,6 +476,7 @@ export type RpcMethod =
   | "makeDir"
   | "listProjects"
   | "createProject"
+  | "removeProject"
   | "loadProject"
   | "saveArtifact"
   | "deleteArtifact"

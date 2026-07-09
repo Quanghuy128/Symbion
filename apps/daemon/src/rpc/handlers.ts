@@ -231,6 +231,25 @@ export const handlers = {
     return { project };
   },
 
+  removeProject(params: contract.RemoveProjectParams): contract.RemoveProjectResult {
+    const { id } = params;
+    const config = loadGlobalConfig();
+    const before = config.projects.length;
+    config.projects = config.projects.filter((p) => p.id !== id);
+    const removed = config.projects.length < before;
+    // Clear lastProjectId if it pointed at the removed project so a future
+    // boot/auto-open doesn't try to re-open a forgotten project.
+    if (config.lastProjectId === id) {
+      config.lastProjectId = undefined;
+    }
+    // Only write when something actually changed — re-remove of an unknown/
+    // already-removed id is a pure no-op (idempotent; no throw, no needless write).
+    if (removed || config.lastProjectId === undefined) {
+      saveGlobalConfig(config);
+    }
+    return { projects: config.projects, removed };
+  },
+
   loadProject(params: contract.LoadProjectParams): contract.LoadProjectResult {
     const path = findProjectPath(params.id);
     return { project: loadProjectStore(path) };

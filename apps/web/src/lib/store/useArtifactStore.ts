@@ -15,6 +15,8 @@ import type {
   ListProjectsResult,
   LoadProjectResult,
   PingResult,
+  RemoveProjectParams,
+  RemoveProjectResult,
   SaveArtifactResult,
 } from "../rpc/types";
 
@@ -67,6 +69,11 @@ interface ArtifactStoreState {
   loadProjects: () => Promise<void>;
   createProject: (name: string, path: string) => Promise<ProjectStore>;
   loadProject: (id: string) => Promise<void>;
+  /** Forgets a project from the tracked registry (list-only; no disk delete).
+   *  Calls the removeProject RPC, replaces projects[] with the returned
+   *  registry, and clears currentProject if it was the removed one so
+   *  ProjectView unmounts back to the empty/"select a project" state. */
+  removeProject: (id: string) => Promise<void>;
   saveArtifact: (artifact: CanonicalArtifact) => Promise<void>;
   deleteArtifact: (artifactId: string) => Promise<void>;
   /** Calls the `importArtifacts` RPC and applies its returned (merged)
@@ -152,6 +159,14 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
   async loadProject(id) {
     const result = await callRpc<{ id: string }, LoadProjectResult>("loadProject", { id });
     set({ currentProject: result.project });
+  },
+
+  async removeProject(id) {
+    const result = await callRpc<RemoveProjectParams, RemoveProjectResult>("removeProject", { id });
+    set((state) => ({
+      projects: result.projects,
+      currentProject: state.currentProject?.id === id ? null : state.currentProject,
+    }));
   },
 
   async saveArtifact(artifact) {

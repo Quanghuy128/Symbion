@@ -24,6 +24,7 @@ export function ProjectView({ project }: ProjectViewProps) {
   const [runCommandFor, setRunCommandFor] = useState<CanonicalArtifact | null>(null);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
   const deleteArtifact = useArtifactStore((s) => s.deleteArtifact);
+  const removeProject = useArtifactStore((s) => s.removeProject);
   const showToast = useArtifactStore((s) => s.showToast);
 
   // PLAN §6.4/§6.6: kept component-local, deliberately NOT in useArtifactStore —
@@ -35,10 +36,27 @@ export function ProjectView({ project }: ProjectViewProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteErrorId, setDeleteErrorId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const agents = project.artifacts.filter((a) => a.kind === "agent");
   const commands = project.artifacts.filter((a) => a.kind === "command");
   const isEmpty = project.artifacts.length === 0;
+
+  async function handleRemoveProject() {
+    if (!window.confirm(`Remove "${project.name}" from Symbion? This forgets the project from the list only — no files on disk are deleted. You can re-add the folder anytime.`)) {
+      return;
+    }
+    setRemoving(true);
+    try {
+      await removeProject(project.id);
+      showToast("Project removed from list.", "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Remove failed — reason unknown.";
+      showToast(message, "error");
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   function requestDelete(id: string) {
     setConfirmDeleteId(id);
@@ -79,6 +97,9 @@ export function ProjectView({ project }: ProjectViewProps) {
           <p className="font-mono text-[12.5px] text-text-faint">{project.path}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" disabled={!daemonConnected || removing} onClick={handleRemoveProject}>
+            {removing ? "Removing…" : "Remove project"}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setTab(tab === "list" ? "graph" : "list")}>
             {tab === "list" ? "Graph" : "List"}
           </Button>

@@ -1,5 +1,16 @@
 import type { CanonicalArtifact, LintIssue } from "./types.js";
 import { extractAgentMentions } from "./refs.js";
+import { hasAgentBlock } from "./agentBlock.js";
+
+/** Lines inside the agents block; used to lint block-line grammar (warnings only). */
+const AGENTS_BLOCK_RE =
+  /<!-- symbion:agents -->\n([\s\S]*?)\n<!-- \/symbion:agents -->/;
+/** A canonical, well-formed agent line: `- @name[ ×count][ — goal]` (× = U+00D7, — = U+2014). */
+const AGENT_LINE_OK_RE = /^- @([A-Za-z0-9_-]+)(?: ×(\d+))?(?: — [\s\S]*)?$/;
+/** Any line that LOOKS like an agent line (starts with `- @`) — used to catch malformed ones. */
+const AGENT_LINE_LOOSE_RE = /^- @/;
+/** Extract whatever follows `×` up to the next space, for the count-invalid check. */
+const COUNT_TOKEN_RE = /\s×(\S+)/;
 
 /** A filename-safe name: lower/upper alnum, dash, underscore — no path separators or spaces. */
 const FILENAME_SAFE_RE = /^[A-Za-z0-9_-]+$/;
@@ -120,6 +131,48 @@ export function validateArtifact(
           artifactId: id,
           field: "body",
         });
+      }
+    }
+
+    // Managed `## Agents` block linting — warnings only, never blocks Save.
+    if (hasAgentBlock(artifact.body)) {
+      const blockMatch = AGENTS_BLOCK_RE.exec(artifact.body);
+      const inner = blockMatch?.[1] ?? "";
+      for (const rawLine of inner.split("\n")) {
+        if (!AGENT_LINE_LOOSE_RE.test(rawLine)) continue;
+        const okMatch = AGENT_LINE_OK_RE.exec(rawLine);
+        if (!okMatch) {
+          // count-invalid gets a more specific code when the malformation is a bad ×token.
+          const countToken = COUNT_TOKEN_RE.exec(rawLine)?.[1];
+          if (countToken !== undefined && !/^\d+$/.test(countToken)) {
+            issues.push({
+              level: "warning",
+              code: "agentref-count-invalid",
+              message: `Số lượng "${countToken}" trong block Agents không phải số nguyên ≥ 1.`,
+              artifactId: id,
+              field: "body",
+            });
+          } else {
+            issues.push({
+              level: "warning",
+              code: "agentblock-malformed",
+              message: `Dòng "${rawLine}" trong block Agents không đúng cú pháp.`,
+              artifactId: id,
+              field: "body",
+            });
+          }
+          continue;
+        }
+        // Well-formed by regex, but ×0 is semantically invalid (integer must be ≥ 1).
+        if (okMatch[2] !== undefined && Number.parseInt(okMatch[2], 10) < 1) {
+          issues.push({
+            level: "warning",
+            code: "agentref-count-invalid",
+            message: `Số lượng "${okMatch[2]}" trong block Agents phải là số nguyên ≥ 1.`,
+            artifactId: id,
+            field: "body",
+          });
+        }
       }
     }
   }

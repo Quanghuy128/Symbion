@@ -24,14 +24,27 @@ export function Toaster() {
 
   if (!toast) return null;
 
+  // interactive-graph (design §5/§7): 4 variants. glyph + text color per variant;
+  // placement/motion/timing unchanged.
+  const variant = toast.variant ?? "neutral";
+  const glyph =
+    variant === "success" ? "✓" : variant === "warning" ? "⚠" : variant === "error" ? "✕" : null;
+  const textColor =
+    variant === "success"
+      ? "text-success"
+      : variant === "warning"
+        ? "text-warning"
+        : variant === "error"
+          ? "text-danger"
+          : "text-text-body";
+
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
       <div
         role="status"
-        className={`pointer-events-auto animate-popIn rounded-panel border border-border-menu bg-bg-menu px-4 py-2.5 text-sm shadow-toast ${
-          toast.variant === "error" ? "text-danger" : "text-text-body"
-        }`}
+        className={`pointer-events-auto flex animate-popIn items-center gap-2 rounded-panel border border-border-menu bg-bg-menu px-4 py-2.5 text-sm shadow-toast ${textColor}`}
       >
+        {glyph && <span aria-hidden>{glyph}</span>}
         {toast.message}
       </div>
     </div>

@@ -93,11 +93,19 @@ const config: Config = {
           from: { transform: "scale(.97) translateY(6px)", opacity: "0" },
           to: { transform: "scale(1) translateY(0)", opacity: "1" },
         },
+        // interactive-graph (design §7): one-shot handle affordance ring.
+        // Runs ONCE (see animation.pulse count `1`); collapsed by the global
+        // prefers-reduced-motion block in globals.css like the other keyframes.
+        pulse: {
+          "0%": { boxShadow: "0 0 0 0 rgba(129,140,248,.5)" },
+          "100%": { boxShadow: "0 0 0 6px rgba(129,140,248,0)" },
+        },
       },
       animation: {
         fadeIn: "fadeIn .16s ease both",
         slideIn: "slideIn .2s cubic-bezier(.2,.8,.2,1) both",
         popIn: "popIn .16s cubic-bezier(.2,.8,.2,1) both",
+        pulse: "pulse .9s cubic-bezier(.2,.8,.2,1) 1",
       },
     },
   },

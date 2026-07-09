@@ -46,13 +46,13 @@ packages/core Pure TS — canonical IR, render/parse, diff, marker/hash, provide
 Install Symbion globally to use it as a CLI tool from any directory:
 
 ```bash
-npm install -g @quanghuy128/symbion
+npm install -g @andrew.ng/symbion
 ```
 
 Or add it as a project dependency and run it via `npx`:
 
 ```bash
-npm install @quanghuy128/symbion
+npm install @andrew.ng/symbion
 npx symbion
 ```
 

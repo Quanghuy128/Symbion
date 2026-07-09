@@ -9,6 +9,7 @@ import { WorkflowForm } from "./WorkflowForm";
 import { MarkdownTab } from "./MarkdownTab";
 import { LivePreviewPane } from "./LivePreviewPane";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
+import { useResizableSplit } from "@/lib/hooks/useResizableSplit";
 
 export interface BuilderDrawerProps {
   artifact: CanonicalArtifact;
@@ -25,6 +26,7 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
   const saveArtifact = useArtifactStore((s) => s.saveArtifact);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
   const showToast = useArtifactStore((s) => s.showToast);
+  const { containerRef, leftPct, onDragStart } = useResizableSplit("symbion.builderDrawer.split", 50);
 
   const otherArtifacts = allArtifacts.filter((a) => a.id !== artifact.id);
   const issues = validateArtifact(artifact, { allArtifacts: [...otherArtifacts, artifact] });
@@ -54,11 +56,12 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
       <div className="fixed inset-0 z-40 animate-fadeIn bg-black/50" onClick={onClose} />
 
       <div
+        ref={containerRef}
         className="fixed inset-y-0 right-0 z-40 flex w-[880px] max-w-[96vw] animate-slideIn border-l border-border-hairline bg-bg-panel shadow-drawer"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex w-1/2 flex-col p-4">
-          <div className="mb-4 flex items-center justify-between">
+        <div className="flex min-w-0 flex-col p-3" style={{ width: `${leftPct}%` }}>
+          <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[15px] font-bold text-text-strong">
               {artifact.kind === "agent" ? "Agent builder" : "Workflow builder"}
             </h2>
@@ -67,7 +70,7 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
             </Button>
           </div>
 
-          <div className="mb-4 flex gap-1 border-b border-border-hairline">
+          <div className="mb-3 flex gap-1 border-b border-border-hairline">
             <button
               className={`px-3 py-2 text-sm ${tab === "form" ? "border-b-2 border-brand-accent font-medium text-text-strong" : "text-text-dim"}`}
               onClick={() => setTab("form")}
@@ -94,7 +97,7 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
             )}
           </div>
 
-          <div className="mt-4 flex items-center justify-between border-t border-border-hairline pt-4">
+          <div className="mt-3 flex items-center justify-between border-t border-border-hairline pt-3">
             <div className="text-xs text-danger">
               {blockingErrors.map((e, i) => (
                 <div key={i}>✗ {e.message}</div>
@@ -113,7 +116,19 @@ export function BuilderDrawer({ artifact: initial, allArtifacts, onClose }: Buil
           </div>
         </div>
 
-        <div className="w-1/2">
+        {/* Draggable divider — resizes the form ↔ preview split. */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={onDragStart}
+          className="group relative w-px shrink-0 cursor-col-resize bg-border-hairline"
+        >
+          {/* Widened invisible hit area so the 1px divider is easy to grab. */}
+          <div className="absolute inset-y-0 -left-1.5 -right-1.5 z-10" />
+          <div className="absolute inset-y-0 left-0 w-px bg-brand-accent opacity-0 transition-opacity group-hover:opacity-100" />
+        </div>
+
+        <div className="min-w-0" style={{ width: `${100 - leftPct}%` }}>
           <LivePreviewPane artifact={artifact} allArtifacts={[...otherArtifacts, artifact]} />
         </div>
       </div>

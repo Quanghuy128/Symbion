@@ -46,7 +46,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <label className="mb-1 block text-sm font-medium text-text-body">name *</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="code-reviewer" />

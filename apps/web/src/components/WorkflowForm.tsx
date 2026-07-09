@@ -28,7 +28,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
   const agentNames = new Set(allArtifacts.filter((a) => a.kind === "agent").map((a) => a.name));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <label className="mb-1 block text-sm font-medium text-text-body">command name (→ /name)</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="analyze" />

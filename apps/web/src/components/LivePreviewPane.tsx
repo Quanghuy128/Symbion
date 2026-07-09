@@ -29,7 +29,7 @@ export function LivePreviewPane({ artifact, allArtifacts }: LivePreviewPaneProps
   const warnings = issues.filter((i) => i.level === "warning");
 
   return (
-    <div className="flex h-full flex-col border-l border-border-hairline">
+    <div className="flex h-full flex-col">
       <div className="border-b border-border-hairline px-3 py-2 font-mono text-[12.5px] text-text-faint">
         {artifact.kind === "agent" ? `.claude/agents/${artifact.name || "<name>"}.md` : `.claude/commands/${artifact.name || "<name>"}.md`}
       </div>

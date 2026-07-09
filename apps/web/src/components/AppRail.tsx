@@ -146,7 +146,7 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           added-project list nested directly beneath it. Collapse state
           persisted to localStorage. */}
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
-        {/* "Project" row: chevron toggles the list, label links to "/". */}
+        {/* "Project" row: label links to "/", then + (new), then chevron toggle. */}
         <div className="relative flex items-center">
           <span
             className={cn(
@@ -155,24 +155,10 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
             )}
             aria-hidden
           />
-          <button
-            type="button"
-            onClick={toggleProjectsCollapsed}
-            aria-expanded={!projectsCollapsed}
-            aria-label={projectsCollapsed ? "Expand projects" : "Collapse projects"}
-            className="flex h-7 w-6 shrink-0 items-center justify-center text-text-faint hover:text-text-dim"
-          >
-            <span
-              className={cn("inline-block transition-transform", projectsCollapsed ? "-rotate-90" : "rotate-0")}
-              aria-hidden
-            >
-              ▾
-            </span>
-          </button>
           <Link
             href="/"
             className={cn(
-              "flex flex-1 items-center rounded-nav-item px-1 py-2 text-[13px] transition-colors hover:bg-white/[.03]",
+              "flex flex-1 items-center rounded-nav-item px-3 py-2 text-[13px] transition-colors hover:bg-white/[.03]",
               pathname === "/" ? "font-semibold text-text-strong" : "font-medium text-text-dim"
             )}
           >
@@ -182,9 +168,23 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
             type="button"
             onClick={onCreateProject}
             aria-label="New project"
-            className="flex h-5 w-5 items-center justify-center rounded-sm text-text-faint hover:bg-white/[.06] hover:text-text-dim"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-text-faint hover:bg-white/[.06] hover:text-text-dim"
           >
             +
+          </button>
+          <button
+            type="button"
+            onClick={toggleProjectsCollapsed}
+            aria-expanded={!projectsCollapsed}
+            aria-label={projectsCollapsed ? "Expand projects" : "Collapse projects"}
+            className="flex h-5 w-5 shrink-0 items-center justify-center text-text-faint hover:text-text-dim"
+          >
+            <span
+              className={cn("inline-block transition-transform", projectsCollapsed ? "-rotate-90" : "rotate-0")}
+              aria-hidden
+            >
+              ▾
+            </span>
           </button>
         </div>
 

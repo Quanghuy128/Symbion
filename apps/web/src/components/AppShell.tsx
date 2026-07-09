@@ -23,11 +23,8 @@ export function AppShell() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("t");
     const port = Number(window.location.port) || 12802;
-    if (token) {
-      initDaemonSession(token, port);
-    }
+    initDaemonSession(port);
     loadProjects().catch((err) => {
       useArtifactStore.getState().reportConnectionError(err);
     });
@@ -49,9 +46,11 @@ export function AppShell() {
     if (createProjectRequested) {
       setCreateOpen(true);
     }
-    // Strip all transient boot params from the URL (token, cross-route handoff
-    // params) so they don't appear in browser history or leak via Referer headers.
-    if (token || openProjectId || createProjectRequested) {
+    // Strip the transient cross-route handoff params from the URL so a refresh
+    // doesn't re-trigger them. (There is no longer a `?t=` session token to strip
+    // — tokenless-daemon.) A leftover `?t=` from an old bookmarked URL is simply
+    // ignored, so it's harmless to leave, but we clear it too for a clean URL bar.
+    if (openProjectId || createProjectRequested || params.has("t")) {
       const url = new URL(window.location.href);
       url.searchParams.delete("t");
       url.searchParams.delete("openProject");

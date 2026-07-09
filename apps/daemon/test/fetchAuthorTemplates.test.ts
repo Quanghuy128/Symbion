@@ -227,15 +227,8 @@ describe("fetchAuthorTemplates RPC handler (templates-authors)", () => {
     await expect(handlers.fetchAuthorTemplates({ authorId: "symbion" }, ctx)).rejects.toThrow(RpcError);
   });
 
-  it("D21: fetchAuthorTemplates is present in the daemon's read-only methods set", async () => {
-    const serverSource = await import("node:fs").then((fs) =>
-      fs.readFileSync(new URL("../src/server.ts", import.meta.url), "utf-8")
-    );
-    // Mechanical check matching the daemon's own READ_ONLY_METHODS literal array.
-    const setMatch = /READ_ONLY_METHODS = new Set<RpcMethod>\(\[([\s\S]*?)\]\)/.exec(serverSource);
-    expect(setMatch).toBeTruthy();
-    expect(setMatch![1]).toContain('"fetchAuthorTemplates"');
-  });
+  // D21 removed with the daemon's READ_ONLY_METHODS set (tokenless-daemon): there is
+  // no longer a per-method auth-gate membership to assert — the token gate is gone.
 
   it("D22: hand-crafted extra fields (owner/repo) are ignored — only the registry-resolved owner/repo is used", async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {

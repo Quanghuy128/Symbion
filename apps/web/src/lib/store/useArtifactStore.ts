@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import type { CanonicalArtifact, ProjectStore } from "@symbion/core";
-import { callRpc, DaemonRpcError, hasSession } from "../rpc/client";
+import { callRpc, DaemonRpcError } from "../rpc/client";
 import type {
   ApplyTemplateParams,
   ApplyTemplateResult,
@@ -209,14 +209,12 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
   },
 
   reportConnectionError(err) {
-    if (err instanceof DaemonRpcError && err.code === "unauthorized") {
-      // Daemon answered (it's up) but rejected the token: stale/foreign
-      // session, not a dead daemon (FR-A.2/EC-A.1/EC-A.5).
-      set({ daemonReachable: true, sessionValid: false, daemonConnected: false });
-      return;
-    }
-    // Fail closed: network throw, timeout, or any other unrecognized error
-    // shape is treated as "not usable" — never silently upgraded to connected.
+    // tokenless-daemon: there is no longer an "unauthorized"/stale-session path —
+    // the token gate was removed. Any RPC failure now means the daemon is not
+    // usable. Fail closed: network throw, timeout, or any other error shape is
+    // treated as "not usable" — never silently upgraded to connected. `err` is
+    // retained for callers/telemetry but no longer branches the outcome.
+    void err;
     set({ daemonReachable: false, sessionValid: false, daemonConnected: false });
   },
 
@@ -238,30 +236,13 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
       };
     }
     const tick = async () => {
-      // Step 1: tokenless liveness probe — the ONLY thing that answers "is
-      // the daemon process even alive," independent of session state.
+      // tokenless-daemon: a single `ping` liveness probe now fully answers "is the
+      // daemon usable" — there is no session/token state left to distinguish. On
+      // success the daemon is reachable + usable; on any failure it is not.
+      // (Previously this ran a 3-step ping → hasSession() → authenticated-probe
+      // dance to tell "daemon down" from "session stale"; that second axis is gone.)
       try {
         await callRpc<{}, PingResult>("ping", {});
-      } catch (err) {
-        get().reportConnectionError(err);
-        return;
-      }
-
-      // Step 2: purely client-side check, no network call needed. After an
-      // F5 refresh, cachedToken is genuinely null (module reinitializes) —
-      // this is the exact EC-A.5 trigger. Short-circuits before wasting a
-      // network round-trip on a call we already know will 401.
-      if (!hasSession()) {
-        set({ daemonReachable: true, sessionValid: false, daemonConnected: false });
-        return;
-      }
-
-      // Step 3: probe an authenticated call. Reuses the same existing
-      // `listProjects` read used elsewhere — no new RPC method. A 401 here
-      // with a valid-looking session (stale/foreign token, EC-A.1) lands in
-      // reportConnectionError via the same messaging path as step 2.
-      try {
-        await callRpc<{}, ListProjectsResult>("listProjects", {});
         get().reportConnectionOk();
       } catch (err) {
         get().reportConnectionError(err);

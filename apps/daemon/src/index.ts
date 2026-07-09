@@ -63,7 +63,7 @@ async function main() {
     saveGlobalConfig(config);
   }
 
-  const url = `http://127.0.0.1:${handle.port}/?t=${handle.token}`;
+  const url = `http://127.0.0.1:${handle.port}/`;
   printBootBanner(VERSION, url);
 
   let running = true;

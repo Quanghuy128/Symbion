@@ -28,6 +28,15 @@ export function initDaemonSession(token: string, port: number): void {
   cachedPort = port;
 }
 
+/** Pure read of the in-memory session token — true once `initDaemonSession`
+ *  has been called this page load, false after a full page reload (the
+ *  module reinitializes, `cachedToken` resets to null). Used by the
+ *  heartbeat to short-circuit "no session" without an unnecessary RPC call
+ *  (boot-terminal-ux FR-A.2/A.2b). */
+export function hasSession(): boolean {
+  return cachedToken !== null;
+}
+
 export function getDaemonOrigin(): string {
   const port = cachedPort ?? Number(process.env["NEXT_PUBLIC_DAEMON_PORT"] ?? 12802);
   return `http://127.0.0.1:${port}`;

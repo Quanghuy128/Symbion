@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { NavItem } from "./rail/NavItem";
@@ -30,7 +31,6 @@ function readStoredRailWidth(): number {
 }
 
 const PRIMARY_NAV = [
-  { href: "/", label: "Project" },
   { href: "/templates", label: "Templates" },
   { href: "/settings", label: "Settings" },
 ];
@@ -141,33 +141,42 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
         </span>
       </div>
 
-      {/* Primary nav */}
-      <nav className="flex flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
-        {PRIMARY_NAV.map((item) => (
-          <NavItem key={item.href} href={item.href} label={item.label} active={pathname === item.href} variant="nav" />
-        ))}
-      </nav>
-
-      {/* Projects section — collapsible; state persisted to localStorage. */}
+      {/* Project group — the "Project" row (routes to "/") is the parent; the
+          added-project list is nested + collapsible under it. Collapse state
+          persisted to localStorage. */}
       <div className="flex min-h-0 flex-1 flex-col border-t border-border-hairline px-2 py-2">
-        <div className="mb-1 flex items-center justify-between px-1">
+        {/* Parent "Project" row: chevron toggles the list, label links to "/". */}
+        <div className="relative flex items-center">
+          <span
+            className={cn(
+              "absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-[3px] transition-colors",
+              pathname === "/" ? "bg-brand-accent" : "bg-transparent"
+            )}
+            aria-hidden
+          />
           <button
             type="button"
             onClick={toggleProjectsCollapsed}
             aria-expanded={!projectsCollapsed}
-            className="flex flex-1 items-center gap-1 text-[10.5px] font-bold uppercase tracking-[.11em] text-text-faint hover:text-text-dim"
+            aria-label={projectsCollapsed ? "Expand projects" : "Collapse projects"}
+            className="flex h-7 w-6 shrink-0 items-center justify-center text-text-faint hover:text-text-dim"
           >
             <span
-              className={cn(
-                "inline-block transition-transform",
-                projectsCollapsed ? "-rotate-90" : "rotate-0"
-              )}
+              className={cn("inline-block transition-transform", projectsCollapsed ? "-rotate-90" : "rotate-0")}
               aria-hidden
             >
               ▾
             </span>
-            Projects
           </button>
+          <Link
+            href="/"
+            className={cn(
+              "flex flex-1 items-center rounded-nav-item px-1 py-1.5 text-[13px] transition-colors hover:bg-white/[.03]",
+              pathname === "/" ? "font-semibold text-text-strong" : "font-medium text-text-dim"
+            )}
+          >
+            Project
+          </Link>
           <button
             type="button"
             onClick={onCreateProject}
@@ -181,10 +190,10 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
         {!projectsCollapsed && (
           <>
             {projects.length === 0 && (
-              <p className="px-1 py-1 text-xs text-text-faint">∅ no projects yet</p>
+              <p className="px-1 py-1 pl-6 text-xs text-text-faint">∅ no projects yet</p>
             )}
 
-            <ul className="flex-1 space-y-0.5 overflow-y-auto">
+            <ul className="flex-1 space-y-0.5 overflow-y-auto pl-4">
               {projects.map((p) => (
                 <li key={p.id}>
                   <NavItem
@@ -201,6 +210,13 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           </>
         )}
       </div>
+
+      {/* Secondary nav */}
+      <nav className="flex flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
+        {PRIMARY_NAV.map((item) => (
+          <NavItem key={item.href} href={item.href} label={item.label} active={pathname === item.href} variant="nav" />
+        ))}
+      </nav>
 
       {/* Daemon status footer */}
       <div className="mt-auto border-t border-border-hairline">

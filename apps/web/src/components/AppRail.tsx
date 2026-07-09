@@ -141,11 +141,12 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
         </span>
       </div>
 
-      {/* Project group — the "Project" row (routes to "/") is the parent; the
-          added-project list is nested + collapsible under it. Collapse state
+      {/* Primary nav — Project, Templates, Settings are all same-level rows.
+          "Project" (links to "/") carries a chevron that collapses/expands the
+          added-project list nested directly beneath it. Collapse state
           persisted to localStorage. */}
-      <div className="flex min-h-0 flex-1 flex-col border-t border-border-hairline px-2 py-2">
-        {/* Parent "Project" row: chevron toggles the list, label links to "/". */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
+        {/* "Project" row: chevron toggles the list, label links to "/". */}
         <div className="relative flex items-center">
           <span
             className={cn(
@@ -171,7 +172,7 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           <Link
             href="/"
             className={cn(
-              "flex flex-1 items-center rounded-nav-item px-1 py-1.5 text-[13px] transition-colors hover:bg-white/[.03]",
+              "flex flex-1 items-center rounded-nav-item px-1 py-2 text-[13px] transition-colors hover:bg-white/[.03]",
               pathname === "/" ? "font-semibold text-text-strong" : "font-medium text-text-dim"
             )}
           >
@@ -187,13 +188,13 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           </button>
         </div>
 
+        {/* Project list — nested under "Project", collapsible + scrollable. */}
         {!projectsCollapsed && (
-          <>
+          <div className="min-h-0 shrink overflow-y-auto">
             {projects.length === 0 && (
-              <p className="px-1 py-1 pl-6 text-xs text-text-faint">∅ no projects yet</p>
+              <p className="py-1 pl-6 text-xs text-text-faint">∅ no projects yet</p>
             )}
-
-            <ul className="flex-1 space-y-0.5 overflow-y-auto pl-4">
+            <ul className="space-y-0.5 pl-4">
               {projects.map((p) => (
                 <li key={p.id}>
                   <NavItem
@@ -207,12 +208,10 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
                 </li>
               ))}
             </ul>
-          </>
+          </div>
         )}
-      </div>
 
-      {/* Secondary nav */}
-      <nav className="flex flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
+        {/* Templates + Settings — same level as Project. */}
         {PRIMARY_NAV.map((item) => (
           <NavItem key={item.href} href={item.href} label={item.label} active={pathname === item.href} variant="nav" />
         ))}

@@ -35,13 +35,6 @@ const PRIMARY_NAV = [
   { href: "/settings", label: "Settings" },
 ];
 
-const PROJECTS_COLLAPSED_STORAGE_KEY = "symbion:projects-collapsed";
-
-function readStoredProjectsCollapsed(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(PROJECTS_COLLAPSED_STORAGE_KEY) === "1";
-}
-
 /**
  * AppRail — resizable left rail (236px default, drag-to-resize between
  * 180-400px, persisted to localStorage under "symbion:rail-width") replacing
@@ -69,21 +62,8 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
   const isResizingRef = useRef(false);
 
-  // Projects section collapse is a pure UI preference (like railWidth) — kept
-  // component-local + persisted to localStorage rather than in useArtifactStore.
-  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
-
   useEffect(() => {
     setRailWidth(readStoredRailWidth());
-    setProjectsCollapsed(readStoredProjectsCollapsed());
-  }, []);
-
-  const toggleProjectsCollapsed = useCallback(() => {
-    setProjectsCollapsed((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(PROJECTS_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
-      return next;
-    });
   }, []);
 
   const handlePointerMove = useCallback((e: MouseEvent) => {
@@ -146,7 +126,7 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           added-project list nested directly beneath it. Collapse state
           persisted to localStorage. */}
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
-        {/* "Project" row: label links to "/", then + (new), then chevron toggle. */}
+        {/* "Project" row: label links to "/", then + (new project). */}
         <div className="relative flex items-center">
           <span
             className={cn(
@@ -172,44 +152,28 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           >
             +
           </button>
-          <button
-            type="button"
-            onClick={toggleProjectsCollapsed}
-            aria-expanded={!projectsCollapsed}
-            aria-label={projectsCollapsed ? "Expand projects" : "Collapse projects"}
-            className="flex h-5 w-5 shrink-0 items-center justify-center text-text-faint hover:text-text-dim"
-          >
-            <span
-              className={cn("inline-block transition-transform", projectsCollapsed ? "-rotate-90" : "rotate-0")}
-              aria-hidden
-            >
-              ▾
-            </span>
-          </button>
         </div>
 
-        {/* Project list — nested under "Project", collapsible + scrollable. */}
-        {!projectsCollapsed && (
-          <div className="min-h-0 shrink overflow-y-auto">
-            {projects.length === 0 && (
-              <p className="py-1 pl-6 text-xs text-text-faint">∅ no projects yet</p>
-            )}
-            <ul className="space-y-0.5 pl-4">
-              {projects.map((p) => (
-                <li key={p.id}>
-                  <NavItem
-                    variant="project"
-                    label={p.name}
-                    sublabel={p.path}
-                    title={p.path}
-                    active={currentProject?.id === p.id}
-                    onClick={() => onSelectProject(p.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {/* Project list — always shown, nested under "Project", scrollable. */}
+        <div className="min-h-0 shrink overflow-y-auto">
+          {projects.length === 0 && (
+            <p className="py-1 pl-6 text-xs text-text-faint">∅ no projects yet</p>
+          )}
+          <ul className="space-y-0.5 pl-4">
+            {projects.map((p) => (
+              <li key={p.id}>
+                <NavItem
+                  variant="project"
+                  label={p.name}
+                  sublabel={p.path}
+                  title={p.path}
+                  active={currentProject?.id === p.id}
+                  onClick={() => onSelectProject(p.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
 
         {/* Templates + Settings — same level as Project. */}
         {PRIMARY_NAV.map((item) => (

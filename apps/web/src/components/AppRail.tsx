@@ -5,13 +5,36 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { NavItem } from "./rail/NavItem";
-import { RowMenu } from "./ui/row-menu";
 import { DaemonStatusBadge } from "./DaemonStatusBadge";
 import { cn } from "@/lib/utils";
 
 export interface AppRailProps {
   onCreateProject: () => void;
   onSelectProject: (id: string) => void;
+}
+
+/** Small trash/delete glyph for the per-project rail remove button. Inline SVG
+ *  (the codebase has no icon lib); `currentColor` so it inherits the button's
+ *  text color, including the danger hover state. */
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
 }
 
 const RAIL_WIDTH_STORAGE_KEY = "symbion:rail-width";
@@ -58,16 +81,11 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
   const removeProject = useArtifactStore((s) => s.removeProject);
   const showToast = useArtifactStore((s) => s.showToast);
 
-  // Which project row's ⋯ menu is open (ephemeral per-view UI state, kept
-  // component-local like ProjectView's openMenuId — not in useArtifactStore).
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
-  // Forget a project directly from the rail — reachable WITHOUT opening it, so
-  // "ghost projects" (folder gone, un-openable) are still removable. Mirrors
-  // ProjectView.handleRemoveProject's confirm + toast approach.
+  // Forget a project directly from the rail via its delete icon — reachable
+  // WITHOUT opening it, so "ghost projects" (folder gone, un-openable) are
+  // still removable. Mirrors ProjectView.handleRemoveProject's confirm + toast.
   const handleRemoveProject = useCallback(
     async (id: string, name: string) => {
-      setOpenMenuId(null);
       if (
         !window.confirm(
           `Remove "${name}" from Symbion? This only forgets it from the list — no files on disk are deleted.`
@@ -206,19 +224,15 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
                   active={currentProject?.id === p.id}
                   onClick={() => onSelectProject(p.id)}
                   trailing={
-                    <RowMenu
-                      open={openMenuId === p.id}
-                      onOpenChange={(open) => setOpenMenuId(open ? p.id : null)}
-                      placement="left"
-                      triggerLabel={`Options for ${p.name}`}
-                      items={[
-                        {
-                          label: "Remove project",
-                          danger: true,
-                          onSelect: () => handleRemoveProject(p.id, p.name),
-                        },
-                      ]}
-                    />
+                    <button
+                      type="button"
+                      aria-label={`Remove ${p.name}`}
+                      title={`Remove "${p.name}" from Symbion`}
+                      onClick={() => handleRemoveProject(p.id, p.name)}
+                      className="flex h-6 w-6 items-center justify-center rounded-sm text-text-faint hover:bg-danger/10 hover:text-danger"
+                    >
+                      <TrashIcon />
+                    </button>
                   }
                 />
               </li>

@@ -20,6 +20,13 @@ export interface RowMenuProps {
   onOpenChange: (open: boolean) => void;
   /** aria-label for the trigger button; defaults to "Tùy chọn". */
   triggerLabel?: string;
+  /** Where the popup opens relative to the trigger.
+   *  - "below-right" (default): drops down, right-aligned — used in the wide
+   *    ProjectView list rows where there's room below.
+   *  - "left": opens to the LEFT of the trigger, out into the main content
+   *    area — used in the narrow left rail so the 208px popup doesn't cover
+   *    the project name / the rows beneath it. */
+  placement?: "below-right" | "left";
 }
 
 /**
@@ -29,7 +36,7 @@ export interface RowMenuProps {
  * as a second new Radix primitive in this PR. Kept small (~50 lines) —
  * not a generic shadcn-parity primitive.
  */
-export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }: RowMenuProps) {
+export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options", placement = "below-right" }: RowMenuProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,7 +64,15 @@ export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }:
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 w-52 animate-popIn rounded-panel border border-border-menu bg-bg-menu py-1 shadow-dropdown"
+          className={cn(
+            "absolute z-20 w-52 animate-popIn rounded-panel border border-border-menu bg-bg-menu py-1 shadow-dropdown",
+            // "left": open beside the trigger, out to its left (into the main
+            // content area), vertically centered — keeps the narrow rail's
+            // rows/labels fully visible. "below-right": drop down, right-aligned.
+            placement === "left"
+              ? "right-full top-0 mr-1"
+              : "right-0 top-full mt-1"
+          )}
         >
           {items.map((item, i) =>
             item === ROW_MENU_DIVIDER ? (

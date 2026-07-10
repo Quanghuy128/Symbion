@@ -16,11 +16,9 @@ export interface NavItemProps {
   title?: string;
   /** Optional right-aligned action (e.g. a RowMenu) rendered outside the
    *  clickable row so it isn't nested inside the row's <button>/<Link>.
-   *  Kept optional so existing nav rows are unaffected. */
+   *  Kept optional so existing nav rows are unaffected. Always visible in its
+   *  own fixed slot; the row's label shortens (ellipsis) to make room. */
   trailing?: ReactNode;
-  /** When `trailing` is a menu, pass its open state so the trigger stays
-   *  visible while the menu is open (it's otherwise hidden until hover). */
-  trailingOpen?: boolean;
 }
 
 /**
@@ -31,7 +29,7 @@ export interface NavItemProps {
  * Renders a <Link> when `href` is given (real route nav), else a <button>
  * (project rows are client-state selection, not routes).
  */
-export function NavItem({ active, icon, label, sublabel, variant, href, onClick, title, trailing, trailingOpen }: NavItemProps) {
+export function NavItem({ active, icon, label, sublabel, variant, href, onClick, title, trailing }: NavItemProps) {
   const tickHeight = variant === "nav" ? "h-4" : "h-3.5"; // 16px / 14px per design doc §3.0
   const content = (
     <>
@@ -79,18 +77,17 @@ export function NavItem({ active, icon, label, sublabel, variant, href, onClick,
   }
 
   // With a trailing action, lay the row + action out as flex SIBLINGS (in
-  // normal flow — not an absolute overlay), so the action reserves real width
-  // and the row's label/sublabel truncate to make room instead of running
-  // underneath it. The row still owns the accent-spine tick + hover; the action
-  // sits outside the clickable <button>/<Link>. The action is hidden until the
-  // group is hovered or the menu is open (`data-open`), so it never crowds the
-  // label at rest. `min-w-0` on the row lets its truncation actually kick in.
+  // normal flow — NOT an absolute overlay), so the action reserves real width
+  // and the row's label/sublabel shorten (via ellipsis) to make room instead
+  // of the action running on top of them. The row keeps the accent-spine tick +
+  // hover; the action sits outside the clickable <button>/<Link>. The action is
+  // ALWAYS visible in its own fixed slot (no opacity/hover reveal — that was
+  // both easy to misread as "overlapping" and unreachable on touch). `min-w-0`
+  // on the row is what lets its ellipsis truncation actually engage.
   return (
-    <div className="group/nav-item flex items-center gap-1">
+    <div className="flex items-center gap-1">
       <div className="min-w-0 flex-1">{row}</div>
-      <div className="shrink-0 opacity-0 transition-opacity group-hover/nav-item:opacity-100 group-focus-within/nav-item:opacity-100 data-[open=true]:opacity-100" data-open={trailingOpen}>
-        {trailing}
-      </div>
+      <div className="shrink-0">{trailing}</div>
     </div>
   );
 }

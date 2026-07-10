@@ -200,6 +200,7 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
                   title={p.path}
                   active={currentProject?.id === p.id}
                   onClick={() => onSelectProject(p.id)}
+                  trailingOpen={openMenuId === p.id}
                   trailing={
                     <RowMenu
                       open={openMenuId === p.id}

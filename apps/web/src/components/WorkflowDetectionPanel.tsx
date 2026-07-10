@@ -35,14 +35,14 @@ export function WorkflowDetectionPanel({
   if (!importAvailable) {
     return (
       <div className="space-y-2 rounded-panel border border-border-hairline bg-white/[.03] p-3 text-sm">
-        <p className="font-medium text-text-body">⚠ Đã phát hiện workflow có sẵn</p>
-        <p className="text-xs text-text-muted">Tìm thấy: {foundParts.join(", ")}</p>
+        <p className="font-medium text-text-body">⚠ Existing workflow detected</p>
+        <p className="text-xs text-text-muted">Found: {foundParts.join(", ")}</p>
         <p className="text-xs text-text-muted">
-          Symbion chưa hỗ trợ nhập (import) từ AGENTS.md ở phiên bản này. File này sẽ không bị ảnh hưởng.
+          Symbion does not support importing from AGENTS.md in this version yet. This file will not be affected.
         </p>
         <div className="flex justify-end">
           <Button size="sm" onClick={onDecline}>
-            Đã hiểu, tạo trống
+            Got it, create empty
           </Button>
         </div>
       </div>
@@ -51,20 +51,20 @@ export function WorkflowDetectionPanel({
 
   return (
     <div className="space-y-2 rounded-panel border border-border-hairline bg-white/[.03] p-3 text-sm">
-      <p className="font-medium text-text-body">⚠ Đã phát hiện workflow có sẵn</p>
+      <p className="font-medium text-text-body">⚠ Existing workflow detected</p>
       <p className="text-xs text-text-muted">
-        Tìm thấy: {foundParts.join(", ")}
-        {hasAgentsMd && hasClaudeDir ? " (chỉ hiển thị, chưa hỗ trợ nhập)" : ""}
+        Found: {foundParts.join(", ")}
+        {hasAgentsMd && hasClaudeDir ? " (display only, import not supported yet)" : ""}
       </p>
       <p className="text-xs text-text-muted">
-        Bạn có muốn nhập (import) các agent/command đã có vào dự án này không? File gốc trong repo sẽ KHÔNG bị chỉnh sửa.
+        Do you want to import the existing agents/commands into this project? The original files in the repo will NOT be modified.
       </p>
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="outline" onClick={onDecline}>
-          Không, tạo trống
+          No, create empty
         </Button>
         <Button size="sm" onClick={onConfirm}>
-          Có, nhập vào
+          Yes, import
         </Button>
       </div>
     </div>

@@ -159,7 +159,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
               <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
               {isThirdPartyAuthor && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Nguồn: {template.authorDisplayName}
+                  Source: {template.authorDisplayName}
                   {template.authorRepoLabel ? ` (${template.authorRepoLabel})` : ""}{" "}
                   {template.authorRepoLabel && (
                     <a
@@ -181,28 +181,28 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
 
             {template.kind === "skill" && (
               <p className="text-xs text-muted-foreground">
-                ℹ Skills chưa hỗ trợ Áp dụng — coming soon. Bạn vẫn có thể copy markdown và dán thủ công vào
+                ℹ Skills don't support Apply yet — coming soon. You can still copy the markdown and paste it manually into
                 .claude/skills/.
               </p>
             )}
 
             {clipboardBlocked && (
               <p className="text-xs text-amber-600">
-                ⚠ Không thể truy cập clipboard — đã chọn sẵn văn bản phía trên, dùng Ctrl+C / ⌘C để copy thủ công.
+                ⚠ Cannot access the clipboard — the text above is pre-selected, use Ctrl+C / ⌘C to copy manually.
               </p>
             )}
-            {copied && <p className="text-xs text-green-600">Đã copy vào clipboard.</p>}
+            {copied && <p className="text-xs text-green-600">Copied to clipboard.</p>}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              Đóng
+              Close
             </Button>
             <Button variant="outline" onClick={handleCopy}>
               Copy markdown
             </Button>
             <Button onClick={handleOpenApplyStep} disabled={template.kind === "skill"}>
-              Áp dụng
+              Apply
             </Button>
           </DialogFooter>
         </>
@@ -211,7 +211,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
       {step === "license" && (
         <>
           <DialogHeader>
-            <DialogTitle>Áp dụng &quot;{template.name}&quot;</DialogTitle>
+            <DialogTitle>Apply &quot;{template.name}&quot;</DialogTitle>
           </DialogHeader>
           <LicenseAcknowledgmentStep
             authorDisplayName={template.authorDisplayName}
@@ -227,7 +227,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
       {step === "apply" && (
         <>
           <DialogHeader>
-            <DialogTitle>Áp dụng &quot;{template.name}&quot; vào dự án nào?</DialogTitle>
+            <DialogTitle>Apply &quot;{template.name}&quot; to which project?</DialogTitle>
           </DialogHeader>
 
           <ProjectPickerStep
@@ -244,7 +244,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setStep(isThirdPartyAuthor ? "license" : "preview")}>
-              Quay lại
+              Back
             </Button>
             {projects.length > 0 && (
               <Button
@@ -256,7 +256,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
                 }
                 onClick={handleConfirmApply}
               >
-                {applying ? "Đang áp dụng…" : "Xác nhận áp dụng"}
+                {applying ? "Applying…" : "Confirm apply"}
               </Button>
             )}
           </DialogFooter>
@@ -266,7 +266,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
       {step === "result" && applyResult && (
         <>
           <DialogHeader>
-            <DialogTitle>Kết quả</DialogTitle>
+            <DialogTitle>Result</DialogTitle>
           </DialogHeader>
           <ApplyResultPanel
             projectName={applyResult.projectName}

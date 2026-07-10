@@ -12,12 +12,12 @@ export function EmptyState({ onCreateProject, onImport }: EmptyStateProps) {
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-4 rounded-panel border border-border-hairline bg-bg-panel p-8">
-        <p className="text-sm text-text-muted">Chưa có dự án nào</p>
-        <p className="text-sm text-text-body">Tạo mới hoặc nhập .claude/</p>
+        <p className="text-sm text-text-muted">No projects yet</p>
+        <p className="text-sm text-text-body">Create a new one or import .claude/</p>
         <div className="flex gap-2">
-          <Button onClick={onCreateProject}>+ Tạo dự án</Button>
+          <Button onClick={onCreateProject}>+ New project</Button>
           <Button variant="outline" onClick={onImport}>
-            ↧ Import .claude/ có sẵn
+            ↧ Import existing .claude/
           </Button>
         </div>
       </div>

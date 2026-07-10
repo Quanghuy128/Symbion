@@ -18,8 +18,8 @@ const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com/v1/messages";
 
 const ANTHROPIC_MODELS: LlmModelOption[] = [
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5 (nhanh)", tier: "fast" },
-  { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5 (cân bằng)", tier: "balanced" },
-  { id: "claude-opus-4-1", label: "Claude Opus 4.1 (tốt nhất)", tier: "best" },
+  { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5 (balanced)", tier: "balanced" },
+  { id: "claude-opus-4-1", label: "Claude Opus 4.1 (best)", tier: "best" },
 ];
 
 export interface AnthropicProviderOptions {
@@ -42,7 +42,7 @@ export class AnthropicProvider implements LlmProvider {
   async generate(req: LlmGenerateRequest): Promise<LlmGenerateResult> {
     const apiKey = loadProvidersConfig().providers.anthropic?.apiKey;
     if (!apiKey) {
-      throw new LlmError("not-configured", "Chưa cấu hình API key cho Anthropic.");
+      throw new LlmError("not-configured", "No API key configured for Anthropic.");
     }
 
     const controller = new AbortController();
@@ -68,31 +68,31 @@ export class AnthropicProvider implements LlmProvider {
         });
       } catch {
         if (controller.signal.aborted) {
-          throw new LlmError("timeout", `Quá thời gian chờ (${req.timeoutMs}ms) khi gọi Anthropic.`);
+          throw new LlmError("timeout", `Request timed out (${req.timeoutMs}ms) while calling Anthropic.`);
         }
-        throw new LlmError("network", "Lỗi mạng khi gọi Anthropic.");
+        throw new LlmError("network", "Network error while calling Anthropic.");
       }
 
       if (res.status === 401 || res.status === 403) {
-        throw new LlmError("auth", "Thiếu hoặc sai cấu hình API key cho Anthropic.");
+        throw new LlmError("auth", "Missing or invalid API key for Anthropic.");
       }
       if (res.status === 429) {
-        throw new LlmError("rate-limit", "Bị giới hạn tần suất gọi — thử lại sau.");
+        throw new LlmError("rate-limit", "Rate-limited — try again later.");
       }
       if (!res.ok) {
-        throw new LlmError("invalid-response", `Anthropic trả về lỗi HTTP ${res.status}.`);
+        throw new LlmError("invalid-response", `Anthropic returned HTTP error ${res.status}.`);
       }
 
       let json: { content?: Array<{ text?: string }> };
       try {
         json = (await res.json()) as { content?: Array<{ text?: string }> };
       } catch {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ Anthropic (không phải JSON).");
+        throw new LlmError("invalid-response", "Invalid response from Anthropic (not JSON).");
       }
 
       const text = json.content?.[0]?.text;
       if (typeof text !== "string") {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ Anthropic.");
+        throw new LlmError("invalid-response", "Invalid response from Anthropic.");
       }
 
       return { text };

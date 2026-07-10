@@ -48,8 +48,8 @@ export function GenerateDescriptionButton({ currentDescription, onGenerate, onAp
         type="button"
         variant="outline"
         size="sm"
-        aria-label="Tạo mô tả tự động"
-        title="Tạo mô tả tự động"
+        aria-label="Auto-generate description"
+        title="Auto-generate description"
         disabled={busy}
         onClick={handleClick}
       >
@@ -58,14 +58,14 @@ export function GenerateDescriptionButton({ currentDescription, onGenerate, onAp
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogHeader>
-          <DialogTitle>Thay thế mô tả?</DialogTitle>
+          <DialogTitle>Replace description?</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-text-muted">
-          Văn bản mô tả hiện tại sẽ được thay thế — tiếp tục?
+          The current description text will be replaced — continue?
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-            Hủy
+            Cancel
           </Button>
           <Button
             onClick={() => {
@@ -75,7 +75,7 @@ export function GenerateDescriptionButton({ currentDescription, onGenerate, onAp
               setConfirmOpen(false);
             }}
           >
-            Thay thế
+            Replace
           </Button>
         </DialogFooter>
       </Dialog>

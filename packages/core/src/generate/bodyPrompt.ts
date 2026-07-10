@@ -17,9 +17,9 @@ export interface BodyPromptInput {
   existingBody: string;
 }
 
-const NONE_PLACEHOLDER = "(chưa có)";
+const NONE_PLACEHOLDER = "(none)";
 
-/** Render a labeled context line, falling back to an explicit "(chưa có)" placeholder
+/** Render a labeled context line, falling back to an explicit "(none)" placeholder
  * when the value is empty/whitespace-only — never leaves a dangling "Label: " with
  * nothing after it (EC-1 requirement: degrade gracefully on empty fields). */
 function contextLine(label: string, value: string): string {
@@ -40,28 +40,28 @@ export function buildBodyGenerationPrompt(input: BodyPromptInput): { system: str
 
   const system =
     kind === "agent"
-      ? "Bạn là một trợ lý chuyên viết system prompt cho các AI sub-agent trong một hệ thống " +
-        "autoworkflow (Symbion). Nhiệm vụ của bạn là soạn nội dung (system prompt) hoàn chỉnh, " +
-        "rõ ràng, có thể dùng ngay cho một sub-agent, dựa trên tên và mô tả ngắn được cung cấp. " +
-        "Chỉ trả về nội dung system prompt dưới dạng markdown thuần — không thêm lời dẫn, không " +
-        "thêm giải thích, không bọc trong code block."
-      : "Bạn là một trợ lý chuyên viết nội dung cho các slash command (lệnh) trong một hệ thống " +
-        "autoworkflow (Symbion). Nhiệm vụ của bạn là soạn nội dung điều phối (orchestration body) " +
-        "hoàn chỉnh, rõ ràng, có thể dùng ngay cho một slash command, dựa trên tên lệnh và mô tả " +
-        "ngắn được cung cấp. Chỉ trả về nội dung lệnh dưới dạng markdown thuần — không thêm lời " +
-        "dẫn, không thêm giải thích, không bọc trong code block.";
+      ? "You are an assistant specialized in writing system prompts for AI sub-agents in an " +
+        "autoworkflow system (Symbion). Your task is to compose a complete, " +
+        "clear, ready-to-use system prompt for a sub-agent, based on the provided name and short description. " +
+        "Return only the system prompt as plain markdown — no preamble, no " +
+        "explanations, and do not wrap it in a code block."
+      : "You are an assistant specialized in writing content for slash commands in an " +
+        "autoworkflow system (Symbion). Your task is to compose a complete, clear orchestration body " +
+        "that is ready to use for a slash command, based on the provided command name and short " +
+        "description. Return only the command content as plain markdown — no " +
+        "preamble, no explanations, and do not wrap it in a code block.";
 
-  const kindLabel = kind === "agent" ? "Loại: agent (sub-agent)" : "Loại: command (slash command)";
+  const kindLabel = kind === "agent" ? "Kind: agent (sub-agent)" : "Kind: command (slash command)";
 
   const userLines = [
     kindLabel,
-    contextLine("Tên", name),
-    contextLine("Mô tả ngắn", description),
-    contextLine("Nội dung hiện tại (nếu có, hãy cải thiện/mở rộng thay vì viết lại hoàn toàn khác)", existingBody),
+    contextLine("Name", name),
+    contextLine("Short description", description),
+    contextLine("Current content (if any, improve/expand it rather than rewriting it entirely)", existingBody),
     "",
     kind === "agent"
-      ? "Hãy soạn một system prompt đầy đủ cho sub-agent này."
-      : "Hãy soạn nội dung điều phối đầy đủ cho slash command này.",
+      ? "Compose a complete system prompt for this sub-agent."
+      : "Compose a complete orchestration body for this slash command.",
   ];
 
   const user = userLines.join("\n");

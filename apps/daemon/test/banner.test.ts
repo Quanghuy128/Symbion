@@ -6,7 +6,7 @@ const SAMPLE_URL = "http://127.0.0.1:20132/?t=abc";
 describe("buildBootBanner", () => {
   it("TC-BAN-1: non-TTY returns the exact plain two-line form (byte-identical to today)", () => {
     const lines = buildBootBanner({ version: "0.1.0", url: SAMPLE_URL, useEmoji: false, isTty: false });
-    expect(lines).toEqual(["Symbion v0.1.0", "Symbion daemon đang chạy: http://127.0.0.1:20132/?t=abc"]);
+    expect(lines).toEqual(["Symbion v0.1.0", "Symbion daemon running: http://127.0.0.1:20132/?t=abc"]);
   });
 
   it("TC-BAN-2: TTY, no terminalColumns -> 4 lines with equal-length = borders", () => {
@@ -24,16 +24,16 @@ describe("buildBootBanner", () => {
     const lines = buildBootBanner({ version: "0.1.0", url: SAMPLE_URL, useEmoji: true, isTty: false });
     expect(lines[0]).not.toBe("Symbion v0.1.0");
     expect(lines[0]!.endsWith("Symbion v0.1.0")).toBe(true);
-    expect(lines[1]).toBe("Symbion daemon đang chạy: http://127.0.0.1:20132/?t=abc");
+    expect(lines[1]).toBe("Symbion daemon running: http://127.0.0.1:20132/?t=abc");
   });
 
   it("TC-BAN-4: server line always matches the e2e fixture's URL_RE-relevant shape", () => {
-    const urlRe = /^Symbion daemon đang chạy: http:\/\/127\.0\.0\.1:\d+\/\?t=[0-9a-f]+$/;
+    const urlRe = /^Symbion daemon running: http:\/\/127\.0\.0\.1:\d+\/\?t=[0-9a-f]+$/;
     const realisticUrl = `http://127.0.0.1:20132/?t=${"a".repeat(64)}`;
     for (const isTty of [true, false]) {
       for (const useEmoji of [true, false]) {
         const lines = buildBootBanner({ version: "0.1.0", url: realisticUrl, useEmoji, isTty });
-        const serverLine = lines.find((l) => l.startsWith("Symbion daemon đang chạy:"));
+        const serverLine = lines.find((l) => l.startsWith("Symbion daemon running:"));
         expect(serverLine).toBeDefined();
         expect(serverLine).toMatch(urlRe);
       }

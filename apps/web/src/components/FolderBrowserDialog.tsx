@@ -53,11 +53,11 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
         // Stale initialPath (e.g. deleted between dialog-open and the RPC firing) —
         // fall back to the daemon home default instead of leaving the modal stuck.
         if (err instanceof DaemonRpcError && err.code === "invalid-path" && currentPath !== null) {
-          setError("Không tìm thấy đường dẫn trước đó, về Trang chủ.");
+          setError("Previous path not found, returning Home.");
           setCurrentPath(null);
           return;
         }
-        setError(err instanceof Error ? err.message : "Lỗi không xác định khi tải danh sách thư mục.");
+        setError(err instanceof Error ? err.message : "Unknown error while loading the folder list.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -81,18 +81,18 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
   return (
     <Dialog open={open} onClose={onClose} className="w-[480px]">
       <DialogHeader>
-        <DialogTitle>Chọn thư mục</DialogTitle>
+        <DialogTitle>Select a folder</DialogTitle>
       </DialogHeader>
 
       <div className="space-y-2">
         <p className="truncate font-mono text-xs text-text-faint" title={listing?.path ?? currentPath ?? ""}>
-          {listing?.path ?? currentPath ?? "Đang tải…"}
+          {listing?.path ?? currentPath ?? "Loading…"}
         </p>
 
         {error && <p className="text-xs text-danger">{error}</p>}
 
         <div className="max-h-72 space-y-1 overflow-y-auto rounded-panel border border-border-input p-1">
-          {loading && <p className="px-2 py-1 text-xs text-text-muted">Đang tải…</p>}
+          {loading && <p className="px-2 py-1 text-xs text-text-muted">Loading…</p>}
 
           {!loading && listing?.parentPath && (
             <button
@@ -101,12 +101,12 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
               onClick={() => navigateTo(listing.parentPath as string)}
             >
               <ArrowUp className="h-4 w-4" />
-              Lên một cấp
+              Up one level
             </button>
           )}
 
           {!loading && listing?.denied && (
-            <p className="px-2 py-1.5 text-xs text-text-muted">Không có quyền đọc thư mục này.</p>
+            <p className="px-2 py-1.5 text-xs text-text-muted">No permission to read this folder.</p>
           )}
 
           {!loading &&
@@ -125,17 +125,17 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
             ))}
 
           {!loading && !listing?.denied && listing?.entries.length === 0 && (
-            <p className="px-2 py-1.5 text-xs text-text-muted">Không có thư mục con.</p>
+            <p className="px-2 py-1.5 text-xs text-text-muted">No subfolders.</p>
           )}
         </div>
       </div>
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
-          Hủy
+          Cancel
         </Button>
         <Button disabled={!listing || loading} onClick={handleChoose}>
-          Chọn thư mục này
+          Select this folder
         </Button>
       </DialogFooter>
     </Dialog>

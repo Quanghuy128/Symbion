@@ -44,8 +44,8 @@ export function CopyRunCommandDialog({ command, onClose }: CopyRunCommandDialogP
 
       <div className="space-y-3">
         <Input placeholder="Requirements" value={requirements} onChange={(e) => setRequirements(e.target.value)} />
-        <Input placeholder="Model (tùy chọn)" value={model} onChange={(e) => setModel(e.target.value)} />
-        <Input placeholder="Option (tùy chọn, ví dụ --gate)" value={option} onChange={(e) => setOption(e.target.value)} />
+        <Input placeholder="Model (optional)" value={model} onChange={(e) => setModel(e.target.value)} />
+        <Input placeholder="Option (optional, e.g. --gate)" value={option} onChange={(e) => setOption(e.target.value)} />
 
         <div className="rounded-panel border border-border-input bg-bg-code p-2">
           <code className="select-all text-sm text-text-body">{prompt}</code>
@@ -53,15 +53,15 @@ export function CopyRunCommandDialog({ command, onClose }: CopyRunCommandDialogP
 
         {clipboardBlocked && (
           <p className="text-xs text-warning">
-            Clipboard bị chặn — đã chọn sẵn văn bản, nhấn ⌘C / Ctrl+C để copy.
+            Clipboard blocked — text is pre-selected, press ⌘C / Ctrl+C to copy.
           </p>
         )}
-        {copied && <p className="text-xs text-success">Đã copy vào clipboard.</p>}
+        {copied && <p className="text-xs text-success">Copied to clipboard.</p>}
       </div>
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
-          Đóng
+          Close
         </Button>
         <Button onClick={handleCopy}>Copy</Button>
       </DialogFooter>

@@ -16,22 +16,22 @@ export interface GenerateBodyDisclosureProps {
  * (STATE §5's "no provider selected" state) — distinct copy, no generate is possible. */
 export function persistentDisclosureCopy(providerId: ProviderId | null): string {
   if (providerId === null) {
-    return "Chưa chọn nhà cung cấp AI — vào Cài đặt để chọn trước khi dùng tính năng tạo nội dung bằng AI.";
+    return "No AI provider selected — go to Settings to choose one before using AI content generation.";
   }
   if (providerId === "ollama") {
-    return "Tạo nội dung bằng AI cục bộ (Ollama) — gửi tên/mô tả/nội dung hiện tại tới mô hình chạy trên máy bạn, không gửi ra ngoài.";
+    return "Generate content with local AI (Ollama) — sends the name/description/current content to a model running on your machine, nothing leaves it.";
   }
-  return "Tạo nội dung bằng AI từ bên thứ ba — tên/mô tả/nội dung hiện tại của bạn sẽ được gửi ra ngoài máy đến nhà cung cấp AI bên ngoài.";
+  return "Generate content with third-party AI — your name/description/current content will be sent off your machine to an external AI provider.";
 }
 
 export function firstUseDisclosureCopy(providerId: ProviderId | null): string {
   if (providerId === null) {
-    return "Chưa chọn nhà cung cấp AI nào — vào Cài đặt để cấu hình trước khi dùng tính năng tạo nội dung bằng AI.";
+    return "No AI provider configured — go to Settings to set one up before using AI content generation.";
   }
   if (providerId === "ollama") {
-    return "Lần đầu sử dụng: tính năng này gửi tên, mô tả và nội dung hiện tại của artifact tới một mô hình AI chạy cục bộ trên máy bạn (Ollama). Dữ liệu không được gửi ra ngoài máy.";
+    return "First-time use: this feature sends the artifact's name, description, and current content to an AI model running locally on your machine (Ollama). No data leaves your machine.";
   }
-  return "Lần đầu sử dụng: tính năng này gửi tên, mô tả và nội dung hiện tại của artifact tới một dịch vụ AI bên thứ ba qua mạng. Dữ liệu này sẽ rời khỏi máy của bạn và được xử lý bởi nhà cung cấp bên ngoài.";
+  return "First-time use: this feature sends the artifact's name, description, and current content to a third-party AI service over the network. This data will leave your machine and be processed by an external provider.";
 }
 
 /**

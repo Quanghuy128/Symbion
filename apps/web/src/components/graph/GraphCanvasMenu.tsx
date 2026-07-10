@@ -52,7 +52,7 @@ export function GraphCanvasMenu({ x, y, onClose, onAdd, onFitView, disabled }: G
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#818cf8" }} />
-        Thêm workflow
+        Add workflow
       </button>
       <button
         type="button"
@@ -65,7 +65,7 @@ export function GraphCanvasMenu({ x, y, onClose, onAdd, onFitView, disabled }: G
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#a78bfa" }} />
-        Thêm agent
+        Add agent
       </button>
       <div className="my-1 border-t border-border-hairline" />
       <button
@@ -77,7 +77,7 @@ export function GraphCanvasMenu({ x, y, onClose, onAdd, onFitView, disabled }: G
         }}
         className="block w-full px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06]"
       >
-        ⤢ Vừa khung
+        ⤢ Fit to view
       </button>
     </div>
   );

@@ -57,13 +57,13 @@ export function NodeDeleteConfirm({
       className="z-30 w-64 animate-popIn rounded-panel border border-border-menu bg-bg-menu p-3 shadow-dropdown"
     >
       <p className="text-[13px] text-text-body">
-        Xoá {kind === "command" ? `/${artifactName}` : artifactName}?
+        Delete {kind === "command" ? `/${artifactName}` : artifactName}?
       </p>
 
       {showRefWarning && (
         <p className="mt-2 text-[11.5px] leading-snug text-warning">
-          ⚠ {referencingCommands.length} workflow vẫn tham chiếu {artifactName} —{" "}
-          {referencingCommands.join(", ")} sẽ hiện liên kết đỏ.
+          ⚠ {referencingCommands.length} workflow(s) still reference {artifactName} —{" "}
+          {referencingCommands.join(", ")} will show a red link.
         </p>
       )}
 
@@ -71,10 +71,10 @@ export function NodeDeleteConfirm({
 
       <div className="mt-3 flex justify-end gap-2">
         <Button size="sm" variant="outline" disabled={deleting} onClick={onCancel}>
-          Hủy
+          Cancel
         </Button>
         <Button size="sm" variant="destructive" disabled={deleting} onClick={onConfirm}>
-          {deleting ? "Đang xoá…" : "Xoá"}
+          {deleting ? "Deleting…" : "Delete"}
         </Button>
       </div>
     </div>

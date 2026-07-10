@@ -17,8 +17,8 @@ const GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1bet
 
 const GEMINI_MODELS: LlmModelOption[] = [
   { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash (nhanh)", tier: "fast" },
-  { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro (cân bằng)", tier: "balanced" },
-  { id: "gemini-2.0-pro", label: "Gemini 2.0 Pro (tốt nhất)", tier: "best" },
+  { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro (balanced)", tier: "balanced" },
+  { id: "gemini-2.0-pro", label: "Gemini 2.0 Pro (best)", tier: "best" },
 ];
 
 export interface GeminiProviderOptions {
@@ -41,7 +41,7 @@ export class GeminiProvider implements LlmProvider {
   async generate(req: LlmGenerateRequest): Promise<LlmGenerateResult> {
     const apiKey = loadProvidersConfig().providers.gemini?.apiKey;
     if (!apiKey) {
-      throw new LlmError("not-configured", "Chưa cấu hình API key cho Gemini.");
+      throw new LlmError("not-configured", "No API key configured for Gemini.");
     }
 
     const controller = new AbortController();
@@ -67,19 +67,19 @@ export class GeminiProvider implements LlmProvider {
         });
       } catch {
         if (controller.signal.aborted) {
-          throw new LlmError("timeout", `Quá thời gian chờ (${req.timeoutMs}ms) khi gọi Gemini.`);
+          throw new LlmError("timeout", `Request timed out (${req.timeoutMs}ms) while calling Gemini.`);
         }
-        throw new LlmError("network", "Lỗi mạng khi gọi Gemini.");
+        throw new LlmError("network", "Network error while calling Gemini.");
       }
 
       if (res.status === 401 || res.status === 403) {
-        throw new LlmError("auth", "Thiếu hoặc sai cấu hình API key cho Gemini.");
+        throw new LlmError("auth", "Missing or invalid API key for Gemini.");
       }
       if (res.status === 429) {
-        throw new LlmError("rate-limit", "Bị giới hạn tần suất gọi — thử lại sau.");
+        throw new LlmError("rate-limit", "Rate-limited — try again later.");
       }
       if (!res.ok) {
-        throw new LlmError("invalid-response", `Gemini trả về lỗi HTTP ${res.status}.`);
+        throw new LlmError("invalid-response", `Gemini returned HTTP error ${res.status}.`);
       }
 
       let json: { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
@@ -88,12 +88,12 @@ export class GeminiProvider implements LlmProvider {
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
         };
       } catch {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ Gemini (không phải JSON).");
+        throw new LlmError("invalid-response", "Invalid response from Gemini (not JSON).");
       }
 
       const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
       if (typeof text !== "string") {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ Gemini.");
+        throw new LlmError("invalid-response", "Invalid response from Gemini.");
       }
 
       return { text };

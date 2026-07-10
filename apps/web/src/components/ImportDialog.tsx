@@ -65,7 +65,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
       // "already-a-project".
       setError(
         createdProjectName
-          ? `Dự án "${createdProjectName}" đã được tạo nhưng nhập thất bại: ${message}. Mở dự án "${createdProjectName}" trong danh sách bên trái để nhập lại.`
+          ? `Project "${createdProjectName}" was created but import failed: ${message}. Open project "${createdProjectName}" in the left list to import again.`
           : message
       );
     } finally {
@@ -78,17 +78,17 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
   return (
     <Dialog open onClose={onClose} className="w-[560px]">
       <DialogHeader>
-        <DialogTitle>Import .claude/ từ repo</DialogTitle>
+        <DialogTitle>Import .claude/ from a repo</DialogTitle>
       </DialogHeader>
 
       <div className="space-y-3">
         <div className="flex gap-2">
           <Input placeholder="/home/me/code/geochat" value={path} onChange={(e) => setPath(e.target.value)} />
           <Button variant="outline" onClick={handleScan}>
-            Quét
+            Scan
           </Button>
         </div>
-        <Input placeholder="Tên dự án (tùy chọn)" value={projectName} onChange={(e) => setProjectName(e.target.value)} />
+        <Input placeholder="Project name (optional)" value={projectName} onChange={(e) => setProjectName(e.target.value)} />
 
         {scanned && <ImportReviewStep scanned={scanned} selected={selected} onToggle={toggle} />}
 
@@ -97,10 +97,10 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
-          Hủy
+          Cancel
         </Button>
         <Button disabled={!scanned || totalSelected === 0 || importing} onClick={handleImport}>
-          Nhập {totalSelected} mục đã chọn
+          Import {totalSelected} selected
         </Button>
       </DialogFooter>
     </Dialog>

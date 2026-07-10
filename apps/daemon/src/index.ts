@@ -53,7 +53,7 @@ async function main() {
     port = found.port;
     handle = found.handle;
   } catch (err) {
-    console.error("Không tìm được cổng trống cho daemon.", err);
+    console.error("Could not find a free port for the daemon.", err);
     process.exit(1);
     return;
   }
@@ -63,24 +63,24 @@ async function main() {
     saveGlobalConfig(config);
   }
 
-  const url = `http://127.0.0.1:${handle.port}/?t=${handle.token}`;
+  const url = `http://127.0.0.1:${handle.port}/`;
   printBootBanner(VERSION, url);
 
   let running = true;
   while (running) {
     const choice = await showBootMenu(url);
     if (choice === "web") {
-      console.log(`Mở: ${url}`);
+      console.log(`Opening: ${url}`);
       // best-effort open in default browser; not critical-path for headless/CI runs.
       // Failures are now surfaced via the onFailure callback (FR-A.3 fix —
       // previously a silent try/catch around a fire-and-forget exec() call
       // that could never observe an async failure at all).
       openInBrowser(url, (message) => console.log(message));
     } else if (choice === "tray") {
-      console.log("Đã chuyển sang chạy nền (Hide to Tray). Server vẫn đang chạy.");
+      console.log("Switched to background (Hide to Tray). Server is still running.");
       running = false; // detach menu loop; process keeps running via the HTTP server
     } else if (choice === "exit") {
-      console.log("Đang tắt daemon...");
+      console.log("Shutting down daemon...");
       await handle.close();
       running = false;
       process.exit(0);

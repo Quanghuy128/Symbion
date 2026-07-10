@@ -24,12 +24,12 @@ import { useArtifactStore } from "@/lib/store/useArtifactStore";
 type CheckState = "idle" | "checking" | "connected" | "disconnected";
 
 const ERROR_CODE_LABELS: Record<string, string> = {
-  "not-configured": "Chưa cấu hình API key.",
-  auth: "Sai hoặc thiếu API key.",
-  "rate-limit": "Bị giới hạn tần suất gọi.",
-  timeout: "Quá thời gian chờ.",
-  network: "Lỗi mạng.",
-  "invalid-response": "Phản hồi không hợp lệ từ nhà cung cấp.",
+  "not-configured": "No API key configured.",
+  auth: "Wrong or missing API key.",
+  "rate-limit": "Rate-limited.",
+  timeout: "Request timed out.",
+  network: "Network error.",
+  "invalid-response": "Invalid response from the provider.",
 };
 
 /**
@@ -51,7 +51,7 @@ export function ProvidersPanel() {
         setLoadError(null);
       })
       .catch(() => {
-        setLoadError("Không thể tải danh sách nhà cung cấp AI.");
+        setLoadError("Could not load the list of AI providers.");
       });
   }
 
@@ -65,7 +65,7 @@ export function ProvidersPanel() {
     return (
       <p className="flex items-center gap-2 text-sm text-destructive">
         <span aria-hidden>⚠</span>
-        Mất kết nối tới Symbion daemon — không thể quản lý nhà cung cấp AI lúc này.
+        Disconnected from the Symbion daemon — cannot manage AI providers right now.
       </p>
     );
   }
@@ -77,7 +77,7 @@ export function ProvidersPanel() {
   if (!providers) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Đang tải…
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading…
       </p>
     );
   }
@@ -111,10 +111,10 @@ function StatusBadge({ state, errorCode }: { state: CheckState; errorCode?: stri
   if (state === "idle") return null;
   const label =
     state === "checking"
-      ? "Đang kiểm tra…"
+      ? "Checking…"
       : state === "connected"
-        ? "Đã kết nối"
-        : (errorCode && ERROR_CODE_LABELS[errorCode]) || "Chưa kết nối";
+        ? "Connected"
+        : (errorCode && ERROR_CODE_LABELS[errorCode]) || "Not connected";
   const dotClass =
     state === "checking" ? "" : state === "connected" ? "text-green-600" : "text-amber-500";
   return (
@@ -175,22 +175,22 @@ function OllamaCard({ provider, onChanged }: { provider: ProviderDescriptor; onC
   return (
     <CardShell active={provider.active}>
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">Ollama (cục bộ)</h3>
+        <h3 className="font-medium">Ollama (local)</h3>
         <StatusBadge state={state} errorCode={errorCode} />
       </div>
 
       <p className="text-muted-foreground">
-        Ollama là phần mềm chạy mô hình AI ngay trên máy của bạn — Symbion dùng nó để tạo nội dung gợi ý (Tạo nội
-        dung). Không cần API key.
+        Ollama is software that runs AI models right on your machine — Symbion uses it to generate suggested content (Generate
+        content). No API key needed.
       </p>
 
       {install && (
         <div>
           <p className="mb-1 text-xs text-muted-foreground">
-            Cài &amp; chạy trên máy của bạn
+            Install &amp; run on your machine
             {install.confident
-              ? ` (phát hiện: ${install.env.label})`
-              : " — không chắc về hệ điều hành, vui lòng chọn đúng bên dưới:"}
+              ? ` (detected: ${install.env.label})`
+              : " — unsure of the OS, please pick the right one below:"}
           </p>
           <div className="space-y-2">
             {install.variants.map((variant) => (
@@ -204,7 +204,7 @@ function OllamaCard({ provider, onChanged }: { provider: ProviderDescriptor; onC
                     type="button"
                     variant="ghost"
                     size="sm"
-                    aria-label="Sao chép lệnh"
+                    aria-label="Copy command"
                     onClick={() => copyCommand(variant.command, variant.label)}
                   >
                     {copiedLabel === variant.label ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -220,19 +220,19 @@ function OllamaCard({ provider, onChanged }: { provider: ProviderDescriptor; onC
         <Button type="button" variant="outline" size="sm" onClick={() => void runCheck()} disabled={state === "checking"}>
           {state === "checking" ? (
             <span className="flex items-center gap-1">
-              <Loader2 className="h-4 w-4 animate-spin" /> Đang kiểm tra…
+              <Loader2 className="h-4 w-4 animate-spin" /> Checking…
             </span>
           ) : (
-            "Kiểm tra kết nối"
+            "Test connection"
           )}
         </Button>
         <Button type="button" size="sm" onClick={() => void activate()} disabled={busy || provider.active}>
-          {provider.active ? "Đang hoạt động" : "Đặt làm mặc định"}
+          {provider.active ? "Active" : "Set as default"}
         </Button>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Symbion chỉ kiểm tra Ollama khi bạn bấm &quot;Kiểm tra kết nối&quot; — không kiểm tra định kỳ.
+        Symbion only checks Ollama when you click &quot;Test connection&quot; — it does not check periodically.
       </p>
     </CardShell>
   );
@@ -261,7 +261,7 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
       setApiKeyInput(""); // raw key never lingers in React state after save resolves
       onChanged();
     } catch (err) {
-      setActionError(err instanceof DaemonRpcError ? err.message : "Không thể lưu API key.");
+      setActionError(err instanceof DaemonRpcError ? err.message : "Could not save the API key.");
     } finally {
       setSaving(false);
     }
@@ -274,7 +274,7 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
       await callRpc<ClearProviderKeyParams, ClearProviderKeyResult>("clearProviderKey", { providerId: provider.id });
       onChanged();
     } catch (err) {
-      setActionError(err instanceof DaemonRpcError ? err.message : "Không thể xoá API key.");
+      setActionError(err instanceof DaemonRpcError ? err.message : "Could not delete the API key.");
     } finally {
       setClearing(false);
     }
@@ -289,7 +289,7 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
       });
       onChanged();
     } catch (err) {
-      setActionError(err instanceof DaemonRpcError ? err.message : "Không thể đặt làm mặc định.");
+      setActionError(err instanceof DaemonRpcError ? err.message : "Could not set as default.");
     } finally {
       setActivating(false);
     }
@@ -319,22 +319,22 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
       {provider.configured ? (
         <p className="text-xs text-muted-foreground">
           API key: <code>{provider.maskedKey}</code>
-          {provider.model ? ` · mô hình: ${provider.model}` : ""}
+          {provider.model ? ` · model: ${provider.model}` : ""}
         </p>
       ) : (
-        <p className="text-xs text-muted-foreground">Chưa cấu hình API key.</p>
+        <p className="text-xs text-muted-foreground">No API key configured.</p>
       )}
 
       <div className="flex gap-2">
         <Input
           type="password"
-          placeholder={provider.configured ? "Nhập key mới để thay thế…" : "Nhập API key…"}
+          placeholder={provider.configured ? "Enter a new key to replace…" : "Enter API key…"}
           value={apiKeyInput}
           onChange={(e) => setApiKeyInput(e.target.value)}
           disabled={saving}
         />
         <Button type="button" size="sm" onClick={() => void save()} disabled={saving || apiKeyInput.trim() === ""}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Lưu"}
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
         </Button>
       </div>
 
@@ -350,10 +350,10 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
         >
           {state === "checking" ? (
             <span className="flex items-center gap-1">
-              <Loader2 className="h-4 w-4 animate-spin" /> Đang kiểm tra…
+              <Loader2 className="h-4 w-4 animate-spin" /> Checking…
             </span>
           ) : (
-            "Kiểm tra kết nối"
+            "Test connection"
           )}
         </Button>
         <Button
@@ -362,7 +362,7 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
           onClick={() => void activate()}
           disabled={activating || !provider.configured || provider.active}
         >
-          {provider.active ? "Đang hoạt động" : "Đặt làm mặc định"}
+          {provider.active ? "Active" : "Set as default"}
         </Button>
         <Button
           type="button"
@@ -371,7 +371,7 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
           onClick={() => void clearKey()}
           disabled={clearing || !provider.configured}
         >
-          Xoá key
+          Delete key
         </Button>
       </div>
     </CardShell>

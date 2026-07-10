@@ -103,7 +103,7 @@ export function resolveOllamaBaseUrl(): string {
     if (!isLoopbackUrl(envBaseUrl)) {
       throw new LlmError(
         "provider-not-running",
-        `SYMBION_OLLAMA_BASE_URL phải là một địa chỉ loopback (127.0.0.1/localhost/::1); giá trị hiện tại không hợp lệ và bị từ chối: "${envBaseUrl}".`
+        `SYMBION_OLLAMA_BASE_URL must be a loopback address (127.0.0.1/localhost/::1); the current value is invalid and was rejected: "${envBaseUrl}".`
       );
     }
     return envBaseUrl;
@@ -159,11 +159,11 @@ export class OllamaProvider implements LlmProvider {
       } catch {
         throw new LlmError(
           "provider-not-running",
-          "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy."
+          "Cannot connect to Ollama — make sure Ollama is running on your machine."
         );
       }
       if (!res.ok) {
-        throw new LlmError("invalid-response", `Ollama trả về lỗi HTTP ${res.status} khi lấy danh sách mô hình.`);
+        throw new LlmError("invalid-response", `Ollama returned HTTP error ${res.status} while fetching the model list.`);
       }
       let json: OllamaTagsResponse;
       try {
@@ -171,13 +171,13 @@ export class OllamaProvider implements LlmProvider {
       } catch {
         throw new LlmError(
           "invalid-response",
-          "Phản hồi không hợp lệ từ Ollama (không phải JSON) khi lấy danh sách mô hình."
+          "Invalid response from Ollama (not JSON) while fetching the model list."
         );
       }
       if (!Array.isArray(json.models)) {
         throw new LlmError(
           "invalid-response",
-          "Phản hồi không hợp lệ từ Ollama (thiếu trường models) khi lấy danh sách mô hình."
+          "Invalid response from Ollama (missing models field) while fetching the model list."
         );
       }
       return json.models
@@ -225,24 +225,24 @@ export class OllamaProvider implements LlmProvider {
         });
       } catch {
         if (controller.signal.aborted) {
-          throw new LlmError("timeout", `Quá thời gian chờ (${req.timeoutMs}ms) khi gọi Ollama.`);
+          throw new LlmError("timeout", `Request timed out (${req.timeoutMs}ms) while calling Ollama.`);
         }
 
         throw new LlmError(
           "provider-not-running",
-          "Không thể kết nối tới Ollama — đảm bảo Ollama đang chạy trên máy."
+          "Cannot connect to Ollama — make sure Ollama is running on your machine."
         );
       }
 
       if (res.status === 404) {
-        throw new LlmError("invalid-response", `Mô hình "${req.model}" không tồn tại trên Ollama (404).`);
+        throw new LlmError("invalid-response", `Model "${req.model}" does not exist on Ollama (404).`);
       }
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new LlmError(
           "invalid-response",
-          `Ollama trả về lỗi HTTP ${res.status}${text ? `: ${text}` : "."}`
+          `Ollama returned HTTP error ${res.status}${text ? `: ${text}` : "."}`
         );
       }
 
@@ -251,11 +251,11 @@ export class OllamaProvider implements LlmProvider {
       try {
         json = (await res.json()) as OllamaGenerateResponse;
       } catch {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ Ollama (không phải JSON).");
+        throw new LlmError("invalid-response", "Invalid response from Ollama (not JSON).");
       }
 
       if (typeof json.response !== "string") {
-        throw new LlmError("invalid-response", "Phản hồi không hợp lệ từ Ollama (thiếu trường response).");
+        throw new LlmError("invalid-response", "Invalid response from Ollama (missing response field).");
       }
 
       return { text: json.response };

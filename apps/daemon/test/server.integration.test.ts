@@ -48,9 +48,8 @@ function startFakeOllama(): Promise<string> {
   });
 }
 
-async function rpc(method: string, params: unknown, opts: { token?: string; host?: string; origin?: string } = {}) {
+async function rpc(method: string, params: unknown, opts: { host?: string; origin?: string } = {}) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (opts.token !== undefined) headers["x-symbion-token"] = opts.token;
   if (opts.host !== undefined) headers["Host"] = opts.host;
 
   const res = await fetch(`http://127.0.0.1:${handle.port}/rpc`, {
@@ -69,75 +68,46 @@ describe("T15 security", () => {
     expect(res.body.port).toBe(handle.port);
   });
 
-  it("missing token on a non-ping method -> 401", async () => {
+  // tokenless-daemon: the per-request session token was removed (it broke on F5
+  // refresh). Non-ping methods no longer require a token — the trust boundary is
+  // the loopback-only bind + Origin/Host allowlist below.
+  it("non-ping method with no token -> 200 (token gate removed)", async () => {
     const res = await rpc("listProjects", {});
-    expect(res.status).toBe(401);
-  });
-
-  it("wrong token on a non-ping method -> 401", async () => {
-    const res = await rpc("listProjects", {}, { token: "wrong-token" });
-    expect(res.status).toBe(401);
-  });
-
-  it("correct token -> 200", async () => {
-    const res = await rpc("listProjects", {}, { token: handle.token });
     expect(res.status).toBe(200);
   });
 
   it("rejects request with a foreign Origin header", async () => {
-    const res = await rpc("listProjects", {}, { token: handle.token, origin: "http://evil.example.com" });
+    const res = await rpc("listProjects", {}, { origin: "http://evil.example.com" });
     expect(res.status).toBe(403);
   });
 
   it("legitimate request (correct Host implicitly set by fetch) succeeds", async () => {
     // fetch() always sets Host to the actual target (127.0.0.1:<port>), exercising
     // the allow-path of the Host allowlist check on every other test in this file.
-    const res = await rpc("listProjects", {}, { token: handle.token });
+    const res = await rpc("listProjects", {});
     expect(res.status).toBe(200);
   });
 
-  // D7 (templates-marketplace testplan): applyTemplate requires the session
-  // token like every other non-ping/non-read-only RPC — confirms it was
-  // correctly NOT added to READ_ONLY_METHODS and gets no special-case auth
-  // bypass. Uses an unknown projectId (no fixture project created in this
-  // describe block) — the assertion is purely about the 401 gate firing
-  // BEFORE the handler runs, not about a successful apply.
-  it("applyTemplate missing token -> 401 (never reaches the handler)", async () => {
+  // applyTemplate reaches its handler with no token now; the assertion is that a
+  // foreign Origin is still rejected before the handler runs (DNS-rebinding gate).
+  it("applyTemplate with a foreign Origin -> 403 (Origin gate fires before the handler)", async () => {
+    const res = await rpc(
+      "applyTemplate",
+      {
+        projectId: "does-not-exist",
+        template: { sourceTemplateId: "agent:x", kind: "agent", name: "x", description: "y", body: "z" },
+      },
+      { origin: "http://evil.example.com" }
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("applyTemplate with an allowed Origin, unknown projectId -> reaches handler, fails with a handler-level error (not 403)", async () => {
     const res = await rpc("applyTemplate", {
       projectId: "does-not-exist",
-      template: {
-        sourceTemplateId: "agent:x",
-        kind: "agent",
-        name: "x",
-        description: "y",
-        body: "z",
-      },
+      template: { sourceTemplateId: "agent:x", kind: "agent", name: "x", description: "y", body: "z" },
     });
-    expect(res.status).toBe(401);
-  });
-
-  it("applyTemplate wrong token -> 401", async () => {
-    const res = await rpc(
-      "applyTemplate",
-      {
-        projectId: "does-not-exist",
-        template: { sourceTemplateId: "agent:x", kind: "agent", name: "x", description: "y", body: "z" },
-      },
-      { token: "wrong-token" }
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("applyTemplate correct token, unknown projectId -> reaches handler, fails with a handler-level error (not 401)", async () => {
-    const res = await rpc(
-      "applyTemplate",
-      {
-        projectId: "does-not-exist",
-        template: { sourceTemplateId: "agent:x", kind: "agent", name: "x", description: "y", body: "z" },
-      },
-      { token: handle.token }
-    );
-    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
   });
 });
 
@@ -152,7 +122,6 @@ describe("T15 security — raw socket request with spoofed Host header", () => {
       `POST /rpc HTTP/1.1\r\n` +
       `Host: evil.example.com\r\n` +
       `Content-Type: application/json\r\n` +
-      `x-symbion-token: ${handle.token}\r\n` +
       `Content-Length: ${Buffer.byteLength(body)}\r\n` +
       `Connection: close\r\n\r\n${body}`;
 
@@ -171,20 +140,10 @@ describe("T15 security — raw socket request with spoofed Host header", () => {
 });
 
 describe("generateBody transport (TC-S1..TC-S4)", () => {
-  it("TC-S1: POST /rpc generateBody with a valid token -> 200 with the generated body", async () => {
+  it("TC-S1: POST /rpc generateBody -> 200 with the generated body", async () => {
     const baseUrl = await startFakeOllama();
     process.env["SYMBION_OLLAMA_BASE_URL"] = baseUrl;
 
-    const res = await rpc(
-      "generateBody",
-      { kind: "agent", name: "x", description: "", existingBody: "", modelId: "m", providerId: "ollama" },
-      { token: handle.token }
-    );
-    expect(res.status).toBe(200);
-    expect(res.body.body).toBe("fake generated body");
-  });
-
-  it("TC-S2: POST /rpc generateBody with no token -> 401 (not added to any no-auth allowlist)", async () => {
     const res = await rpc("generateBody", {
       kind: "agent",
       name: "x",
@@ -193,14 +152,15 @@ describe("generateBody transport (TC-S1..TC-S4)", () => {
       modelId: "m",
       providerId: "ollama",
     });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(res.body.body).toBe("fake generated body");
   });
 
-  it("TC-S3: POST /rpc generateBody with a disallowed Origin -> 403 (same DNS-rebinding defense, no special-casing)", async () => {
+  it("TC-S3: POST /rpc generateBody with a disallowed Origin -> 403 (DNS-rebinding defense)", async () => {
     const res = await rpc(
       "generateBody",
       { kind: "agent", name: "x", description: "", existingBody: "", modelId: "m", providerId: "ollama" },
-      { token: handle.token, origin: "http://evil.example.com" }
+      { origin: "http://evil.example.com" }
     );
     expect(res.status).toBe(403);
   });
@@ -210,25 +170,17 @@ describe("generateBody transport (TC-S1..TC-S4)", () => {
     process.env["SYMBION_OLLAMA_BASE_URL"] = baseUrl;
 
     const params = { kind: "agent", name: "x", description: "", existingBody: "", modelId: "m", providerId: "ollama" };
-    const [res1, res2] = await Promise.all([
-      rpc("generateBody", params, { token: handle.token }),
-      rpc("generateBody", params, { token: handle.token }),
-    ]);
+    const [res1, res2] = await Promise.all([rpc("generateBody", params), rpc("generateBody", params)]);
     expect(res1.status).toBe(200);
     expect(res2.status).toBe(200);
   });
 });
 
-describe("listDir / makeDir transport (TC-RPC1..TC-RPC9)", () => {
-  it("TC-RPC1: listDir without a token -> 401 (no free pass for read-only methods)", async () => {
-    const res = await rpc("listDir", {});
-    expect(res.status).toBe(401);
-  });
-
-  it("TC-RPC3: listDir with a valid token -> 200 with the expected ListDirResult shape", async () => {
+describe("listDir / makeDir transport (TC-RPC3..TC-RPC9)", () => {
+  it("TC-RPC3: listDir -> 200 with the expected ListDirResult shape", async () => {
     const dir = mkdtempSync(join(tmpdir(), "symbion-listdir-rpc-"));
     try {
-      const res = await rpc("listDir", { path: dir }, { token: handle.token });
+      const res = await rpc("listDir", { path: dir });
       expect(res.status).toBe(200);
       expect(res.body.path).toBe(dir);
       expect(Array.isArray(res.body.entries)).toBe(true);
@@ -238,11 +190,11 @@ describe("listDir / makeDir transport (TC-RPC1..TC-RPC9)", () => {
     }
   });
 
-  it("TC-RPC4: makeDir with a valid token -> 200, dir created on disk", async () => {
+  it("TC-RPC4: makeDir -> 200, dir created on disk", async () => {
     const dir = mkdtempSync(join(tmpdir(), "symbion-makedir-rpc-"));
     try {
       const target = join(dir, "x");
-      const res = await rpc("makeDir", { path: target }, { token: handle.token });
+      const res = await rpc("makeDir", { path: target });
       expect(res.status).toBe(200);
       expect(res.body.created).toBe(true);
       expect(existsSync(target)).toBe(true);
@@ -252,7 +204,7 @@ describe("listDir / makeDir transport (TC-RPC1..TC-RPC9)", () => {
   });
 
   it("TC-RPC5: malformed makeDir params (path missing) -> 400 invalid-params", async () => {
-    const res = await rpc("makeDir", {}, { token: handle.token });
+    const res = await rpc("makeDir", {});
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("invalid-params");
   });
@@ -262,7 +214,7 @@ describe("listDir / makeDir transport (TC-RPC1..TC-RPC9)", () => {
     // `undefined` here reproduces a client that omits `params` from the JSON
     // body altogether (distinct from TC-RPC5's `params: {}`, which still has
     // an empty-but-present params object).
-    const res = await rpc("makeDir", undefined, { token: handle.token });
+    const res = await rpc("makeDir", undefined);
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("invalid-params");
   });
@@ -273,21 +225,16 @@ describe("listDir / makeDir transport (TC-RPC1..TC-RPC9)", () => {
     // dispatch-layer `body.params ?? {}` default means handlers.listDir
     // receives `{}` (path undefined) just like an explicit `params: {}` would,
     // which is a valid, successful call (lists the daemon's home directory).
-    const res = await rpc("listDir", undefined, { token: handle.token });
+    const res = await rpc("listDir", undefined);
     expect(res.status).not.toBe(500);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.entries)).toBe(true);
   });
-
-  it("makeDir without a token -> 401 (mutating method, not read-only)", async () => {
-    const res = await rpc("makeDir", { path: "/tmp/whatever" });
-    expect(res.status).toBe(401);
-  });
 });
 
 describe("listModels transport", () => {
-  it("POST /rpc listModels with a valid token -> 200 with 3 models (static cloud provider, unaffected by this machine's Ollama state)", async () => {
-    const res = await rpc("listModels", { providerId: "anthropic" }, { token: handle.token });
+  it("POST /rpc listModels -> 200 with 3 models (static cloud provider, unaffected by this machine's Ollama state)", async () => {
+    const res = await rpc("listModels", { providerId: "anthropic" });
     expect(res.status).toBe(200);
     expect(res.body.models).toHaveLength(3);
     expect(res.body.outcome).toBe("ok");
@@ -304,18 +251,13 @@ describe("listModels transport", () => {
     const port = typeof addr === "object" && addr ? addr.port : 0;
     process.env["SYMBION_OLLAMA_BASE_URL"] = `http://127.0.0.1:${port}`;
     try {
-      const res = await rpc("listModels", { providerId: "ollama" }, { token: handle.token });
+      const res = await rpc("listModels", { providerId: "ollama" });
       expect(res.status).toBe(200);
       expect(res.body.outcome).toBe("ok");
       expect(res.body.models.length).toBeGreaterThan(0);
     } finally {
       await new Promise<void>((resolve) => fakeServer.close(() => resolve()));
     }
-  });
-
-  it("POST /rpc listModels with no token -> 401", async () => {
-    const res = await rpc("listModels", { providerId: "ollama" });
-    expect(res.status).toBe(401);
   });
 });
 

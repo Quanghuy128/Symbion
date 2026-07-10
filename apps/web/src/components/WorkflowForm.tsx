@@ -28,7 +28,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
   const agentNames = new Set(allArtifacts.filter((a) => a.kind === "agent").map((a) => a.name));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <label className="mb-1 block text-sm font-medium text-text-body">command name (→ /name)</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="analyze" />
@@ -45,7 +45,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium text-text-body">Nội dung</label>
+          <label className="text-sm font-medium text-text-body">Content</label>
           <div className="flex items-center gap-2">
             <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
@@ -69,10 +69,10 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       {mentions.length > 0 && (
         <div className="text-xs">
-          <span className="text-text-muted">Agents tham chiếu: </span>
+          <span className="text-text-muted">Referenced agents: </span>
           {mentions.map((m) => (
             <span key={m} className={agentNames.has(m) ? "text-success" : "text-warning"}>
-              • {m} {agentNames.has(m) ? "✓" : "(không tồn tại)"}{" "}
+              • {m} {agentNames.has(m) ? "✓" : "(does not exist)"}{" "}
             </span>
           ))}
         </div>

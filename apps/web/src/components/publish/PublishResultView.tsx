@@ -19,14 +19,14 @@ export function PublishResultView({ result, version, onDone }: PublishResultView
   return (
     <Dialog open onClose={onDone} className="w-[500px]">
       <DialogHeader>
-        <DialogTitle>Kết quả xuất bản {version}</DialogTitle>
+        <DialogTitle>Publish result {version}</DialogTitle>
       </DialogHeader>
 
       <p className="text-sm text-text-body">
-        <span className="text-success">✓</span> {created} file tạo mới · {updated} file cập nhật · {errors.length}{" "}
-        lỗi
+        <span className="text-success">✓</span> {created} created · {updated} updated · {errors.length}{" "}
+        error(s)
       </p>
-      <p className="mt-1 font-mono text-xs text-text-faint">Sao lưu: {result.backupDir}</p>
+      <p className="mt-1 font-mono text-xs text-text-faint">Backup: {result.backupDir}</p>
 
       {errors.length > 0 && (
         <ul className="mt-3 space-y-1">
@@ -39,7 +39,7 @@ export function PublishResultView({ result, version, onDone }: PublishResultView
       )}
 
       <DialogFooter>
-        {errors.length > 0 && <Button variant="outline">Thử lại các file lỗi</Button>}
+        {errors.length > 0 && <Button variant="outline">Retry failed files</Button>}
         <Button onClick={onDone}>Xong</Button>
       </DialogFooter>
     </Dialog>

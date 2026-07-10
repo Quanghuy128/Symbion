@@ -42,7 +42,7 @@ describe("detectHostEnvironment", () => {
     const { detectHostEnvironment } = await import("../src/llm/installInstructions.js");
     setPlatform("linux");
     mockRelease("6.6.87.2-microsoft-standard-WSL2");
-    expect(detectHostEnvironment()).toEqual({ kind: "wsl", label: "WSL2 (Ubuntu trên Windows)" });
+    expect(detectHostEnvironment()).toEqual({ kind: "wsl", label: "WSL2 (Ubuntu on Windows)" });
   });
 
   it("TC-4: linux + native Ubuntu kernel release (no microsoft/wsl substring) -> linux", async () => {
@@ -63,7 +63,7 @@ describe("detectHostEnvironment", () => {
     const { detectHostEnvironment, getOllamaInstallInstructions } = await import("../src/llm/installInstructions.js");
     setPlatform("freebsd");
     const env = detectHostEnvironment();
-    expect(env).toEqual({ kind: "unknown", label: "Không xác định" });
+    expect(env).toEqual({ kind: "unknown", label: "Unknown" });
     expect(getOllamaInstallInstructions(env).confident).toBe(false);
   });
 

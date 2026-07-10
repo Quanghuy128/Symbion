@@ -26,10 +26,8 @@ afterEach(async () => {
   }
 });
 
-async function rpc(method: string, params: unknown, opts: { token?: string; noToken?: boolean } = {}) {
+async function rpc(method: string, params: unknown) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const token = opts.noToken ? undefined : opts.token ?? handle.token;
-  if (token !== undefined) headers["x-symbion-token"] = token;
 
   const res = await fetch(`http://127.0.0.1:${handle.port}/rpc`, {
     method: "POST",
@@ -39,24 +37,11 @@ async function rpc(method: string, params: unknown, opts: { token?: string; noTo
   return { status: res.status, body: await res.json() };
 }
 
-describe("TC-P10/TC-P11: new RPC methods' auth-gate membership", () => {
-  it("TC-P10: saveProviderKey/clearProviderKey/setActiveProvider WITHOUT a token -> 401", async () => {
-    const save = await rpc("saveProviderKey", { providerId: "openai", apiKey: "sk-test" }, { noToken: true });
-    expect(save.status).toBe(401);
-
-    const clear = await rpc("clearProviderKey", { providerId: "openai" }, { noToken: true });
-    expect(clear.status).toBe(401);
-
-    const setActive = await rpc("setActiveProvider", { providerId: "ollama" }, { noToken: true });
-    expect(setActive.status).toBe(401);
-  });
-
-  it("TC-P11: listProviders WITHOUT a token -> 401 (read-only membership does not bypass the token gate)", async () => {
-    const res = await rpc("listProviders", {}, { noToken: true });
-    expect(res.status).toBe(401);
-  });
-
-  it("listProviders WITH a valid token -> 200", async () => {
+// tokenless-daemon: the per-request session token was removed, so the former
+// TC-P10/TC-P11 "WITHOUT a token -> 401" gate tests no longer apply. These RPCs
+// now reach their handlers over the loopback-only transport with no token.
+describe("provider-settings RPCs reach their handlers (no token gate)", () => {
+  it("listProviders -> 200", async () => {
     const res = await rpc("listProviders", {});
     expect(res.status).toBe(200);
     expect(res.body.providers).toHaveLength(4);

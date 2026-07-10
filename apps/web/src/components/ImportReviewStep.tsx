@@ -24,7 +24,7 @@ export function ImportReviewStep({ scanned, selected, onToggle }: ImportReviewSt
       <p className="text-success">✓ {scanned.commands.length} commands</p>
       {scanned.skipped.map((s) => (
         <p key={s.relPath} className="text-xs text-warning">
-          ⚠ {s.relPath} không parse được → bỏ qua ({s.reason})
+          ⚠ {s.relPath} could not be parsed → skipped ({s.reason})
         </p>
       ))}
       <div className="max-h-48 space-y-1 overflow-y-auto">

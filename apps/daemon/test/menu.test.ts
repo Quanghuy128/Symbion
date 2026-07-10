@@ -73,7 +73,7 @@ describe("showBootMenu", () => {
     feed("1");
     await expect(promise).resolves.toBe("web");
     const lines = logSpy.mock.calls.map((c) => String(c[0]));
-    expect(lines.some((l) => l.includes("không hợp lệ"))).toBe(true);
+    expect(lines.some((l) => l.includes("Invalid choice"))).toBe(true);
   });
 
   it("TC-MENU-5: prints only the menu line, no banner border / version / Server line", async () => {

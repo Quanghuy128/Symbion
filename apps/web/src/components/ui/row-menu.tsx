@@ -29,7 +29,7 @@ export interface RowMenuProps {
  * as a second new Radix primitive in this PR. Kept small (~50 lines) —
  * not a generic shadcn-parity primitive.
  */
-export function RowMenu({ items, open, onOpenChange, triggerLabel = "Tùy chọn" }: RowMenuProps) {
+export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }: RowMenuProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

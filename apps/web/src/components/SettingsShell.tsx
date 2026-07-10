@@ -21,12 +21,12 @@ export function SettingsShell() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("t");
     const port = Number(window.location.port) || 12802;
-    if (token) {
-      initDaemonSession(token, port);
-      // Strip the token from the URL bar immediately so it doesn't persist in
-      // browser history or leak via Referer headers on outbound navigation.
+    initDaemonSession(port);
+    // tokenless-daemon: no `?t=` session token anymore (it broke on F5). Clear a
+    // leftover `?t=` from an old bookmarked URL for a clean URL bar — it's ignored
+    // either way.
+    if (params.has("t")) {
       const url = new URL(window.location.href);
       url.searchParams.delete("t");
       window.history.replaceState(null, "", url.pathname + (url.search !== "?" ? url.search : "") + url.hash);
@@ -45,7 +45,7 @@ export function SettingsShell() {
         onSelectProject={(id) => router.push(`/?openProject=${encodeURIComponent(id)}`)}
       />
       <main className="flex-1 overflow-auto p-6">
-        <h1 className="mb-4 text-lg font-semibold text-text-strong">Nhà cung cấp AI</h1>
+        <h1 className="mb-4 text-lg font-semibold text-text-strong">AI providers</h1>
         <ProvidersPanel />
       </main>
       <Toaster />

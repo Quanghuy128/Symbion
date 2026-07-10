@@ -8,7 +8,7 @@
  * *read* global mutable state internally).
  *
  * IMPORTANT (see docs/loops/boot-terminal-ux-STATE.md PLAN §P0.2): the
- * server line's text — "Symbion daemon đang chạy: <url>" — MUST stay
+ * server line's text — "Symbion daemon running: <url>" — MUST stay
  * byte-for-byte identical to today's line. `e2e/daemon-fixture.ts`'s
  * `URL_RE` regex hard-codes this exact literal substring to parse the boot
  * URL out of daemon stdout for every e2e spec that boots a real daemon.
@@ -71,7 +71,7 @@ export function supportsEmoji(env?: NodeJS.ProcessEnv, platform?: NodeJS.Platfor
  */
 export function buildBootBanner(opts: BuildBootBannerOptions): string[] {
   const versionLine = (opts.useEmoji ? "🚀 " : "") + "Symbion v" + opts.version;
-  const serverLine = "Symbion daemon đang chạy: " + opts.url;
+  const serverLine = "Symbion daemon running: " + opts.url;
 
   if (!opts.isTty) {
     return [versionLine, serverLine];

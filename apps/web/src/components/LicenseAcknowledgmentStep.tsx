@@ -30,13 +30,13 @@ export function LicenseAcknowledgmentStep({
   return (
     <>
       <div className="space-y-3">
-        <p className="text-sm font-medium text-amber-700">⚠ Nội dung của tác giả khác</p>
+        <p className="text-sm font-medium text-amber-700">⚠ Content by another author</p>
         <p className="text-sm">
-          Mẫu này thuộc về tác giả {authorDisplayName} ({authorRepo}) — bạn tự chịu trách nhiệm về việc sử dụng lại
-          nội dung này.
+          This template belongs to {authorDisplayName} ({authorRepo}) — you are responsible for reusing
+          this content.
         </p>
         <p className="text-xs text-muted-foreground">
-          Symbion chỉ hiển thị nội dung này trực tiếp từ GitHub và không lưu trữ hay sở hữu nội dung của tác giả{" "}
+          Symbion only displays this content directly from GitHub and does not store or own the author's content{" "}
           {authorDisplayName}.
         </p>
 
@@ -46,7 +46,7 @@ export function LicenseAcknowledgmentStep({
             onChange={(e) => onAcknowledgedChange(e.target.checked)}
             className="mt-0.5"
           />
-          <span>Tôi đã đọc và đồng ý chịu trách nhiệm khi áp dụng mẫu này vào dự án của tôi.</span>
+          <span>I have read this and accept responsibility for applying this template to my project.</span>
         </label>
 
         <a
@@ -55,16 +55,16 @@ export function LicenseAcknowledgmentStep({
           rel="noreferrer"
           className="inline-block text-xs text-muted-foreground underline hover:text-foreground"
         >
-          Xem repo gốc: github.com/{authorRepo} ↗
+          View source repo: github.com/{authorRepo} ↗
         </a>
       </div>
 
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="outline" onClick={onBack}>
-          Quay lại
+          Back
         </Button>
         <Button disabled={!acknowledged} onClick={onContinue}>
-          Tiếp tục
+          Continue
         </Button>
       </div>
     </>

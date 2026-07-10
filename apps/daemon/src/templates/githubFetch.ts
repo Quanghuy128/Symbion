@@ -112,7 +112,7 @@ export async function fetchAuthorTemplatesFromGithub(
 
   const treeAttempt = await fetchWithTimeout(fetchImpl, treeUrl, treeTimeoutMs);
   if ("errored" in treeAttempt) {
-    return { status: "error", kind: "network", message: "Không thể kết nối tới GitHub. Kiểm tra kết nối mạng rồi thử lại." };
+    return { status: "error", kind: "network", message: "Cannot connect to GitHub. Check your network connection and try again." };
   }
   const res = treeAttempt.res;
 
@@ -120,7 +120,7 @@ export async function fetchAuthorTemplatesFromGithub(
     return {
       status: "error",
       kind: "not-found",
-      message: `Không tìm thấy repo ${author.owner}/${author.repo} (nhánh ${author.ref}) — có thể đã đổi tên hoặc chuyển sang riêng tư.`,
+      message: `Repo ${author.owner}/${author.repo} (branch ${author.ref}) not found — it may have been renamed or made private.`,
     };
   }
 
@@ -132,26 +132,26 @@ export async function fetchAuthorTemplatesFromGithub(
       return {
         status: "error",
         kind: "rate-limit",
-        message: "Đã vượt giới hạn GitHub API (chế độ chưa xác thực, 60 lượt/giờ). Thử lại sau.",
+        message: "GitHub API rate limit exceeded (unauthenticated mode, 60 requests/hour). Try again later.",
         ...(resetAt !== undefined && Number.isFinite(resetAt) ? { resetAt } : {}),
       };
     }
-    return { status: "error", kind: "network", message: "GitHub từ chối yêu cầu (403)." };
+    return { status: "error", kind: "network", message: "GitHub rejected the request (403)." };
   }
 
   if (!res.ok) {
-    return { status: "error", kind: "network", message: `GitHub trả về lỗi HTTP ${res.status}.` };
+    return { status: "error", kind: "network", message: `GitHub returned HTTP error ${res.status}.` };
   }
 
   let json: GithubTreeResponse;
   try {
     json = (await res.json()) as GithubTreeResponse;
   } catch {
-    return { status: "error", kind: "network", message: "Phản hồi không hợp lệ từ GitHub." };
+    return { status: "error", kind: "network", message: "Invalid response from GitHub." };
   }
 
   if (!Array.isArray(json.tree)) {
-    return { status: "error", kind: "network", message: "Phản hồi không hợp lệ từ GitHub." };
+    return { status: "error", kind: "network", message: "Invalid response from GitHub." };
   }
   // truncated:true is defensively handled — proceed with the partial tree as-is
   // (PLAN §P2 step 2's last bullet) rather than erroring outright.
@@ -163,7 +163,7 @@ export async function fetchAuthorTemplatesFromGithub(
   const candidates = allCandidates.slice(0, MAX_CANDIDATES);
   const cappedSkipped: Array<{ relPath: string; reason: string }> =
     allCandidates.length > MAX_CANDIDATES
-      ? allCandidates.slice(MAX_CANDIDATES).map((c) => ({ relPath: c.relPath, reason: "Vượt giới hạn số tệp tối đa." }))
+      ? allCandidates.slice(MAX_CANDIDATES).map((c) => ({ relPath: c.relPath, reason: "Exceeded the maximum number of files." }))
       : [];
 
   const items: TemplateListItem[] = [];
@@ -173,18 +173,18 @@ export async function fetchAuthorTemplatesFromGithub(
     const rawUrl = `https://raw.githubusercontent.com/${author.owner}/${author.repo}/${author.ref}/${candidate.relPath}`;
     const fileAttempt = await fetchWithTimeout(fetchImpl, rawUrl, perFileTimeoutMs);
     if ("errored" in fileAttempt) {
-      skipped.push({ relPath: candidate.relPath, reason: "Lỗi mạng khi tải tệp." });
+      skipped.push({ relPath: candidate.relPath, reason: "Network error while downloading the file." });
       return;
     }
     const fileRes = fileAttempt.res;
     if (!fileRes.ok) {
-      skipped.push({ relPath: candidate.relPath, reason: `Không tải được nội dung tệp (HTTP ${fileRes.status}).` });
+      skipped.push({ relPath: candidate.relPath, reason: `Could not download file content (HTTP ${fileRes.status}).` });
       return;
     }
 
     const contentLengthHeader = fileRes.headers.get("content-length");
     if (contentLengthHeader && Number(contentLengthHeader) > MAX_FILE_BYTES) {
-      skipped.push({ relPath: candidate.relPath, reason: "Tệp quá lớn, đã bỏ qua." });
+      skipped.push({ relPath: candidate.relPath, reason: "File too large, skipped." });
       return;
     }
 
@@ -192,11 +192,11 @@ export async function fetchAuthorTemplatesFromGithub(
     try {
       raw = await fileRes.text();
     } catch {
-      skipped.push({ relPath: candidate.relPath, reason: "Lỗi mạng khi tải tệp." });
+      skipped.push({ relPath: candidate.relPath, reason: "Network error while downloading the file." });
       return;
     }
     if (raw.length > MAX_FILE_BYTES) {
-      skipped.push({ relPath: candidate.relPath, reason: "Tệp quá lớn, đã bỏ qua." });
+      skipped.push({ relPath: candidate.relPath, reason: "File too large, skipped." });
       return;
     }
 

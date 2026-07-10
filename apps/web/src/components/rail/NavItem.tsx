@@ -14,6 +14,11 @@ export interface NavItemProps {
   href?: string;
   onClick?: () => void;
   title?: string;
+  /** Optional right-aligned action (e.g. a RowMenu) rendered outside the
+   *  clickable row so it isn't nested inside the row's <button>/<Link>.
+   *  Kept optional so existing nav rows are unaffected. Always visible in its
+   *  own fixed slot; the row's label shortens (ellipsis) to make room. */
+  trailing?: ReactNode;
 }
 
 /**
@@ -24,7 +29,7 @@ export interface NavItemProps {
  * Renders a <Link> when `href` is given (real route nav), else a <button>
  * (project rows are client-state selection, not routes).
  */
-export function NavItem({ active, icon, label, sublabel, variant, href, onClick, title }: NavItemProps) {
+export function NavItem({ active, icon, label, sublabel, variant, href, onClick, title, trailing }: NavItemProps) {
   const tickHeight = variant === "nav" ? "h-4" : "h-3.5"; // 16px / 14px per design doc §3.0
   const content = (
     <>
@@ -56,17 +61,33 @@ export function NavItem({ active, icon, label, sublabel, variant, href, onClick,
     active ? "bg-white/[.055]" : "hover:bg-white/[.03]"
   );
 
-  if (href) {
-    return (
-      <Link href={href} className={rowClass} title={title}>
-        {content}
-      </Link>
-    );
-  }
-
-  return (
+  const row = href ? (
+    <Link href={href} className={rowClass} title={title}>
+      {content}
+    </Link>
+  ) : (
     <button type="button" onClick={onClick} className={rowClass} title={title}>
       {content}
     </button>
+  );
+
+  // No trailing action → render the row directly (existing behavior unchanged).
+  if (!trailing) {
+    return row;
+  }
+
+  // With a trailing action, lay the row + action out as flex SIBLINGS (in
+  // normal flow — NOT an absolute overlay), so the action reserves real width
+  // and the row's label/sublabel shorten (via ellipsis) to make room instead
+  // of the action running on top of them. The row keeps the accent-spine tick +
+  // hover; the action sits outside the clickable <button>/<Link>. The action is
+  // ALWAYS visible in its own fixed slot (no opacity/hover reveal — that was
+  // both easy to misread as "overlapping" and unreachable on touch). `min-w-0`
+  // on the row is what lets its ellipsis truncation actually engage.
+  return (
+    <div className="flex items-center gap-1">
+      <div className="min-w-0 flex-1">{row}</div>
+      <div className="shrink-0">{trailing}</div>
+    </div>
   );
 }

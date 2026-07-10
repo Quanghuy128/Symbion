@@ -53,9 +53,9 @@ export function MarkdownTab({ artifact, onChange }: MarkdownTabProps) {
     <div className="space-y-2">
       <CodeMirror value={raw} height="360px" theme="dark" extensions={[markdown()]} onChange={handleChange} />
       {error ? (
-        <p className="text-xs text-danger">✗ {error} (Save tạm khoá, dùng bản hợp lệ gần nhất)</p>
+        <p className="text-xs text-danger">✗ {error} (Save temporarily locked, using the last valid version)</p>
       ) : (
-        <p className="text-xs text-success">✓ markdown hợp lệ, đã đồng bộ vào IR</p>
+        <p className="text-xs text-success">✓ markdown is valid, synced to IR</p>
       )}
     </div>
   );

@@ -29,7 +29,7 @@ export function LivePreviewPane({ artifact, allArtifacts }: LivePreviewPaneProps
   const warnings = issues.filter((i) => i.level === "warning");
 
   return (
-    <div className="flex h-full flex-col border-l border-border-hairline">
+    <div className="flex h-full flex-col">
       <div className="border-b border-border-hairline px-3 py-2 font-mono text-[12.5px] text-text-faint">
         {artifact.kind === "agent" ? `.claude/agents/${artifact.name || "<name>"}.md` : `.claude/commands/${artifact.name || "<name>"}.md`}
       </div>
@@ -38,7 +38,7 @@ export function LivePreviewPane({ artifact, allArtifacts }: LivePreviewPaneProps
       </pre>
       <div className="border-t border-border-hairline p-2 text-xs">
         {errors.length === 0 && warnings.length === 0 && (
-          <p className="text-success">✓ frontmatter hợp lệ · filename khớp name</p>
+          <p className="text-success">✓ frontmatter valid · filename matches name</p>
         )}
         {errors.map((e, i) => (
           <p key={i} className="text-danger">

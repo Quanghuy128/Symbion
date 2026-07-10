@@ -27,23 +27,23 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   await page.goto(daemon.url);
 
   // S2 — empty state: exactly the two CTAs, no sidebar project rows yet selected.
-  await expect(page.getByText("Chưa có dự án nào")).toBeVisible();
-  await expect(page.getByRole("button", { name: "+ Tạo dự án" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "↧ Import .claude/ có sẵn" })).toBeVisible();
+  await expect(page.getByText("No projects yet")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New project" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "↧ Import existing .claude/" })).toBeVisible();
 
   // S3 — create project via TYPED path (no native picker in this flow).
-  await page.getByRole("button", { name: "+ Tạo dự án" }).first().click();
+  await page.getByRole("button", { name: "+ New project" }).first().click();
   await page.getByPlaceholder("My API Service").fill("e2e-demo");
   await page.getByPlaceholder("/home/me/code/my-service").fill(daemon.projectRoot);
 
   // Live validatePath feedback.
-  await expect(page.getByText("✓ Thư mục tồn tại")).toBeVisible();
+  await expect(page.getByText("✓ Folder exists")).toBeVisible();
 
-  await page.getByRole("button", { name: "Tạo dự án", exact: true }).click();
+  await page.getByRole("button", { name: "Create project", exact: true }).click();
 
   // Project now in sidebar + main area shows the two add buttons (empty project).
   await expect(page.getByRole("button", { name: "e2e-demo" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "+ Thêm agent" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ Add agent" }).first()).toBeVisible();
 
   // No disk write yet from project creation beyond .symbion/store.json — confirm
   // the target repo's .claude/ does NOT exist before any publish (no silent write).
@@ -51,9 +51,9 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   expect(existsSync(join(daemon.projectRoot, ".symbion", "store.json"))).toBe(true);
 
   // S7 — add an agent via the FORM tab.
-  await page.getByRole("button", { name: "+ Thêm agent" }).first().click();
+  await page.getByRole("button", { name: "+ Add agent" }).first().click();
   await expect(page.getByText("Agent builder")).toBeVisible();
-  await expect(page.getByText("Theo mô tả")).toBeVisible(); // form tab active by default
+  await expect(page.getByText("By description")).toBeVisible(); // form tab active by default
 
   await page.getByPlaceholder("code-reviewer").fill("code-reviewer");
   await page.getByPlaceholder("Independent reviewer…").fill("Independent reviewer agent");
@@ -65,7 +65,7 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   await expect(page.getByText(".claude/agents/code-reviewer.md")).toBeVisible();
   await expect(page.locator("text=name: code-reviewer").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Lưu" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
 
   // Drawer closes after save; artifact now listed with a draft dot.
   await expect(page.getByText("Agent builder")).not.toBeVisible();
@@ -77,9 +77,9 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   expect(existsSync(join(daemon.projectRoot, ".claude"))).toBe(false);
 
   // S8 — add a workflow/command via the FORM tab.
-  await page.getByRole("button", { name: "+ Thêm workflow" }).first().click();
+  await page.getByRole("button", { name: "+ Add workflow" }).first().click();
   await expect(page.getByText("Workflow builder")).toBeVisible();
-  await expect(page.getByText("Theo mô tả")).toBeVisible(); // form tab active by default
+  await expect(page.getByText("By description")).toBeVisible(); // form tab active by default
 
   await page.getByPlaceholder("analyze").fill("analyze");
   await page
@@ -95,7 +95,7 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   await expect(page.getByText(".claude/commands/analyze.md")).toBeVisible();
   await expect(page.locator("text=$ARGUMENTS").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Lưu" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
 
   // Drawer closes after save; command now listed with a draft dot.
   await expect(page.getByText("Workflow builder")).not.toBeVisible();
@@ -105,22 +105,22 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   expect(existsSync(join(daemon.projectRoot, ".claude"))).toBe(false);
 
   // S10 — publish.
-  await page.getByRole("button", { name: "Xuất bản ▸" }).click();
-  await expect(page.getByRole("heading", { name: "Xuất bản" })).toBeVisible();
+  await page.getByRole("button", { name: "Publish ▸" }).click();
+  await expect(page.getByRole("heading", { name: "Publish" })).toBeVisible();
   // Claude target checked by default; proceed straight to diff preview.
-  await page.getByRole("button", { name: "Xem trước thay đổi" }).click();
+  await page.getByRole("button", { name: "Preview changes" }).click();
 
   // S11 — diff preview: both new files, no conflicts, write enabled.
   await expect(page.getByText(".claude/agents/code-reviewer.md")).toBeVisible();
   await expect(page.getByText(".claude/commands/analyze.md")).toBeVisible();
-  await expect(page.getByText("Sẽ khởi tạo .claude/")).toBeVisible();
-  const writeButton = page.getByRole("button", { name: "Ghi xuống đĩa" });
+  await expect(page.getByText("Will initialize .claude/")).toBeVisible();
+  const writeButton = page.getByRole("button", { name: "Write to disk" });
   await expect(writeButton).toBeEnabled();
   await writeButton.click();
 
   // S12 — result view.
-  await expect(page.getByText(/file tạo mới/)).toBeVisible();
-  await expect(page.getByText(/Sao lưu:/)).toBeVisible();
+  await expect(page.getByText(/created/)).toBeVisible();
+  await expect(page.getByText(/Backup:/)).toBeVisible();
 
   // Confirm on real disk: agent file exists, contains the managed marker.
   const agentPath = join(daemon.projectRoot, ".claude", "agents", "code-reviewer.md");

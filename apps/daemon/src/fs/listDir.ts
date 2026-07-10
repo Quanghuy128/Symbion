@@ -28,29 +28,29 @@ import type { ListDirEntry, ListDirResult, MakeDirResult } from "../rpc/contract
  */
 export function listDir(inputPath?: unknown): ListDirResult {
   if (inputPath !== undefined && typeof inputPath !== "string") {
-    throw new RpcError("invalid-params", "Đường dẫn phải là đường dẫn tuyệt đối.");
+    throw new RpcError("invalid-params", "Path must be an absolute path.");
   }
   const target = inputPath ?? homedir();
 
   if (!isAbsolute(target)) {
-    throw new RpcError("invalid-params", "Đường dẫn phải là đường dẫn tuyệt đối.");
+    throw new RpcError("invalid-params", "Path must be an absolute path.");
   }
 
   let resolved: string;
   try {
     resolved = realpathSync(target);
   } catch {
-    throw new RpcError("invalid-path", "Đường dẫn không tồn tại hoặc không phải thư mục.");
+    throw new RpcError("invalid-path", "Path does not exist or is not a directory.");
   }
 
   let stat;
   try {
     stat = statSync(resolved);
   } catch {
-    throw new RpcError("invalid-path", "Đường dẫn không tồn tại hoặc không phải thư mục.");
+    throw new RpcError("invalid-path", "Path does not exist or is not a directory.");
   }
   if (!stat.isDirectory()) {
-    throw new RpcError("invalid-path", "Đường dẫn không tồn tại hoặc không phải thư mục.");
+    throw new RpcError("invalid-path", "Path does not exist or is not a directory.");
   }
 
   const parentCandidate = dirname(resolved);
@@ -112,12 +112,12 @@ export function listDir(inputPath?: unknown): ListDirResult {
  */
 export function makeDir(path: unknown): MakeDirResult {
   if (typeof path !== "string" || path.length === 0 || !isAbsolute(path)) {
-    throw new RpcError("invalid-params", "Đường dẫn phải là đường dẫn tuyệt đối.");
+    throw new RpcError("invalid-params", "Path must be an absolute path.");
   }
 
   const segments = splitAnySeparator(path);
   if (segments.includes("..")) {
-    throw new RpcError("invalid-params", `Đường dẫn chứa ".." không được phép: ${path}`);
+    throw new RpcError("invalid-params", `Paths containing ".." are not allowed: ${path}`);
   }
 
   if (existsSync(path)) {
@@ -125,13 +125,13 @@ export function makeDir(path: unknown): MakeDirResult {
     if (stat.isDirectory()) {
       return { path, created: false };
     }
-    throw new RpcError("path-is-file", "Đường dẫn đã tồn tại nhưng không phải là thư mục.");
+    throw new RpcError("path-is-file", "Path already exists but is not a directory.");
   }
 
   try {
     mkdirSync(path, { recursive: true });
   } catch (err) {
-    throw new RpcError("mkdir-failed", `Không thể tạo thư mục: ${(err as Error).message}`);
+    throw new RpcError("mkdir-failed", `Could not create directory: ${(err as Error).message}`);
   }
 
   return { path, created: true };

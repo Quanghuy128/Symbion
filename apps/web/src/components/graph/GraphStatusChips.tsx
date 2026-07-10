@@ -31,8 +31,8 @@ export function GraphStatusChips({ claudeLossy, codexLossy, missingAgentMentions
       {missingAgentMentions.length > 0 && (
         <p className="text-[12px] text-danger">
           ⚠ {missingAgentMentions.length === 1
-            ? `Agent "${missingAgentMentions[0]}" được nhắc đến nhưng không tồn tại.`
-            : `${missingAgentMentions.length} agent được nhắc đến nhưng không tồn tại: ${missingAgentMentions.join(", ")}.`}
+            ? `Agent "${missingAgentMentions[0]}" is referenced but does not exist.`
+            : `${missingAgentMentions.length} agents are referenced but do not exist: ${missingAgentMentions.join(", ")}.`}
         </p>
       )}
     </div>

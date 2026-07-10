@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * useDaemonRpc — typed fetch to the local daemon at 127.0.0.1:PORT with the
- * per-boot session token. The web app never touches disk directly; every
- * effect funnels through this client (CLAUDE.md architecture rule).
+ * useDaemonRpc — typed fetch to the local daemon at 127.0.0.1:PORT. There is NO
+ * session token (removed — it broke on F5 refresh, see
+ * docs/loops/tokenless-daemon-STATE.md); the daemon's trust boundary is its
+ * loopback-only bind + Origin/Host allowlist. The web app never touches disk
+ * directly; every effect funnels through this client (CLAUDE.md architecture rule).
  */
 
 export interface RpcErrorShape {
@@ -19,22 +21,13 @@ export class DaemonRpcError extends Error {
   }
 }
 
-let cachedToken: string | null = null;
 let cachedPort: number | null = null;
 
-/** Read the session token + port handed to the page once at boot (query param), kept in memory only. */
-export function initDaemonSession(token: string, port: number): void {
-  cachedToken = token;
+/** Record the daemon port for this page load. Derived from the URL by each page
+ *  shell on mount; survives F5 because it's re-derived from window.location, not
+ *  a stripped one-time query param. */
+export function initDaemonSession(port: number): void {
   cachedPort = port;
-}
-
-/** Pure read of the in-memory session token — true once `initDaemonSession`
- *  has been called this page load, false after a full page reload (the
- *  module reinitializes, `cachedToken` resets to null). Used by the
- *  heartbeat to short-circuit "no session" without an unnecessary RPC call
- *  (boot-terminal-ux FR-A.2/A.2b). */
-export function hasSession(): boolean {
-  return cachedToken !== null;
 }
 
 export function getDaemonOrigin(): string {
@@ -47,7 +40,6 @@ export async function callRpc<TParams, TResult>(method: string, params: TParams)
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(cachedToken ? { "x-symbion-token": cachedToken } : {}),
     },
     body: JSON.stringify({ method, params }),
   });

@@ -44,5 +44,5 @@ export async function findOpenPort<T>(
     }
   }
 
-  throw new Error(`Không tìm được cổng trống bắt đầu từ ${startPort} (đã thử ${maxAttempts} cổng).`);
+  throw new Error(`Could not find a free port starting from ${startPort} (tried ${maxAttempts} ports).`);
 }

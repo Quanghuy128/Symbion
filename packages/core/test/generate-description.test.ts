@@ -24,12 +24,12 @@ describe("generateDescription", () => {
 
   it("agent, name-only fallback (EC-1)", () => {
     const out = generateDescription({ kind: "agent", name: "foo", body: "", tools: [] });
-    expect(out).toBe("Mô tả cho foo.");
+    expect(out).toBe("Description for foo.");
   });
 
   it("agent, fully empty (degenerate)", () => {
     const out = generateDescription({ kind: "agent", name: "", body: "", tools: [] });
-    expect(out).toBe("Mô tả tự động.");
+    expect(out).toBe("Auto-generated description.");
   });
 
   it("command, body present", () => {
@@ -39,12 +39,12 @@ describe("generateDescription", () => {
 
   it("command, name-only fallback", () => {
     const out = generateDescription({ kind: "command", name: "deploy", body: "" });
-    expect(out).toBe("Mô tả cho /deploy.");
+    expect(out).toBe("Description for /deploy.");
   });
 
   it("command, fully empty", () => {
     const out = generateDescription({ kind: "command", name: "", body: "" });
-    expect(out).toBe("Mô tả tự động.");
+    expect(out).toBe("Auto-generated description.");
   });
 
   it("multi-line body (EC-4): output contains no newline", () => {

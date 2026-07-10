@@ -1,14 +1,40 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { NavItem } from "./rail/NavItem";
 import { DaemonStatusBadge } from "./DaemonStatusBadge";
+import { cn } from "@/lib/utils";
 
 export interface AppRailProps {
   onCreateProject: () => void;
   onSelectProject: (id: string) => void;
+}
+
+/** Small trash/delete glyph for the per-project rail remove button. Inline SVG
+ *  (the codebase has no icon lib); `currentColor` so it inherits the button's
+ *  text color, including the danger hover state. */
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
 }
 
 const RAIL_WIDTH_STORAGE_KEY = "symbion:rail-width";
@@ -29,7 +55,6 @@ function readStoredRailWidth(): number {
 }
 
 const PRIMARY_NAV = [
-  { href: "/", label: "Builder" },
   { href: "/templates", label: "Templates" },
   { href: "/settings", label: "Settings" },
 ];
@@ -53,6 +78,31 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
   const pathname = usePathname();
   const projects = useArtifactStore((s) => s.projects);
   const currentProject = useArtifactStore((s) => s.currentProject);
+  const removeProject = useArtifactStore((s) => s.removeProject);
+  const showToast = useArtifactStore((s) => s.showToast);
+
+  // Forget a project directly from the rail via its delete icon — reachable
+  // WITHOUT opening it, so "ghost projects" (folder gone, un-openable) are
+  // still removable. Mirrors ProjectView.handleRemoveProject's confirm + toast.
+  const handleRemoveProject = useCallback(
+    async (id: string, name: string) => {
+      if (
+        !window.confirm(
+          `Remove "${name}" from Symbion? This only forgets it from the list — no files on disk are deleted.`
+        )
+      ) {
+        return;
+      }
+      try {
+        await removeProject(id);
+        showToast("Project removed from list.", "success");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Remove failed — reason unknown.";
+        showToast(message, "error");
+      }
+    },
+    [removeProject, showToast]
+  );
 
   // Rail width is a pure UI/layout preference (not app state) — kept
   // component-local + persisted to localStorage, matching the pattern used
@@ -120,46 +170,81 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
         </span>
       </div>
 
-      {/* Primary nav */}
-      <nav className="flex flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
-        {PRIMARY_NAV.map((item) => (
-          <NavItem key={item.href} href={item.href} label={item.label} active={pathname === item.href} variant="nav" />
-        ))}
-      </nav>
-
-      {/* Projects section */}
-      <div className="flex min-h-0 flex-1 flex-col border-t border-border-hairline px-2 py-2">
-        <div className="mb-1 flex items-center justify-between px-1">
-          <span className="text-[10.5px] font-bold uppercase tracking-[.11em] text-text-faint">Projects</span>
+      {/* Primary nav — Project, Templates, Settings are all same-level rows.
+          "Project" (links to "/") carries a chevron that collapses/expands the
+          added-project list nested directly beneath it. Collapse state
+          persisted to localStorage. */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 border-t border-border-hairline px-2 py-2">
+        {/* "Project" row: label links to "/", then + (new project). */}
+        <div className="relative flex items-center">
+          <span
+            className={cn(
+              "absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-[3px] transition-colors",
+              pathname === "/" ? "bg-brand-accent" : "bg-transparent"
+            )}
+            aria-hidden
+          />
+          <Link
+            href="/"
+            className={cn(
+              "flex flex-1 items-center rounded-nav-item px-3 py-2 text-[13px] transition-colors hover:bg-white/[.03]",
+              pathname === "/" ? "font-semibold text-text-strong" : "font-medium text-text-dim"
+            )}
+          >
+            Project
+          </Link>
           <button
             type="button"
             onClick={onCreateProject}
-            aria-label="Tạo dự án mới"
-            className="flex h-5 w-5 items-center justify-center rounded-sm text-text-faint hover:bg-white/[.06] hover:text-text-dim"
+            aria-label="New project"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-text-faint hover:bg-white/[.06] hover:text-text-dim"
           >
             +
           </button>
         </div>
 
-        {projects.length === 0 && (
-          <p className="px-1 py-1 text-xs text-text-faint">∅ chưa có dự án</p>
-        )}
+        {/* Project list — always shown, nested under "Project". Sized to its
+            content (Templates/Settings sit directly beneath it) and only scrolls
+            once it would actually overflow the rail. The previous `shrink` let
+            the box collapse below its content height, producing a needless
+            scrollbar + empty gap even with a single project; `min-h-0` alone
+            keeps the natural-height-until-overflow behavior without that. */}
+        <div className="min-h-0 overflow-y-auto">
+          {projects.length === 0 && (
+            <p className="py-1 pl-6 text-xs text-text-faint">∅ no projects yet</p>
+          )}
+          <ul className="space-y-0.5 pl-4">
+            {projects.map((p) => (
+              <li key={p.id}>
+                <NavItem
+                  variant="project"
+                  label={p.name}
+                  sublabel={p.path}
+                  title={p.path}
+                  active={currentProject?.id === p.id}
+                  onClick={() => onSelectProject(p.id)}
+                  trailing={
+                    <button
+                      type="button"
+                      aria-label={`Remove ${p.name}`}
+                      title={`Remove "${p.name}" from Symbion`}
+                      onClick={() => handleRemoveProject(p.id, p.name)}
+                      className="flex h-6 w-6 items-center justify-center rounded-sm text-text-faint hover:bg-danger/10 hover:text-danger"
+                    >
+                      <TrashIcon />
+                    </button>
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
 
-        <ul className="flex-1 space-y-0.5 overflow-y-auto">
-          {projects.map((p) => (
-            <li key={p.id}>
-              <NavItem
-                variant="project"
-                label={p.name}
-                sublabel={p.path}
-                title={p.path}
-                active={currentProject?.id === p.id}
-                onClick={() => onSelectProject(p.id)}
-              />
-            </li>
-          ))}
-        </ul>
-      </div>
+        {/* Templates + Settings — same level as Project. */}
+        {PRIMARY_NAV.map((item) => (
+          <NavItem key={item.href} href={item.href} label={item.label} active={pathname === item.href} variant="nav" />
+        ))}
+      </nav>
 
       {/* Daemon status footer */}
       <div className="mt-auto border-t border-border-hairline">

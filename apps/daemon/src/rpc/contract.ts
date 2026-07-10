@@ -22,6 +22,8 @@ export type {
   ListProjectsResult,
   CreateProjectParams,
   CreateProjectResult,
+  RemoveProjectParams,
+  RemoveProjectResult,
   LoadProjectParams,
   LoadProjectResult,
   SaveArtifactParams,

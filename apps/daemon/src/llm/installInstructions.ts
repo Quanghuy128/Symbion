@@ -32,7 +32,7 @@ export interface InstallInstructions {
 const UNIX_CURL_INSTALL_COMMAND = "curl -fsSL https://ollama.com/install.sh | sh && ollama serve";
 const MACOS_BREW_INSTALL_COMMAND = "brew install ollama && ollama serve";
 const WINDOWS_INSTALL_GUIDANCE =
-  "Tải và chạy trình cài đặt tại https://ollama.com/download/windows, sau đó mở Ollama từ Start Menu.";
+  "Download and run the installer at https://ollama.com/download/windows, then open Ollama from the Start Menu.";
 
 /**
  * detectHostEnvironment — total function: every `process.platform` value Node can
@@ -54,11 +54,11 @@ export function detectHostEnvironment(): HostEnvironment {
   if (plat === "linux") {
     const rel = release().toLowerCase();
     if (rel.includes("microsoft") || rel.includes("wsl")) {
-      return { kind: "wsl", label: "WSL2 (Ubuntu trên Windows)" };
+      return { kind: "wsl", label: "WSL2 (Ubuntu on Windows)" };
     }
     return { kind: "linux", label: "Linux" };
   }
-  return { kind: "unknown", label: "Không xác định" };
+  return { kind: "unknown", label: "Unknown" };
 }
 
 /** All 4 known variants, labeled — shown together when detection is not confident. */
@@ -66,7 +66,7 @@ function allKnownVariants(): Array<{ label: string; command: string }> {
   return [
     { label: "macOS", command: MACOS_BREW_INSTALL_COMMAND },
     { label: "Linux", command: UNIX_CURL_INSTALL_COMMAND },
-    { label: "WSL2 (Ubuntu trên Windows)", command: UNIX_CURL_INSTALL_COMMAND },
+    { label: "WSL2 (Ubuntu on Windows)", command: UNIX_CURL_INSTALL_COMMAND },
     { label: "Windows", command: WINDOWS_INSTALL_GUIDANCE },
   ];
 }

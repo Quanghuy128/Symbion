@@ -31,15 +31,15 @@ export function NodeMenu({
   const items =
     kind === "command"
       ? [
-          { label: "Chỉnh sửa", onSelect: onEdit },
-          { label: "Sao chép lệnh chạy", onSelect: () => onCopyRun?.() },
+          { label: "Edit", onSelect: onEdit },
+          { label: "Copy run command", onSelect: () => onCopyRun?.() },
           ROW_MENU_DIVIDER,
-          { label: "Xoá", danger: true, disabled: deleteDisabled, onSelect: onDelete },
+          { label: "Delete", danger: true, disabled: deleteDisabled, onSelect: onDelete },
         ]
       : [
-          { label: "Chỉnh sửa", onSelect: onEdit },
+          { label: "Edit", onSelect: onEdit },
           ROW_MENU_DIVIDER,
-          { label: "Xoá", danger: true, disabled: deleteDisabled, onSelect: onDelete },
+          { label: "Delete", danger: true, disabled: deleteDisabled, onSelect: onDelete },
         ];
 
   return <RowMenu open={open} onOpenChange={onOpenChange} items={items} />;

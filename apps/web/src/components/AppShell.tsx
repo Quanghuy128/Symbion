@@ -16,18 +16,29 @@ export function AppShell() {
   const currentProject = useArtifactStore((s) => s.currentProject);
   const loadProjects = useArtifactStore((s) => s.loadProjects);
   const loadProject = useArtifactStore((s) => s.loadProject);
+  const showToast = useArtifactStore((s) => s.showToast);
   const startHeartbeat = useArtifactStore((s) => s.startHeartbeat);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
+  // Open a project from the rail. loadProject rejects for "ghost projects"
+  // (folder still listed but `.symbion/store.json` is gone) — previously the
+  // rejection dangled and the click looked dead. Now we catch it and surface a
+  // toast; the rail's per-project Remove affordance lets the user forget it.
+  async function handleSelectProject(id: string) {
+    try {
+      await loadProject(id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not open project.";
+      showToast(message, "error");
+    }
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("t");
     const port = Number(window.location.port) || 12802;
-    if (token) {
-      initDaemonSession(token, port);
-    }
+    initDaemonSession(port);
     loadProjects().catch((err) => {
       useArtifactStore.getState().reportConnectionError(err);
     });
@@ -49,9 +60,11 @@ export function AppShell() {
     if (createProjectRequested) {
       setCreateOpen(true);
     }
-    // Strip all transient boot params from the URL (token, cross-route handoff
-    // params) so they don't appear in browser history or leak via Referer headers.
-    if (token || openProjectId || createProjectRequested) {
+    // Strip the transient cross-route handoff params from the URL so a refresh
+    // doesn't re-trigger them. (There is no longer a `?t=` session token to strip
+    // — tokenless-daemon.) A leftover `?t=` from an old bookmarked URL is simply
+    // ignored, so it's harmless to leave, but we clear it too for a clean URL bar.
+    if (openProjectId || createProjectRequested || params.has("t")) {
       const url = new URL(window.location.href);
       url.searchParams.delete("t");
       url.searchParams.delete("openProject");
@@ -71,7 +84,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen bg-bg-app text-text-body">
-      <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={(id) => loadProject(id)} />
+      <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={handleSelectProject} />
 
       <main className="flex-1 overflow-auto">
         {currentProject ? (
@@ -80,7 +93,7 @@ export function AppShell() {
           <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-text-muted">
-            Chọn một dự án ở thanh bên.
+            Select a project in the sidebar.
           </div>
         )}
       </main>

@@ -97,8 +97,8 @@ export function ProjectView({ project }: ProjectViewProps) {
           <p className="font-mono text-[12.5px] text-text-faint">{project.path}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={!daemonConnected || removing} onClick={handleRemoveProject}>
-            {removing ? "Removing…" : "Remove project"}
+          <Button variant="destructive" size="sm" disabled={!daemonConnected || removing} onClick={handleRemoveProject}>
+            {removing ? "Deleting…" : "Delete"}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setTab(tab === "list" ? "graph" : "list")}>
             {tab === "list" ? "Graph" : "List"}

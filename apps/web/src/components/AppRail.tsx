@@ -185,8 +185,13 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
           </button>
         </div>
 
-        {/* Project list — always shown, nested under "Project", scrollable. */}
-        <div className="min-h-0 shrink overflow-y-auto">
+        {/* Project list — always shown, nested under "Project". Sized to its
+            content (Templates/Settings sit directly beneath it) and only scrolls
+            once it would actually overflow the rail. The previous `shrink` let
+            the box collapse below its content height, producing a needless
+            scrollbar + empty gap even with a single project; `min-h-0` alone
+            keeps the natural-height-until-overflow behavior without that. */}
+        <div className="min-h-0 overflow-y-auto">
           {projects.length === 0 && (
             <p className="py-1 pl-6 text-xs text-text-faint">∅ no projects yet</p>
           )}

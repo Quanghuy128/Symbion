@@ -252,6 +252,17 @@ export const handlers = {
 
   loadProject(params: contract.LoadProjectParams): contract.LoadProjectResult {
     const path = findProjectPath(params.id);
+    // "Ghost project" guard: the folder is still in the global config but its
+    // `.symbion/store.json` is gone (moved/deleted on disk). Detect it and
+    // throw a typed RpcError instead of letting loadProjectStore surface a raw
+    // ENOENT — the web side can then show a meaningful toast, and the rail's
+    // per-project "Remove project" affordance lets the user forget the ghost.
+    if (!projectStoreExists(path)) {
+      throw new RpcError(
+        "project-missing",
+        `Project store not found at ${path}. The folder may have been moved or deleted.`
+      );
+    }
     return { project: loadProjectStore(path) };
   },
 

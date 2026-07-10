@@ -16,10 +16,24 @@ export function AppShell() {
   const currentProject = useArtifactStore((s) => s.currentProject);
   const loadProjects = useArtifactStore((s) => s.loadProjects);
   const loadProject = useArtifactStore((s) => s.loadProject);
+  const showToast = useArtifactStore((s) => s.showToast);
   const startHeartbeat = useArtifactStore((s) => s.startHeartbeat);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+
+  // Open a project from the rail. loadProject rejects for "ghost projects"
+  // (folder still listed but `.symbion/store.json` is gone) — previously the
+  // rejection dangled and the click looked dead. Now we catch it and surface a
+  // toast; the rail's per-project Remove affordance lets the user forget it.
+  async function handleSelectProject(id: string) {
+    try {
+      await loadProject(id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not open project.";
+      showToast(message, "error");
+    }
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -70,7 +84,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen bg-bg-app text-text-body">
-      <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={(id) => loadProject(id)} />
+      <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={handleSelectProject} />
 
       <main className="flex-1 overflow-auto">
         {currentProject ? (

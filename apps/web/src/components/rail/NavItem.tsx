@@ -14,6 +14,10 @@ export interface NavItemProps {
   href?: string;
   onClick?: () => void;
   title?: string;
+  /** Optional right-aligned action (e.g. a RowMenu) rendered outside the
+   *  clickable row so it isn't nested inside the row's <button>/<Link>.
+   *  Kept optional so existing nav rows are unaffected. */
+  trailing?: ReactNode;
 }
 
 /**
@@ -24,7 +28,7 @@ export interface NavItemProps {
  * Renders a <Link> when `href` is given (real route nav), else a <button>
  * (project rows are client-state selection, not routes).
  */
-export function NavItem({ active, icon, label, sublabel, variant, href, onClick, title }: NavItemProps) {
+export function NavItem({ active, icon, label, sublabel, variant, href, onClick, title, trailing }: NavItemProps) {
   const tickHeight = variant === "nav" ? "h-4" : "h-3.5"; // 16px / 14px per design doc §3.0
   const content = (
     <>
@@ -56,17 +60,28 @@ export function NavItem({ active, icon, label, sublabel, variant, href, onClick,
     active ? "bg-white/[.055]" : "hover:bg-white/[.03]"
   );
 
-  if (href) {
-    return (
-      <Link href={href} className={rowClass} title={title}>
-        {content}
-      </Link>
-    );
-  }
-
-  return (
+  const row = href ? (
+    <Link href={href} className={rowClass} title={title}>
+      {content}
+    </Link>
+  ) : (
     <button type="button" onClick={onClick} className={rowClass} title={title}>
       {content}
     </button>
+  );
+
+  // No trailing action → render the row directly (existing behavior unchanged).
+  if (!trailing) {
+    return row;
+  }
+
+  // With a trailing action, wrap the row + action in a flex group. The row keeps
+  // the accent-spine tick + hover; the action sits right-aligned outside the
+  // clickable row so it isn't nested inside the row's <button>/<Link>.
+  return (
+    <div className="group/nav-item relative flex items-center">
+      {row}
+      <div className="absolute right-1 top-1/2 -translate-y-1/2">{trailing}</div>
+    </div>
   );
 }

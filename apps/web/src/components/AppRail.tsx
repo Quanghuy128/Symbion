@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { NavItem } from "./rail/NavItem";
+import { RowMenu } from "./ui/row-menu";
 import { DaemonStatusBadge } from "./DaemonStatusBadge";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +55,36 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
   const pathname = usePathname();
   const projects = useArtifactStore((s) => s.projects);
   const currentProject = useArtifactStore((s) => s.currentProject);
+  const removeProject = useArtifactStore((s) => s.removeProject);
+  const showToast = useArtifactStore((s) => s.showToast);
+
+  // Which project row's ⋯ menu is open (ephemeral per-view UI state, kept
+  // component-local like ProjectView's openMenuId — not in useArtifactStore).
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Forget a project directly from the rail — reachable WITHOUT opening it, so
+  // "ghost projects" (folder gone, un-openable) are still removable. Mirrors
+  // ProjectView.handleRemoveProject's confirm + toast approach.
+  const handleRemoveProject = useCallback(
+    async (id: string, name: string) => {
+      setOpenMenuId(null);
+      if (
+        !window.confirm(
+          `Remove "${name}" from Symbion? This only forgets it from the list — no files on disk are deleted.`
+        )
+      ) {
+        return;
+      }
+      try {
+        await removeProject(id);
+        showToast("Project removed from list.", "success");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Remove failed — reason unknown.";
+        showToast(message, "error");
+      }
+    },
+    [removeProject, showToast]
+  );
 
   // Rail width is a pure UI/layout preference (not app state) — kept
   // component-local + persisted to localStorage, matching the pattern used
@@ -169,6 +200,20 @@ export function AppRail({ onCreateProject, onSelectProject }: AppRailProps) {
                   title={p.path}
                   active={currentProject?.id === p.id}
                   onClick={() => onSelectProject(p.id)}
+                  trailing={
+                    <RowMenu
+                      open={openMenuId === p.id}
+                      onOpenChange={(open) => setOpenMenuId(open ? p.id : null)}
+                      triggerLabel={`Options for ${p.name}`}
+                      items={[
+                        {
+                          label: "Remove project",
+                          danger: true,
+                          onSelect: () => handleRemoveProject(p.id, p.name),
+                        },
+                      ]}
+                    />
+                  }
                 />
               </li>
             ))}

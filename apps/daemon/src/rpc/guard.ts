@@ -54,6 +54,25 @@ export function resolveConfinedPath(projectRoot: string, relPath: string): strin
     throw new PathConfinementError(`Project root does not exist: ${root}`);
   }
 
+  // Leaf-target check (closes the single-segment-symlink gap the ancestor loop
+  // below misses): if the candidate itself EXISTS — as a file, dir, OR symlink —
+  // resolve its real path and verify it is still inside root. For a leaf symlink
+  // directly under root (relPath = one segment), the ancestor loop's body never
+  // runs because dirname(candidate) === root, so a leaf symlink pointing at
+  // /etc/hostname would otherwise slip through and be followed by a later
+  // stat/open. Checking the FINAL resolved target here fixes that for every
+  // caller. A not-yet-existing leaf (the render→write "new file" case) is left
+  // to the ancestor loop, exactly as before.
+  if (existsSync(normalizedCandidate)) {
+    const realLeaf = realpathSync(normalizedCandidate);
+    const relLeaf = relative(realRoot, realLeaf);
+    if (relLeaf.startsWith("..") || isAbsolute(relLeaf)) {
+      throw new PathConfinementError(
+        `Symlink points outside the project root: ${relPath}`
+      );
+    }
+  }
+
   let probe = dirname(normalizedCandidate);
   while (probe !== root && probe.length >= root.length) {
     if (existsSync(probe)) {

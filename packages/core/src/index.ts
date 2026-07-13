@@ -15,6 +15,8 @@ export * from "./render/marker.js";
 export * from "./render/render.js";
 
 export * from "./parse/scan.js";
+export * from "./parse/pickedFile.js";
+export * from "./parse/dedupeImportNames.js";
 
 export * from "./templates/parseTemplate.js";
 export * from "./templates/authorSource.js";

@@ -436,7 +436,10 @@ describe("Server-side validation on mutation (defense in depth)", () => {
     expect(() => handlers.saveArtifact({ projectId, artifact: dup }, ctx)).toThrow();
   });
 
-  it("importArtifacts rejects a selection that would create a blocking lint error", async () => {
+  it("importArtifacts blocks (not throws) a selection with a blocking lint error, and does NOT persist it (block-one-not-all, PLAN §1.4)", async () => {
+    // Behavior change from wholesale-reject (import-lifecycle-fixes B1/§1.4,
+    // user-confirmed): a blocking-lint artifact is EXCLUDED and reported in
+    // `blocked`; the RPC returns normally rather than throwing.
     await handlers.createProject({ name: "demo", path: projectRoot }, ctx);
     const projects = await handlers.listProjects({}, ctx);
     const projectId = projects.projects[0]!.id;
@@ -457,12 +460,11 @@ describe("Server-side validation on mutation (defense in depth)", () => {
       },
     ];
 
-    expect(() =>
-      handlers.importArtifacts(
-        { projectId, selectedIds: ["imported-invalid"], scanned: invalidScan },
-        ctx
-      )
-    ).toThrow();
+    const res = handlers.importArtifacts(
+      { projectId, selectedIds: ["imported-invalid"], scanned: invalidScan },
+      ctx
+    );
+    expect(res.blocked?.map((b) => b.id)).toEqual(["imported-invalid"]);
 
     const store = loadProjectStore(projectRoot);
     expect(store.artifacts.some((a) => a.id === "imported-invalid")).toBe(false);

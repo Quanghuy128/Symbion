@@ -30,7 +30,13 @@ export function Dialog({ open, onClose, children, className }: DialogProps) {
     >
       <div
         className={cn(
-          "animate-popIn rounded-dialog border border-border-hairline bg-bg-panel p-6 text-text-body shadow-dialog",
+          // Fixed-height flex column capped at 85vh. The panel itself does NOT
+          // scroll — instead DialogHeader/DialogFooter are shrink-0 fixed slots
+          // and DialogBody is the single scroll region between them, so the
+          // header + footer stay pinned no matter how tall the content is.
+          // (A previous version put overflow-y-auto on the whole panel, which
+          // made the footer scroll away — see docs/loops/modal-scroll-STATE.md.)
+          "animate-popIn flex max-h-[85vh] flex-col rounded-dialog border border-border-hairline bg-bg-panel p-6 text-text-body shadow-dialog",
           className
         )}
         onClick={(e) => e.stopPropagation()}
@@ -42,13 +48,27 @@ export function Dialog({ open, onClose, children, className }: DialogProps) {
 }
 
 export function DialogHeader({ children }: { children: React.ReactNode }) {
-  return <div className="mb-4 flex items-center justify-between">{children}</div>;
+  // shrink-0: fixed slot — never scrolls, never compresses.
+  return <div className="mb-4 flex shrink-0 items-center justify-between">{children}</div>;
 }
 
 export function DialogTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[15px] font-bold text-text-strong">{children}</h2>;
 }
 
+/**
+ * DialogBody — the single scroll region of a dialog. Sits between the fixed
+ * DialogHeader and DialogFooter; `min-h-0 flex-1 overflow-y-auto` lets it fill
+ * the available height and scroll internally while header + footer stay pinned.
+ * Optional: dialogs with naturally-short content can skip it (the panel's
+ * max-h-[85vh] still bounds them), but any dialog with a long/variable body
+ * should wrap that body in DialogBody so its footer pins.
+ */
+export function DialogBody({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn("min-h-0 flex-1 overflow-y-auto", className)}>{children}</div>;
+}
+
 export function DialogFooter({ children }: { children: React.ReactNode }) {
-  return <div className="mt-6 flex justify-end gap-2">{children}</div>;
+  // shrink-0: fixed slot pinned at the bottom of the panel.
+  return <div className="mt-6 flex shrink-0 justify-end gap-2">{children}</div>;
 }

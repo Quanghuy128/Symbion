@@ -6,6 +6,8 @@ import { callRpc, DaemonRpcError } from "../rpc/client";
 import type {
   ApplyTemplateParams,
   ApplyTemplateResult,
+  CreateProjectAndImportParams,
+  CreateProjectAndImportResult,
   CreateProjectResult,
   DeleteArtifactResult,
   FetchAuthorTemplatesParams,
@@ -83,6 +85,13 @@ interface ArtifactStoreState {
    *  `createProject` then `importArtifacts` directly via `callRpc` would
    *  render the empty just-created store instead of the merged result. */
   importArtifacts: (params: ImportArtifactsParams) => Promise<ProjectStore>;
+  /** B3a (import-lifecycle-fixes): ONE atomic create-or-adopt + import RPC.
+   *  Replaces the two dialogs' non-atomic createProject-then-importArtifacts
+   *  sequence — a mid-flow failure leaves NO half-created project (the daemon
+   *  rolls back a freshly-created project). Applies the returned merged
+   *  `project` onto currentProject + registry, mirroring createProject. Returns
+   *  the full result so callers can surface `renames`/`blocked`. */
+  createProjectAndImport: (params: CreateProjectAndImportParams) => Promise<CreateProjectAndImportResult>;
   /** Calls the `applyTemplate` RPC (Templates feature). Deliberately does NOT
    *  mutate `currentProject` — Apply targets an arbitrary project, not
    *  necessarily the currently-loaded one (the /templates route has no
@@ -162,7 +171,14 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
   },
 
   async removeProject(id) {
-    const result = await callRpc<RemoveProjectParams, RemoveProjectResult>("removeProject", { id });
+    // B3b: deleteStore:true — the rail Delete button already confirms with the
+    // user; the daemon then safely deletes (backup-before-delete, path-confined,
+    // foreign-file-preserving) the on-disk `.symbion/store.json`, closing the
+    // orphaned-store loop that caused B2.
+    const result = await callRpc<RemoveProjectParams, RemoveProjectResult>("removeProject", {
+      id,
+      deleteStore: true,
+    });
     set((state) => ({
       projects: result.projects,
       currentProject: state.currentProject?.id === id ? null : state.currentProject,
@@ -193,6 +209,25 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
     const result = await callRpc<ImportArtifactsParams, ImportArtifactsResult>("importArtifacts", params);
     set({ currentProject: result.project });
     return result.project;
+  },
+
+  async createProjectAndImport(params) {
+    const result = await callRpc<CreateProjectAndImportParams, CreateProjectAndImportResult>(
+      "createProjectAndImport",
+      params
+    );
+    set((state) => {
+      // Register the created/adopted project in the rail if not already present
+      // (adopt may re-register a previously-forgotten id), and set it current.
+      const exists = state.projects.some((p) => p.id === result.project.id);
+      return {
+        currentProject: result.project,
+        projects: exists
+          ? state.projects.map((p) => (p.id === result.project.id ? { id: result.project.id, name: result.project.name, path: result.project.path } : p))
+          : [...state.projects, { id: result.project.id, name: result.project.name, path: result.project.path }],
+      };
+    });
+    return result;
   },
 
   async applyTemplate(params) {

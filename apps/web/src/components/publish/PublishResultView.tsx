@@ -1,6 +1,6 @@
 "use client";
 
-import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { WriteResult } from "@/lib/rpc/types";
 
@@ -22,21 +22,23 @@ export function PublishResultView({ result, version, onDone }: PublishResultView
         <DialogTitle>Publish result {version}</DialogTitle>
       </DialogHeader>
 
-      <p className="text-sm text-text-body">
-        <span className="text-success">✓</span> {created} created · {updated} updated · {errors.length}{" "}
-        error(s)
-      </p>
-      <p className="mt-1 font-mono text-xs text-text-faint">Backup: {result.backupDir}</p>
+      <DialogBody>
+        <p className="text-sm text-text-body">
+          <span className="text-success">✓</span> {created} created · {updated} updated · {errors.length}{" "}
+          error(s)
+        </p>
+        <p className="mt-1 font-mono text-xs text-text-faint">Backup: {result.backupDir}</p>
 
-      {errors.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {errors.map((e) => (
-            <li key={e.relPath} className="rounded-panel bg-danger/10 px-2 py-1 text-xs text-danger">
-              {e.relPath}: {e.error}
-            </li>
-          ))}
-        </ul>
-      )}
+        {errors.length > 0 && (
+          <ul className="mt-3 space-y-1">
+            {errors.map((e) => (
+              <li key={e.relPath} className="rounded-panel bg-danger/10 px-2 py-1 text-xs text-danger">
+                {e.relPath}: {e.error}
+              </li>
+            ))}
+          </ul>
+        )}
+      </DialogBody>
 
       <DialogFooter>
         {errors.length > 0 && <Button variant="outline">Retry failed files</Button>}

@@ -105,6 +105,15 @@ export interface CreateProjectResult {
 
 export interface RemoveProjectParams {
   id: string;
+  /**
+   * B3b (import-lifecycle-fixes PLAN §4): when true, the daemon ALSO safely
+   * deletes the project's on-disk `.symbion/store.json` (+ publish-log.json)
+   * via `safeDeleteProjectStore` — backup-before-delete, path-confined, never
+   * touching foreign files or `.symbion/backups/`. Defaults to `false` (safe):
+   * old callers keep the config-only removal with zero disk-write risk. Only
+   * the rail's Delete button (after its confirm UI) passes `true`.
+   */
+  deleteStore?: boolean;
 }
 export interface RemoveProjectResult {
   /** The updated registry after removal, so the store can replace projects[]
@@ -165,9 +174,120 @@ export interface ImportArtifactsParams {
   selectedIds: string[];
   scanned: CanonicalArtifact[];
 }
+
+/** One (kind,name) collision auto-resolved by dedupeImportNames (B1, PLAN §1). */
+export interface ImportRename {
+  /** the renamed artifact's id (preserved — only its `name` changed). */
+  id: string;
+  /** the original colliding name. */
+  from: string;
+  /** the free name it was bumped to (`from-2`, `from-3`, …). */
+  to: string;
+}
+
+/** One artifact excluded from an import because it had a blocking lint issue
+ *  (e.g. empty description). Block-one-not-all (PLAN §1.4): the rest still
+ *  import; the UI surfaces these so the user fixes or deselects them. */
+export interface ImportBlocked {
+  id: string;
+  name: string;
+  /** human-readable blocking lint messages (e.g. "description is required."). */
+  reasons: string[];
+}
+
 export interface ImportArtifactsResult {
   project: ProjectStore;
+  /** present iff any name collision was auto-resolved (B1). Absent/empty
+   *  otherwise -> back-compat with callers that ignore it. */
+  renames?: ImportRename[];
+  /** present iff any selected artifact was excluded for a blocking lint issue
+   *  (block-one-not-all, PLAN §1.4). Absent/empty when everything imported. */
+  blocked?: ImportBlocked[];
 }
+
+/**
+ * createProjectAndImport — B3a (PLAN §3): ONE atomic daemon RPC that creates
+ * (or adopts, per B2) a project AND imports the selected artifacts. Replaces
+ * the two dialogs' non-atomic `createProject`-then-`importArtifacts` sequence
+ * so a client crash/disconnect between the two legacy calls can no longer
+ * orphan a half-created project. On a genuine failure AFTER a fresh CREATE the
+ * daemon rolls back (drops the config entry + safe-deletes the just-created
+ * store); if it ADOPTED a pre-existing store it does NOT delete (the store
+ * pre-existed — deleting it would be data loss). The legacy standalone RPCs
+ * remain for other callers/tests.
+ */
+export interface CreateProjectAndImportParams {
+  name: string;
+  path: string;
+  selectedIds: string[];
+  scanned: CanonicalArtifact[];
+}
+export interface CreateProjectAndImportResult {
+  project: ProjectStore;
+  renames?: ImportRename[];
+  blocked?: ImportBlocked[];
+}
+
+/**
+ * Manual file picker (docs/loops/manual-file-picker-STATE.md PLAN §3). Two
+ * read-only RPCs backing the "Browse files manually" escape hatch:
+ *
+ *  - listTree        — EAGER metadata walk of the whole repo (dirs + files, NO
+ *                      content), hard-capped daemon-side (§5). Fires ONLY when
+ *                      the user clicks "Browse files manually" — never on a
+ *                      normal scan (F1). Caps are daemon constants, NOT params.
+ *  - readImportFile  — LAZY single-file read, called only when the user assigns
+ *                      a non-ignore role to a picked/skipped file. Bounded size
+ *                      + binary check. Confinement violations THROW; expected
+ *                      outcomes (too-large/binary/not-found/denied) return a
+ *                      soft discriminated result (T6).
+ *
+ * Neither RPC writes/creates/renames/deletes anything (READ-ONLY, §5.12). The
+ * only mutation remains the unchanged `importArtifacts` (writes only the store).
+ */
+export interface ListTreeParams {
+  /** absolute repo root (the project path). */
+  root: string;
+}
+export interface ImportTreeNode {
+  /** POSIX-style relPath from root, e.g. "prompts/ba.md.tmpl". */
+  relPath: string;
+  /** basename. */
+  name: string;
+  isDir: boolean;
+  isSymlink: boolean;
+  /** dirs only: true if this dir was pruned by the ignore-list (shown collapsed, not walked). */
+  ignored?: boolean;
+  /** files only: byte size (for the UI to grey out oversized ones pre-read). */
+  size?: number;
+  /** files only: true if the walker flagged it likely-binary by extension
+   *  (defense-in-depth; the real check is on read in readImportFile). */
+  likelyBinary?: boolean;
+}
+export interface ListTreeResult {
+  /** realpath'd root actually walked. */
+  root: string;
+  /** flat list, parent-before-child order; the UI reconstructs the tree. */
+  nodes: ImportTreeNode[];
+  /** true if ANY cap tripped (depth/per-dir/total-node) — UI shows a
+   *  "results truncated" banner. */
+  truncated: boolean;
+  /** which cap(s) tripped, for a precise message + /cso assertions. */
+  truncatedReasons: Array<"depth" | "per-dir" | "total-node">;
+}
+
+export interface ReadImportFileParams {
+  root: string;
+  /** relative to root; daemon re-confines it — the client value is never trusted. */
+  relPath: string;
+}
+export type ReadImportFileResult =
+  | { ok: true; content: string }
+  | {
+      ok: false;
+      reason: "too-large" | "binary" | "not-found" | "denied";
+      message: string;
+    };
 
 /**
  * applyTemplate — stages ONE bundled template (from apps/web's static
@@ -482,7 +602,10 @@ export type RpcMethod =
   | "deleteArtifact"
   | "updateSettings"
   | "scanClaudeDir"
+  | "listTree"
+  | "readImportFile"
   | "importArtifacts"
+  | "createProjectAndImport"
   | "applyTemplate"
   | "fetchAuthorTemplates"
   | "render"

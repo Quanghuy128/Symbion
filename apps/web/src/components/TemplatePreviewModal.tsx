@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { TemplateMarkdownViewer } from "./TemplateMarkdownViewer";
 import { ProjectPickerStep } from "./ProjectPickerStep";
@@ -176,7 +176,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
             </div>
           </DialogHeader>
 
-          <div className="space-y-2">
+          <DialogBody className="space-y-2">
             <TemplateMarkdownViewer content={template.raw} selectAllRef={selectAllRef} />
 
             {template.kind === "skill" && (
@@ -192,7 +192,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
               </p>
             )}
             {copied && <p className="text-xs text-green-600">Copied to clipboard.</p>}
-          </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>

@@ -2,16 +2,25 @@
 
 import { useEffect, useState } from "react";
 import type { CanonicalArtifact } from "@symbion/core";
-import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FolderBrowserDialog } from "@/components/FolderBrowserDialog";
 import { WorkflowDetectionPanel } from "@/components/WorkflowDetectionPanel";
 import { ImportScanningState } from "@/components/ImportScanningState";
 import { ImportReviewStep } from "@/components/ImportReviewStep";
+import { FileTreePicker, type PickedEntry, type PickedRole } from "@/components/FileTreePicker";
+import { applyPickedRole, basenameOf, surfaceImportOutcome } from "@/components/importPickerShared";
 import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
-import type { MakeDirParams, MakeDirResult, ScanClaudeDirResult, ValidatePathResult } from "@/lib/rpc/types";
+import type {
+  ImportTreeNode,
+  ListTreeResult,
+  MakeDirParams,
+  MakeDirResult,
+  ScanClaudeDirResult,
+  ValidatePathResult,
+} from "@/lib/rpc/types";
 
 export interface CreateProjectDialogProps {
   open: boolean;
@@ -40,7 +49,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   const [browserOpen, setBrowserOpen] = useState(false);
   const [creatingDir, setCreatingDir] = useState(false);
   const createProject = useArtifactStore((s) => s.createProject);
-  const importArtifacts = useArtifactStore((s) => s.importArtifacts);
+  const createProjectAndImport = useArtifactStore((s) => s.createProjectAndImport);
   const projects = useArtifactStore((s) => s.projects);
   const showToast = useArtifactStore((s) => s.showToast);
 
@@ -49,6 +58,15 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   const [scanned, setScanned] = useState<ScanClaudeDirResult["parsed"] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scanError, setScanError] = useState<string | null>(null);
+
+  // Manual-file-picker state (transient — discarded on close/reset, PLAN §6).
+  const [picked, setPicked] = useState<Map<string, PickedEntry>>(new Map());
+  // Keyed by relPath (NOT artifactId) so a role change on the same row replaces
+  // its prior artifact in ONE functional update — no stale-closure read of the
+  // old `picked` map (resolves /review BLOCKING: stale-closure artifact leak).
+  const [pickedArtifacts, setPickedArtifacts] = useState<Map<string, CanonicalArtifact>>(new Map());
+  const [tree, setTree] = useState<ListTreeResult | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
 
   // EC-4 (PLAN §10.5): client-side short-circuit against the already-loaded
   // projects list. Daemon's own createProject `already-a-project` throw
@@ -159,6 +177,53 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
     setScanned(null);
     setSelected(new Set());
     setScanError(null);
+    setPicked(new Map());
+    setPickedArtifacts(new Map());
+    setTree(null);
+  }
+
+  /** Assign a role to a file (a skipped-scan row or a tree node). Runs the
+   *  shared read→classify path and stashes the artifact + warning. */
+  async function assignRole(relPath: string, basename: string, role: PickedRole) {
+    const trimmedPath = path.trim();
+    const { entry, artifact } = await applyPickedRole(trimmedPath, relPath, basename, role);
+    setPicked((prev) => {
+      const next = new Map(prev);
+      if (role === "ignore") next.delete(relPath);
+      else next.set(relPath, entry);
+      return next;
+    });
+    setPickedArtifacts((prev) => {
+      const next = new Map(prev);
+      // Map is keyed by relPath, so setting/deleting this relPath fully replaces
+      // any prior artifact for the SAME row — no read of the (possibly stale)
+      // `picked` closure. Fixes the rapid Agent→Command→Agent leak.
+      if (artifact) next.set(relPath, artifact);
+      else next.delete(relPath);
+      return next;
+    });
+  }
+
+  function reclassifySkipped(relPath: string, role: PickedRole) {
+    void assignRole(relPath, basenameOf(relPath), role);
+  }
+
+  function onTreeRoleChange(node: ImportTreeNode, role: PickedRole) {
+    void assignRole(node.relPath, node.name, role);
+  }
+
+  async function handleBrowseManually() {
+    const trimmedPath = path.trim();
+    if (!trimmedPath) return;
+    setTreeLoading(true);
+    try {
+      const result = await callRpc<{ root: string }, ListTreeResult>("listTree", { root: trimmedPath });
+      setTree(result);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setTreeLoading(false);
+    }
   }
 
   async function handleCreate() {
@@ -200,29 +265,23 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
     if (!scanned) return;
     setCreating(true);
     setError(null);
-    let createdProjectName: string | null = null;
     try {
-      const project = await createProject(name.trim() || path.trim().split("/").filter(Boolean).pop() || "imported", path.trim());
-      createdProjectName = project.name;
-      const all: CanonicalArtifact[] = [...scanned.agents, ...scanned.commands];
-      await importArtifacts({
-        projectId: project.id,
-        selectedIds: Array.from(selected),
+      const picks = [...pickedArtifacts.values()];
+      const all: CanonicalArtifact[] = [...scanned.agents, ...scanned.commands, ...picks];
+      // B3a: ONE atomic create-or-adopt + import RPC. A mid-flow failure leaves
+      // NO half-created project behind (daemon rolls back a freshly-created one),
+      // so the old "created but import failed, open it to retry" copy is gone.
+      const result = await createProjectAndImport({
+        name: name.trim() || path.trim().split("/").filter(Boolean).pop() || "imported",
+        path: path.trim(),
+        selectedIds: [...Array.from(selected), ...picks.map((a) => a.id)],
         scanned: all,
       });
       resetAll();
+      surfaceImportOutcome(result.renames, result.blocked, showToast);
       onClose();
     } catch (err) {
-      const message = (err as Error).message;
-      // Partial-failure UX (review §🟡): if createProject already succeeded
-      // before importArtifacts threw, the project genuinely exists now —
-      // tell the user that instead of letting them retry blindly into
-      // "already-a-project".
-      setError(
-        createdProjectName
-          ? `Project "${createdProjectName}" was created but import failed: ${message}. Open project "${createdProjectName}" in the left list to import again via "Import .claude/ from a repo".`
-          : message
-      );
+      setError((err as Error).message);
     } finally {
       setCreating(false);
     }
@@ -246,7 +305,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
         <DialogTitle>{step === "review" ? "New project — Review before import" : "New project"}</DialogTitle>
       </DialogHeader>
 
-      <div className="space-y-3">
+      <DialogBody className="space-y-3">
         <div>
           <label className="mb-1 block text-sm font-medium text-text-body">Project name</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My API Service" />
@@ -320,10 +379,24 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
         {step === "scanning" && <ImportScanningState />}
 
-        {step === "review" && scanned && <ImportReviewStep scanned={scanned} selected={selected} onToggle={toggle} />}
+        {step === "review" && scanned && (
+          <ImportReviewStep
+            scanned={scanned}
+            selected={selected}
+            onToggle={toggle}
+            picked={picked}
+            onReclassify={reclassifySkipped}
+            onBrowseManually={handleBrowseManually}
+          />
+        )}
+
+        {step === "review" && treeLoading && <p className="text-xs text-text-muted">Scanning folder tree…</p>}
+        {step === "review" && tree && (
+          <FileTreePicker tree={tree} picked={picked} onRoleChange={onTreeRoleChange} />
+        )}
 
         {error && <p className="text-xs text-danger">{error}</p>}
-      </div>
+      </DialogBody>
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
@@ -339,8 +412,8 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
             <Button variant="outline" onClick={() => setStep("detected")}>
               Back
             </Button>
-            <Button disabled={selected.size === 0 || creating} onClick={handleImport}>
-              Import {selected.size} selected
+            <Button disabled={selected.size + pickedArtifacts.size === 0 || creating} onClick={handleImport}>
+              Import {selected.size + pickedArtifacts.size} selected
             </Button>
           </>
         )}

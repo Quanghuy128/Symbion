@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Folder, Lock, ArrowUp } from "lucide-react";
-import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
 import type { ListDirParams, ListDirResult } from "@/lib/rpc/types";
@@ -79,19 +79,21 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
   }
 
   return (
-    <Dialog open={open} onClose={onClose} className="w-[480px]">
+    // w-[640px] roomier than the old 480px. Header + footer pin via the shared
+    // Dialog primitive's fixed slots; the folder list scrolls inside DialogBody.
+    <Dialog open={open} onClose={onClose} className="w-[640px]">
       <DialogHeader>
         <DialogTitle>Select a folder</DialogTitle>
       </DialogHeader>
 
-      <div className="space-y-2">
+      <DialogBody className="space-y-2">
         <p className="truncate font-mono text-xs text-text-faint" title={listing?.path ?? currentPath ?? ""}>
           {listing?.path ?? currentPath ?? "Loading…"}
         </p>
 
         {error && <p className="text-xs text-danger">{error}</p>}
 
-        <div className="max-h-72 space-y-1 overflow-y-auto rounded-panel border border-border-input p-1">
+        <div className="space-y-1 rounded-panel border border-border-input p-1">
           {loading && <p className="px-2 py-1 text-xs text-text-muted">Loading…</p>}
 
           {!loading && listing?.parentPath && (
@@ -128,7 +130,7 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
             <p className="px-2 py-1.5 text-xs text-text-muted">No subfolders.</p>
           )}
         </div>
-      </div>
+      </DialogBody>
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>

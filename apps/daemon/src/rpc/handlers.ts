@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   AUTHOR_REGISTRY,
   computeDiff as coreComputeDiff,
+  dedupeImportNames,
   parseClaudeDir,
   renderArtifacts,
   renderRunCommand as coreRenderRunCommand,
@@ -20,6 +21,7 @@ import {
   loadGlobalConfig,
   loadProjectStore,
   projectStoreExists,
+  safeDeleteProjectStore,
   saveGlobalConfig,
   saveProjectStore,
 } from "../store/store.js";
@@ -27,6 +29,7 @@ import { appendPublishLogEntry } from "../store/publishLog.js";
 import { gitStatus as coreGitStatus } from "../git/status.js";
 import { browseFolder as nativeBrowseFolder } from "../fs/folderPick.js";
 import { listDir as listDirImpl, makeDir as makeDirImpl } from "../fs/listDir.js";
+import { walkImportTree, readImportFile } from "../fs/importTree.js";
 import {
   extractForeignAgentsMdContent,
   readAgentsMd,
@@ -74,6 +77,132 @@ function findProjectPath(projectId: string): string {
     throw new Error(`Project not found: ${projectId}`);
   }
   return entry.path;
+}
+
+/**
+ * createOrAdoptProject — the shared create/adopt control flow behind both the
+ * standalone `createProject` RPC and the combined `createProjectAndImport`
+ * (import-lifecycle-fixes PLAN §2 / B2). Returns whether this call CREATED a
+ * fresh store (branch #6 — eligible for rollback) or ADOPTED a pre-existing
+ * orphan store (branch #5 — NEVER rolled back / deleted, the store pre-existed).
+ *
+ * Branches (PLAN §2):
+ *   1. path missing / not a dir            -> RpcError("invalid-path")
+ *   2. inConfig && onDisk                  -> RpcError("already-a-project")
+ *   3. inConfig && !onDisk (ghost)         -> RpcError("already-a-project")
+ *   4. !inConfig && onDisk (orphan)        -> ADOPT: reuse id + artifacts,
+ *                                              refresh config `name` from param,
+ *                                              store.json NOT rewritten.
+ *   5. !inConfig && !onDisk                -> CREATE: mint id, write store.json.
+ */
+function createOrAdoptProject(
+  name: string,
+  path: string
+): { project: ProjectStore; justCreated: boolean } {
+  if (!existsSync(path) || !statSync(path).isDirectory()) {
+    throw new RpcError("invalid-path", "Path does not exist or is not a directory.");
+  }
+
+  const config = loadGlobalConfig();
+  const inConfig = config.projects.some((p) => p.path === path);
+  const onDisk = projectStoreExists(path);
+
+  if (inConfig) {
+    // Both the AND-on-disk and the ghost (config-only, store gone) cases stay a
+    // throw — adopt applies ONLY to the config-absent-but-disk-present orphan.
+    // The ghost case is surfaced to the user via loadProject's project-missing.
+    throw new RpcError("already-a-project", "This folder is already a Symbion project.");
+  }
+
+  if (onDisk) {
+    // B2 ADOPT: reuse the existing store's id + artifacts (never lose data);
+    // refresh the config-registered `name` from the param (the sidebar label the
+    // user just typed). The on-disk store.name is left untouched — adopt is a
+    // read-only-on-the-store operation (no store.json write).
+    const existing = loadProjectStore(path);
+    config.projects.push({ id: existing.id, name, path });
+    config.lastProjectId = existing.id;
+    saveGlobalConfig(config);
+    return { project: existing, justCreated: false };
+  }
+
+  // CREATE: fresh happy path.
+  const id = randomId();
+  const project = createProjectStore(path, name, id);
+  config.projects.push({ id, name, path });
+  config.lastProjectId = id;
+  saveGlobalConfig(config);
+  return { project, justCreated: true };
+}
+
+/**
+ * importIntoStore — the shared import logic behind both the standalone
+ * `importArtifacts` RPC and the combined `createProjectAndImport` (PLAN §1).
+ * Reads a fresh store (server-authoritative / TOCTOU-free), dedupes incoming
+ * names (B1), partitions blocking-lint artifacts out (block-one-not-all, §1.4),
+ * persists the importable remainder, and returns the merged store plus the
+ * `renames`/`blocked` audit lists. NEVER throws on a lint issue — it filters.
+ */
+function importIntoStore(
+  projectPath: string,
+  selectedIds: string[],
+  scanned: CanonicalArtifact[]
+): contract.ImportArtifactsResult {
+  const store = loadProjectStore(projectPath);
+  const selected = scanned.filter((a) => selectedIds.includes(a.id));
+
+  // E19: seed `existingOthers` with the store MINUS the selected ids, so a plain
+  // re-import of an already-stored artifact does NOT see its own stored name as a
+  // collision and wrongly bump ba -> ba-2. This is the single most important
+  // wiring detail of §1.2.
+  const existingOthers = store.artifacts.filter((a) => !selected.some((s) => s.id === a.id));
+
+  // B1: server-authoritative auto-suffix dedup over the fresh store + within the
+  // incoming batch itself (the .md/.md.tmpl twins are BOTH new).
+  const { deduped, renames } = dedupeImportNames(existingOthers, selected);
+
+  // Validate the resulting merged set; block-one-not-all (§1.4): collect blocking
+  // (error-level) issues per deduped artifact, then partition.
+  const merged = [...existingOthers, ...deduped];
+  const issues = validateAllArtifacts(merged);
+  const dedupedIds = new Set(deduped.map((a) => a.id));
+  const blockingByArtifact = new Map<string, string[]>();
+  for (const issue of issues) {
+    if (issue.level !== "error" || !issue.artifactId || !dedupedIds.has(issue.artifactId)) continue;
+    const list = blockingByArtifact.get(issue.artifactId) ?? [];
+    list.push(issue.message);
+    blockingByArtifact.set(issue.artifactId, list);
+  }
+
+  const importable: CanonicalArtifact[] = [];
+  const blocked: contract.ImportBlocked[] = [];
+  for (const art of deduped) {
+    const reasons = blockingByArtifact.get(art.id);
+    if (reasons && reasons.length > 0) {
+      blocked.push({ id: art.id, name: art.name, reasons });
+    } else {
+      importable.push(art);
+    }
+  }
+
+  // Persist ONLY importable (upsert-in-place by id). Skip the write entirely when
+  // nothing is importable so an all-blocked import leaves the store byte-unchanged.
+  if (importable.length > 0) {
+    for (const artifact of importable) {
+      const idx = store.artifacts.findIndex((a) => a.id === artifact.id);
+      if (idx >= 0) {
+        store.artifacts[idx] = artifact;
+      } else {
+        store.artifacts.push(artifact);
+      }
+    }
+    saveProjectStore(projectPath, store);
+  }
+
+  const result: contract.ImportArtifactsResult = { project: store };
+  if (renames.length > 0) result.renames = renames;
+  if (blocked.length > 0) result.blocked = blocked;
+  return result;
 }
 
 /**
@@ -211,29 +340,34 @@ export const handlers = {
     return { projects: config.projects };
   },
 
+  /**
+   * createProject — B2 adopt-orphan (PLAN §2). Delegates to the shared
+   * create-or-adopt control flow: a `.symbion/store.json` that exists on disk
+   * but is absent from global config is ADOPTED (re-registered, reusing its id +
+   * artifacts) instead of throwing `already-a-project`. A folder already in
+   * config (with or without an on-disk store) still throws.
+   */
   createProject(params: contract.CreateProjectParams): contract.CreateProjectResult {
-    const { name, path } = params;
-    if (!existsSync(path) || !statSync(path).isDirectory()) {
-      throw new RpcError("invalid-path", "Path does not exist or is not a directory.");
-    }
-    if (projectStoreExists(path)) {
-      throw new RpcError("already-a-project", "This folder is already a Symbion project.");
-    }
-
-    const id = randomId();
-    const project = createProjectStore(path, name, id);
-
-    const config = loadGlobalConfig();
-    config.projects.push({ id, name, path });
-    config.lastProjectId = id;
-    saveGlobalConfig(config);
-
+    const { project } = createOrAdoptProject(params.name, params.path);
     return { project };
   },
 
   removeProject(params: contract.RemoveProjectParams): contract.RemoveProjectResult {
-    const { id } = params;
+    const { id, deleteStore } = params;
     const config = loadGlobalConfig();
+    // Capture the removed project's path BEFORE filtering it out (PLAN §4
+    // ordering) — else we lose the path needed for safeDeleteProjectStore.
+    const entry = config.projects.find((p) => p.id === id);
+
+    // B3b fail-closed ordering (PLAN §4 / T8): do the disk delete FIRST. If the
+    // store can't be safely deleted (symlink .symbion, backup write failure,
+    // confinement violation) the delete throws and we NEVER drop the config
+    // entry — the project stays visible + retryable rather than orphaning the
+    // store on disk (which is exactly B3's original bug).
+    if (deleteStore && entry) {
+      safeDeleteProjectStore(entry.path);
+    }
+
     const before = config.projects.length;
     config.projects = config.projects.filter((p) => p.id !== id);
     const removed = config.projects.length < before;
@@ -330,39 +464,83 @@ export const handlers = {
     return { parsed };
   },
 
+  /**
+   * listTree — manual-file-picker escape hatch (PLAN §3). READ-ONLY eager
+   * metadata walk of the repo root (dirs + files, NO content), hard-capped
+   * daemon-side (importTree.ts constants). Fires ONLY when the user clicks
+   * "Browse files manually" (F1) — never on a normal scan. Thin delegate;
+   * all confinement + caps live in walkImportTree.
+   */
+  listTree(params: contract.ListTreeParams): contract.ListTreeResult {
+    return walkImportTree((params as { root?: unknown } | null)?.root);
+  },
+
+  /**
+   * readImportFile — lazy single-file read for a picked/skipped file (PLAN §3).
+   * READ-ONLY. Confinement violations (`..`/absolute/symlink-escape) THROW a
+   * loud RpcError (T6/S17); expected outcomes (too-large/binary/not-found/
+   * denied) return a soft discriminated result. Thin delegate; the guard +
+   * size/binary caps live in readImportFile (importTree.ts).
+   */
+  readImportFile(params: contract.ReadImportFileParams): contract.ReadImportFileResult {
+    const p = (params as { root?: unknown; relPath?: unknown } | null) ?? {};
+    return readImportFile(p.root, p.relPath);
+  },
+
+  /**
+   * importArtifacts — B1 (PLAN §1). Delegates to the shared `importIntoStore`:
+   *   - name-collision auto-suffix via the pure `dedupeImportNames` (server-
+   *     authoritative, over a fresh store read) — twins land as `x` + `x-2`,
+   *     reported in `renames`.
+   *   - block-one-not-all (§1.4): an artifact with a blocking lint issue (e.g.
+   *     empty description) is EXCLUDED and reported in `blocked`; the rest still
+   *     import. No wholesale reject/throw — that was what made B1 catastrophic.
+   */
   importArtifacts(params: contract.ImportArtifactsParams): contract.ImportArtifactsResult {
     const path = findProjectPath(params.projectId);
-    const store = loadProjectStore(path);
-    const selected = params.scanned.filter((a) => params.selectedIds.includes(a.id));
+    return importIntoStore(path, params.selectedIds, params.scanned);
+  },
 
-    // Server-side validation (defense in depth) over the resulting merged
-    // artifact set. Imported artifacts that would create blocking lint
-    // errors (e.g. duplicate name, missing required fields) are rejected
-    // wholesale rather than silently persisted invalid.
-    const existingOthers = store.artifacts.filter(
-      (a) => !selected.some((s) => s.id === a.id)
-    );
-    const merged = [...existingOthers, ...selected];
-    const issues = validateAllArtifacts(merged);
-    const selectedIds = new Set(selected.map((a) => a.id));
-    const blocking = issues.filter((i) => i.level === "error" && i.artifactId && selectedIds.has(i.artifactId));
-    if (blocking.length > 0) {
-      throw new RpcError(
-        "validation-failed",
-        `Cannot import — lint violations: ${blocking.map((i) => i.message).join("; ")}`
-      );
-    }
+  /**
+   * createProjectAndImport — B3a (PLAN §3). ONE atomic RPC: create-or-adopt the
+   * project, then import. If import fails (genuine I/O error only — B1's
+   * block-one-not-all means lint never throws) AND this call CREATED a fresh
+   * project, roll back: drop the just-added config entry + safe-delete the
+   * just-created store. If it ADOPTED a pre-existing orphan, do NOT delete (the
+   * store pre-existed — deleting it would be data loss) and leave the config
+   * entry registered (user can retry import). Makes create+import atomic from
+   * the client's view even across a mid-flow client disconnect.
+   */
+  createProjectAndImport(
+    params: contract.CreateProjectAndImportParams
+  ): contract.CreateProjectAndImportResult {
+    const { name, path, selectedIds, scanned } = params;
+    const { project, justCreated } = createOrAdoptProject(name, path);
 
-    for (const artifact of selected) {
-      const idx = store.artifacts.findIndex((a) => a.id === artifact.id);
-      if (idx >= 0) {
-        store.artifacts[idx] = artifact;
-      } else {
-        store.artifacts.push(artifact);
+    try {
+      const imported = importIntoStore(path, selectedIds, scanned);
+      const result: contract.CreateProjectAndImportResult = { project: imported.project };
+      if (imported.renames) result.renames = imported.renames;
+      if (imported.blocked) result.blocked = imported.blocked;
+      return result;
+    } catch (err) {
+      // Rollback ONLY when THIS call created the project (never an adopted one).
+      if (justCreated) {
+        try {
+          const config = loadGlobalConfig();
+          config.projects = config.projects.filter((p) => p.id !== project.id);
+          if (config.lastProjectId === project.id) {
+            config.lastProjectId = undefined;
+          }
+          saveGlobalConfig(config);
+          safeDeleteProjectStore(path);
+        } catch {
+          // Best-effort rollback: if cleanup itself fails, still surface the
+          // ORIGINAL import error (below) rather than mask it with a cleanup error.
+        }
       }
+      throw err;
     }
-    saveProjectStore(path, store);
-    return { project: store };
   },
 
   /**

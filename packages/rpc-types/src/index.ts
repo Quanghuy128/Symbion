@@ -11,10 +11,15 @@
 import type {
   CanonicalArtifact,
   DiffFile,
+  PersistedRunEvent,
+  ProjectRunConfig,
   ProjectSettings,
   ProjectStore,
   PublishResult,
   RenderedFile,
+  RunInfo,
+  RunListItem,
+  RunStatus,
   TargetId,
   TemplateListItem,
 } from "@symbion/core";
@@ -588,6 +593,104 @@ export interface SetActiveProviderResult {
   providers: ProviderDescriptor[];
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Run Engine v2 (graph-execution-realtime PLAN §8.3). SSE control stays on
+// POST /rpc; the live channel is GET /run-events (see the SSE wire types below).
+// ─────────────────────────────────────────────────────────────────────────
+
+/** One preflight check row rendered in the RunDialog's PreflightStrip. */
+export interface PreflightCheck {
+  id: string;
+  severity: "ok" | "warn" | "block";
+  label: string;
+  action?: { label: string; kind: "publish" | "install" | "recheck" | "settings" };
+}
+
+export interface RunPreflightParams {
+  projectId: string;
+  artifactId: string;
+}
+export interface RunPreflightResult {
+  checks: PreflightCheck[];
+  /** true iff any check is severity "block" — Execute is disabled + no nonce. */
+  blocked: boolean;
+  needsFirstRunAck: boolean;
+  /** exact command line echoed read-only in the dialog. */
+  invocationEcho: string;
+  /** verbatim-stable consent copy source, generated from ProjectRunConfig. */
+  permissionSummary: {
+    mode: string;
+    cwd: string;
+    ceilings: { wallClockMs: number; tokenCap: number };
+    /** the full plain-language consent sentence (single source of the disclosure). */
+    sentence: string;
+  };
+  lastRun?: {
+    status: RunStatus;
+    durationMs: number | null;
+    costUsd: number | null;
+    endedAt: string | null;
+    /** the requirement text of the last terminal run — pre-fills+selects RunDialog's
+     *  requirement field (design §1B/§3.2 L3). null if unavailable (e.g. legacy run.json). */
+    requirement: string | null;
+  };
+  /** present iff !blocked — the daemon-minted single-use consent nonce (Flaw F1). */
+  consentNonce?: string;
+}
+
+export interface StartRunParams {
+  projectId: string;
+  artifactId: string;
+  requirement: string;
+  model?: string;
+  /** the nonce returned by runPreflight; consumed single-use by startRun. */
+  nonce: string;
+  /** when true, the daemon persists firstRunAck (computing the hash itself). */
+  ackFirstRun?: boolean;
+}
+export interface StartRunResult {
+  runId: string;
+  run: RunInfo;
+}
+
+export interface CancelRunParams {
+  projectId: string;
+  runId: string;
+}
+export interface CancelRunResult {
+  status: RunStatus;
+  /** present iff the process was NOT confirmed dead (ER-6) — surfaced for a manual kill. */
+  pid?: number;
+}
+
+export interface ListRunsParams {
+  projectId: string;
+}
+export interface ListRunsResult {
+  runs: RunListItem[];
+  activeRunId?: string;
+}
+
+export interface GetRunEventsParams {
+  projectId: string;
+  runId: string;
+  afterSeq: number;
+}
+export interface GetRunEventsResult {
+  events: PersistedRunEvent[];
+  run: RunInfo;
+  /** true iff the run is terminal AND all events up to lastSeq were returned. */
+  done: boolean;
+}
+
+/** SSE `event: run` frame payload (batched events, id = last seq in batch). */
+export interface RunSseEventsFrame {
+  runId: string;
+  events: PersistedRunEvent[];
+}
+/** SSE `event: state` frame payload (lifecycle transitions). */
+export interface RunSseStateFrame extends RunInfo {}
+
 export type RpcMethod =
   | "ping"
   | "browseFolder"
@@ -619,7 +722,12 @@ export type RpcMethod =
   | "listProviders"
   | "saveProviderKey"
   | "clearProviderKey"
-  | "setActiveProvider";
+  | "setActiveProvider"
+  | "runPreflight"
+  | "startRun"
+  | "cancelRun"
+  | "listRuns"
+  | "getRunEvents";
 
 export interface RpcRequest<M extends RpcMethod = RpcMethod, P = unknown> {
   method: M;
@@ -635,10 +743,15 @@ export interface RpcErrorBody {
 export type {
   CanonicalArtifact,
   DiffFile,
+  PersistedRunEvent,
+  ProjectRunConfig,
   ProjectSettings,
   ProjectStore,
   PublishResult,
   RenderedFile,
+  RunInfo,
+  RunListItem,
+  RunStatus,
   TargetId,
   TemplateListItem,
 };

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { handlers, RpcError } from "./rpc/handlers.js";
+import { handleRunEventsSse } from "./run/sseRoute.js";
 import type { RpcMethod } from "./rpc/contract.js";
 
 const MIME_TYPES: Record<string, string> = {
@@ -101,6 +102,23 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
  */
 export function startServer(opts: DaemonServerOptions): Promise<DaemonServerHandle> {
   const server = createServer(async (req, res) => {
+    // Run Engine v2 SSE — routed BEFORE serveStaticFile (every GET otherwise
+    // falls through to static serving). Same Origin/Host allowlist as /rpc.
+    if (req.method === "GET" && (req.url ?? "").split("?")[0] === "/run-events") {
+      const origin = req.headers["origin"] as string | undefined;
+      const host = req.headers["host"] as string | undefined;
+      if (origin !== undefined && !isAllowedHost(origin, opts.port)) {
+        sendJson(res, 403, { error: { code: "origin-rejected", message: "Invalid origin." } });
+        return;
+      }
+      if (!isAllowedHost(host, opts.port)) {
+        sendJson(res, 403, { error: { code: "host-rejected", message: "Invalid host." } });
+        return;
+      }
+      await handleRunEventsSse(req, res);
+      return;
+    }
+
     if (req.method === "GET" && opts.webStaticRoot) {
       const served = serveStaticFile(opts.webStaticRoot, req.url ?? "/", res);
       if (served) return;

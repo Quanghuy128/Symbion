@@ -23,6 +23,16 @@ export interface CommandNodeData {
   onEditBody?: () => void;
   /** true while daemon connected — gates the destructive menu item like the list. */
   daemonConnected?: boolean;
+
+  // ── Run engine v1 (P1, graph-execution-realtime design §4 CommandNodeData diff) ──
+  /** node ⋯ menu's "▶ Execute…" — the SOLE P1 entry point (Flaw F8: no list-row, no ⌘K yet). */
+  onExecute?: () => void;
+  /** present (and onExecute undefined) whenever Execute should render disabled + tooltip. */
+  executeDisabledReason?: string;
+  /** "active" while this command is the one currently running (glow ring, design §3.5). */
+  runStatus?: "idle" | "starting" | "active" | "done" | "error" | "cancelled";
+  /** false → 35% dim, no hover (non-participant during a mission). Defaults true (no run). */
+  runParticipant?: boolean;
 }
 
 /**
@@ -36,18 +46,37 @@ export function CommandNode({ data }: NodeProps<CommandNodeData>) {
   // one-shot pulse: re-key the handle each time hover begins so the .9s animation replays once.
   const [pulseKey, setPulseKey] = useState(0);
   const connectable = data.connectable ?? false;
+  // Run engine v1: runParticipant defaults true (no active run — zero visual
+  // change to the existing authoring graph). Active glow takes priority over
+  // the authoring highlight/justAdded rings (they never co-occur — authoring
+  // suspends during a run).
+  const participantDim = data.runParticipant === false;
+  const isRunActive = data.runStatus === "active" || data.runStatus === "starting";
+  const isRunDone = data.runStatus === "done";
+  const isRunError = data.runStatus === "error";
+  const isRunCancelled = data.runStatus === "cancelled";
 
   return (
     <div
-      className="group relative rounded-nav-item px-3 py-2 text-[12.5px] font-medium text-white transition-opacity"
+      className={`group relative rounded-nav-item px-3 py-2 text-[12.5px] font-medium text-white transition-opacity ${
+        isRunActive ? "animate-glowPulse" : ""
+      }`}
       style={{
         background: "#818cf8",
-        opacity: data.dimmed ? 0.35 : 1,
-        boxShadow: data.justAdded
-          ? "0 0 0 3px #6366f1"
-          : data.highlighted
-            ? "0 0 0 2px #c7d2fe"
-            : undefined,
+        opacity: participantDim ? 0.35 : data.dimmed ? 0.35 : 1,
+        boxShadow: isRunActive
+          ? "0 0 0 2px #22d3ee"
+          : isRunDone
+            ? "0 0 0 2px #4ade80"
+            : isRunError
+              ? "0 0 0 2px #f87171"
+              : isRunCancelled
+                ? "0 0 0 2px rgba(255,255,255,.3)"
+                : data.justAdded
+                  ? "0 0 0 3px #6366f1"
+                  : data.highlighted
+                    ? "0 0 0 2px #c7d2fe"
+                    : undefined,
         transition: "box-shadow .3s ease, opacity .12s ease",
       }}
       onMouseEnter={() => setHovered(true)}
@@ -91,6 +120,8 @@ export function CommandNode({ data }: NodeProps<CommandNodeData>) {
             onCopyRun={() => data.onCopyRun?.()}
             onDelete={() => data.onDelete?.()}
             deleteDisabled={!data.daemonConnected}
+            onExecute={data.onExecute}
+            executeDisabledReason={data.executeDisabledReason}
           />
         </div>
       )}

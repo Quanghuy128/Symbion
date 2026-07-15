@@ -22,6 +22,9 @@ export function ProjectView({ project }: ProjectViewProps) {
   const [editing, setEditing] = useState<CanonicalArtifact | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [runCommandFor, setRunCommandFor] = useState<CanonicalArtifact | null>(null);
+  // Bumped every time the Publish dialog closes — RunDialog watches this to
+  // re-run its preflight (Defect 3 fix, QA J7's "Publish first" auto-unblock).
+  const [publishClosedSignal, setPublishClosedSignal] = useState(0);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
   const deleteArtifact = useArtifactStore((s) => s.deleteArtifact);
   const removeProject = useArtifactStore((s) => s.removeProject);
@@ -116,7 +119,14 @@ export function ProjectView({ project }: ProjectViewProps) {
             <Button onClick={() => setEditing(newArtifact("command"))}>+ Add workflow</Button>
           </div>
         ) : tab === "graph" ? (
-          <DependencyGraph artifacts={project.artifacts} onEditArtifact={setEditing} />
+          <DependencyGraph
+            artifacts={project.artifacts}
+            onEditArtifact={setEditing}
+            projectId={project.id}
+            projectName={project.name}
+            onPublish={() => setPublishing(true)}
+            publishDialogClosedSignal={publishClosedSignal}
+          />
         ) : (
           <div className="space-y-8">
             <section>
@@ -261,7 +271,20 @@ export function ProjectView({ project }: ProjectViewProps) {
       {editing && (
         <BuilderDrawer artifact={editing} allArtifacts={project.artifacts} onClose={() => setEditing(null)} />
       )}
-      {publishing && <PublishDialog project={project} onClose={() => setPublishing(false)} />}
+      {publishing && (
+        <PublishDialog
+          project={project}
+          onClose={() => {
+            setPublishing(false);
+            // Bumps a signal RunDialog watches to re-run preflight (Defect 3 /
+            // QA J7 — the inline "Publish first" sub-flow left the dialog's
+            // preflight frozen at its stale pre-publish blocked state).
+            // Re-fetching on plain Cancel too is harmless (idempotent read-only
+            // RPC) and simpler than threading a separate success-only signal.
+            setPublishClosedSignal((n) => n + 1);
+          }}
+        />
+      )}
       {runCommandFor && (
         <CopyRunCommandDialog command={runCommandFor} onClose={() => setRunCommandFor(null)} />
       )}

@@ -52,6 +52,28 @@ export interface CanonicalArtifact {
   meta: ArtifactMeta;
 }
 
+/**
+ * Per-project Run Engine v2 config (graph-execution-realtime PLAN §8.2).
+ * OPTIONAL on ProjectSettings — absent => DEFAULT_RUN_CONFIG (additive; store
+ * schemaVersion stays 1, no migration). Permission posture is surfaced in the
+ * run-consent UI, never a silent permissive default (locked §6.1: acceptEdits).
+ */
+export interface ProjectRunConfig {
+  permissionMode: "plan" | "acceptEdits" | "bypassPermissions";
+  allowedTools: string[];
+  ceilings: { wallClockMs: number; tokenCap: number };
+  /** first-run acknowledgment, keyed to a hash of {permissionMode, allowedTools}
+   *  so a mode/tools change forces a re-ask (design §0). Written server-side by
+   *  startRun (the daemon computes the hash — never trusts a client hash). */
+  firstRunAck?: { settingsHash: string; ackedAt: string };
+}
+
+export const DEFAULT_RUN_CONFIG: ProjectRunConfig = {
+  permissionMode: "acceptEdits",
+  allowedTools: [],
+  ceilings: { wallClockMs: 1_800_000, tokenCap: 200_000 },
+};
+
 export interface ProjectSettings {
   defaultTargets: TargetId[];
   /** "warn" = cảnh báo & hỏi ; "never-overwrite" = không bao giờ đè */
@@ -59,6 +81,8 @@ export interface ProjectSettings {
   backupBeforeWrite: boolean;
   requireCleanGit: boolean;
   markerTemplate: string;
+  /** Run Engine v2 config (optional, additive). */
+  run?: ProjectRunConfig;
 }
 
 export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {

@@ -58,6 +58,13 @@ import {
 } from "../llm/secrets.js";
 import { RpcError } from "./rpcError.js";
 import { isUncPath } from "./pathStyle.js";
+import { runManager } from "../run/runManager.js";
+import { runPreflight as computePreflight } from "../run/preflight.js";
+import { buildArgv, resolveClaudeBin } from "../run/cliDriver.js";
+import { nonceStore } from "../run/nonces.js";
+import { resolveRunConfig, configHash, ackSettingsHash } from "../run/runConfig.js";
+import { getRunCliVersion } from "../run/cliVersion.js";
+import { listRuns as storeListRuns, readEvents, readRunJson, reconcile, prune } from "../run/runStore.js";
 import type * as contract from "./contract.js";
 
 export { RpcError };
@@ -988,6 +995,179 @@ export const handlers = {
       throw err;
     }
     return { providers: buildProviderDescriptors() };
+  },
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Run Engine v2 (graph-execution-realtime PLAN §8.3). The ONLY spawn-capable
+  // RPC surface; formally supersedes symbion-STATE §8 assumption #7 for run/.
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * runPreflight — parallel gate checks + the DAEMON-minted consent nonce
+   * (Flaw F1). Writes NOTHING (nonce is memory-only). A draft/blocked artifact
+   * gets NO consentNonce (AC-RUN-13 server side).
+   */
+  async runPreflight(params: contract.RunPreflightParams): Promise<contract.RunPreflightResult> {
+    const { projectId, artifactId } = params ?? ({} as contract.RunPreflightParams);
+    if (typeof projectId !== "string" || typeof artifactId !== "string") {
+      throw new RpcError("invalid-params", "runPreflight requires projectId and artifactId.");
+    }
+    const path = findProjectPath(projectId);
+    // Lazy reconcile on project touch (ER-10 pull-forward): orphaned running → failed.
+    reconcile(path, runManager.liveRunIds());
+    const store = loadProjectStore(path);
+    return computePreflight({
+      projectId,
+      projectRoot: path,
+      artifactId,
+      store,
+      hasActiveRun: runManager.hasActive(projectId),
+    });
+  },
+
+  /**
+   * startRun — consumes the nonce, RE-VALIDATES everything server-side (the
+   * dialog's preflight rendering is UX, not the boundary), then spawns. cwd is
+   * resolved from the registered project path — a client can NEVER supply it
+   * (§8.5.2). Injection-safe: the requirement is one argv element (§8.5.1).
+   */
+  async startRun(params: contract.StartRunParams): Promise<contract.StartRunResult> {
+    const p = params ?? ({} as contract.StartRunParams);
+    const { projectId, artifactId, requirement, model, nonce, ackFirstRun } = p;
+
+    if (typeof projectId !== "string" || typeof artifactId !== "string") {
+      throw new RpcError("invalid-params", "startRun requires projectId and artifactId.");
+    }
+    if (typeof requirement !== "string" || requirement.length === 0 || requirement.length > 10_000) {
+      throw new RpcError("invalid-params", "requirement must be a non-empty string ≤ 10000 chars.");
+    }
+    if (model !== undefined && (typeof model !== "string" || !/^[A-Za-z0-9._-]{1,100}$/.test(model))) {
+      throw new RpcError("invalid-params", "Invalid model override.");
+    }
+
+    const path = findProjectPath(projectId);
+    const store = loadProjectStore(path);
+    const artifact = store.artifacts.find((a) => a.id === artifactId);
+    if (!artifact) throw new RpcError("invalid-params", "Command not found.");
+    if (artifact.meta.status !== "published") {
+      // Draft is a hard block — nothing on disk to run (AC-RUN-13).
+      throw new RpcError("run-draft-blocked", "This command is a draft — publish it first.");
+    }
+    // Reservation IS the lock (TOCTOU fix): this must be the LAST synchronous
+    // check before the first `await` in this handler. `runManager.reserve()`
+    // does an atomic check-and-set on the Map — two concurrent startRun calls
+    // for the same project race here, but only one `reserve()` call can win;
+    // the loser fails immediately with run-active, before either has spawned
+    // anything or touched the filesystem. Every exit path after this point
+    // MUST either call `runManager.start()` (success) or
+    // `runManager.releaseReservation()` (any failure) so a legitimate retry
+    // is never permanently blocked by an abandoned reservation.
+    if (!runManager.reserve(projectId)) {
+      throw new RpcError("run-active", "A run is already active in this project (1 per project).");
+    }
+
+    try {
+      const config = resolveRunConfig(store.settings);
+      const hash = configHash(config);
+
+      // Nonce gate (AC-RUN-10): daemon-minted, single-use, bound to
+      // {projectId, artifactId, configHash}. A missing/expired/mismatched
+      // nonce (incl. a config change since preflight) rejects before any spawn.
+      if (typeof nonce !== "string" || nonce.length === 0) {
+        throw new RpcError("run-consent-required", "A valid consent nonce is required to start a run.");
+      }
+      const ok = nonceStore.consume(nonce, { projectId, artifactId, configHash: hash });
+      if (!ok) {
+        throw new RpcError("run-consent-required", "Consent nonce is invalid, expired, or does not match.");
+      }
+
+      // Persist firstRunAck server-side (the daemon computes the hash — never
+      // trusts a client hash) when the UI relayed the acknowledgment.
+      if (ackFirstRun === true) {
+        config.firstRunAck = { settingsHash: ackSettingsHash(config), ackedAt: new Date().toISOString() };
+        store.settings.run = config;
+        saveProjectStore(path, store);
+      }
+
+      const bin = resolveClaudeBin();
+      const cliVersion = await getRunCliVersion(bin);
+      const argv = buildArgv({
+        commandName: artifact.name,
+        requirement,
+        model,
+        permissionMode: config.permissionMode,
+        allowedTools: config.allowedTools,
+      });
+
+      const run = runManager.start({
+        projectId,
+        projectRoot: path,
+        artifactId,
+        commandName: artifact.name,
+        requirement,
+        modelOverride: model ?? null,
+        bin,
+        argv,
+        permissionMode: config.permissionMode,
+        allowedTools: config.allowedTools,
+        ceilings: config.ceilings,
+        cliVersion,
+      });
+
+      return { runId: run.runId, run };
+    } catch (err) {
+      // Any failure between reserve() and a successful start() must release
+      // the slot — otherwise the project is permanently stuck "active".
+      runManager.releaseReservation(projectId);
+      throw err;
+    }
+  },
+
+  /**
+   * cancelRun — two-step kill on the process GROUP, liveness-verified (ER-6).
+   * Returns { status, pid? } — pid present iff not confirmed dead.
+   */
+  cancelRun(params: contract.CancelRunParams): contract.CancelRunResult {
+    const p = params ?? ({} as contract.CancelRunParams);
+    if (typeof p.projectId !== "string" || typeof p.runId !== "string") {
+      throw new RpcError("invalid-params", "cancelRun requires projectId and runId.");
+    }
+    return runManager.cancel(p.projectId, p.runId);
+  },
+
+  /** listRuns — reads; lazy reconcile + prune. Returns runs + activeRunId. */
+  listRuns(params: contract.ListRunsParams): contract.ListRunsResult {
+    const p = params ?? ({} as contract.ListRunsParams);
+    if (typeof p.projectId !== "string") {
+      throw new RpcError("invalid-params", "listRuns requires projectId.");
+    }
+    const path = findProjectPath(p.projectId);
+    reconcile(path, runManager.liveRunIds());
+    prune(path);
+    const runs = storeListRuns(path);
+    const activeRunId = runManager.activeRunIdForProject(p.projectId);
+    return activeRunId ? { runs, activeRunId } : { runs };
+  },
+
+  /**
+   * getRunEvents — polling fallback + history replay. Reads events with
+   * seq > afterSeq (batch ≤500) + the run metadata; `done` iff terminal and
+   * all events up to lastSeq were returned.
+   */
+  getRunEvents(params: contract.GetRunEventsParams): contract.GetRunEventsResult {
+    const p = params ?? ({} as contract.GetRunEventsParams);
+    if (typeof p.projectId !== "string" || typeof p.runId !== "string") {
+      throw new RpcError("invalid-params", "getRunEvents requires projectId and runId.");
+    }
+    const afterSeq = typeof p.afterSeq === "number" && p.afterSeq >= 0 ? p.afterSeq : 0;
+    const path = findProjectPath(p.projectId);
+    const run = readRunJson(path, p.runId);
+    if (!run) throw new RpcError("not-found", "Run not found.");
+    const events = readEvents(path, p.runId, afterSeq);
+    const terminal = !["starting", "running", "cancelling"].includes(run.status);
+    const lastReturned = events.length > 0 ? events[events.length - 1]!.seq : afterSeq;
+    const done = terminal && lastReturned >= run.lastSeq;
+    return { events, run, done };
   },
 };
 

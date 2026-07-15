@@ -30,6 +30,9 @@ export * from "./version/semver.js";
 
 export * from "./runcommand/render.js";
 
+export * from "./run/events.js";
+export * from "./run/parseStreamJson.js";
+
 export * from "./generate/description.js";
 export * from "./generate/bodyPrompt.js";
 

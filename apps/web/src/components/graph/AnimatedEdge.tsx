@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "reactflow";
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
 import { Tooltip } from "@/components/ui/tooltip";
 
 export interface AnimatedEdgeData {
@@ -21,6 +21,9 @@ export interface AnimatedEdgeData {
   pending?: boolean;
   onOpenModal?: () => void;
   onDelete?: () => void;
+  /** @xyflow/react v12's `EdgeProps<Edge<T>>` requires `data` to satisfy
+   *  `Record<string, unknown>` — an index signature, no shape change. */
+  [key: string]: unknown;
 }
 
 const STAGGER_MS = 40;
@@ -46,7 +49,7 @@ export function AnimatedEdge({
   style,
   markerEnd,
   data,
-}: EdgeProps<AnimatedEdgeData>) {
+}: EdgeProps<Edge<AnimatedEdgeData>>) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,

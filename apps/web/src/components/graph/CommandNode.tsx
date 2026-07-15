@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Handle, Position, type NodeProps } from "reactflow";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { NodeMenu } from "./NodeMenu";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -33,6 +33,10 @@ export interface CommandNodeData {
   runStatus?: "idle" | "starting" | "active" | "done" | "error" | "cancelled";
   /** false → 35% dim, no hover (non-participant during a mission). Defaults true (no run). */
   runParticipant?: boolean;
+
+  /** @xyflow/react v12's `NodeProps<Node<T>>` requires `data` to satisfy
+   *  `Record<string, unknown>` — an index signature, no shape change. */
+  [key: string]: unknown;
 }
 
 /**
@@ -40,7 +44,7 @@ export interface CommandNodeData {
  * derived state (highlighted/dimmed/unlinked/justAdded/connectable) is computed
  * in DependencyGraph. Local state is ONLY ephemeral UI (menu open, handle hover).
  */
-export function CommandNode({ data }: NodeProps<CommandNodeData>) {
+export function CommandNode({ data }: NodeProps<Node<CommandNodeData>>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   // one-shot pulse: re-key the handle each time hover begins so the .9s animation replays once.

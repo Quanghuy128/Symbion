@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Handle, Position, type NodeProps } from "reactflow";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 
 export interface MissingAgentNodeData {
   label: string;
@@ -12,6 +12,9 @@ export interface MissingAgentNodeData {
   onCreateAgent?: (name: string) => void;
   /** disable the create action when daemon is down (design §5 R). */
   daemonConnected?: boolean;
+  /** @xyflow/react v12's `NodeProps<Node<T>>` requires `data` to satisfy
+   *  `Record<string, unknown>` — an index signature, no shape change. */
+  [key: string]: unknown;
 }
 
 /**
@@ -19,7 +22,7 @@ export interface MissingAgentNodeData {
  * NOT a connect target (isConnectable=false, E5). Hover reveals "＋ Create this agent"
  * which turns the phantom into a real agent draft (P7).
  */
-export function MissingAgentNode({ data }: NodeProps<MissingAgentNodeData>) {
+export function MissingAgentNode({ data }: NodeProps<Node<MissingAgentNodeData>>) {
   const [hovered, setHovered] = useState(false);
 
   return (

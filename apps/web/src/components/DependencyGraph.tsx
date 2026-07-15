@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactFlow, {
+import {
+  ReactFlow,
   Background,
   BackgroundVariant,
   ReactFlowProvider,
@@ -9,8 +10,8 @@ import ReactFlow, {
   type Connection,
   type Edge,
   type Node,
-} from "reactflow";
-import "reactflow/dist/style.css";
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import {
   ADAPTERS,
   extractAgentMentions,
@@ -24,6 +25,7 @@ import { CommandNode } from "./graph/CommandNode";
 import { AgentNode } from "./graph/AgentNode";
 import { MissingAgentNode } from "./graph/MissingAgentNode";
 import { AnimatedEdge } from "./graph/AnimatedEdge";
+import { computeLayout } from "./graph/computeLayout";
 import { GraphStatusChips } from "./graph/GraphStatusChips";
 import { GraphToolbar } from "./graph/GraphToolbar";
 import { GraphCanvasMenu } from "./graph/GraphCanvasMenu";
@@ -56,6 +58,15 @@ export interface DependencyGraphProps {
 }
 
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "timedOut"]);
+
+// Fixed-estimate node dimensions fed into dagre's layout (PLAN §4.1 decision
+// (a)): all three node components are auto-sizing divs with no fixed
+// width/height, so these are conservative constants, not measured values.
+// command/agent labels are short in practice (`/${name}` / agent name);
+// missingAgent gets a wider estimate for its longer `⚠ … (does not exist)` label.
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 40;
+const MISSING_AGENT_NODE_WIDTH = 200;
 
 const nodeTypes = {
   command: CommandNode,
@@ -214,8 +225,11 @@ function DependencyGraphInner({
     [commandById, artifactById, saveArtifact, showToast, showHint]
   );
 
+  // @xyflow/react v12 widened isValidConnection's param type to `Edge | Connection`
+  // (previously `Connection` only) — both shapes carry `.source`/`.target` as the
+  // fields this callback actually reads, so the check logic itself is unchanged.
   const isValidConnection = useCallback(
-    (conn: Connection) => {
+    (conn: Edge | Connection) => {
       if (!conn.source || !conn.target || conn.source === conn.target) return false;
       const src = artifactById.get(conn.source);
       const tgt = artifactById.get(conn.target);
@@ -308,8 +322,11 @@ function DependencyGraphInner({
   }, [missionActive, activeArtifactId, commands]);
 
   const { baseNodes, baseEdges, missingAgentMentions } = useMemo(() => {
+    // Phase (a) BUILD SHAPE — same data-bag construction as before; `position`
+    // is a placeholder here and gets overwritten in Phase (c) MERGE below
+    // (PLAN §3). Every other field is untouched.
     const nodes: Node[] = [
-      ...commands.map((c, i) => {
+      ...commands.map((c) => {
         // Unlinked heuristic (design §5 O, taste-call §9.14, conservative):
         // 0 @name mentions AND a backtick token matching an existing agent name.
         const mentions = extractAgentMentions(c.body);
@@ -330,7 +347,7 @@ function DependencyGraphInner({
         return {
           id: c.id,
           type: "command",
-          position: { x: 0, y: i * 80 },
+          position: { x: 0, y: 0 },
           data: {
             label: `/${c.name}`,
             connectable: daemonConnected && !authoringSuspended,
@@ -348,12 +365,12 @@ function DependencyGraphInner({
           },
         } satisfies Node;
       }),
-      ...agents.map((a, i) => {
+      ...agents.map((a) => {
         const runParticipant = missionActive ? runParticipantAgentNames.has(a.name) : true;
         return {
           id: a.id,
           type: "agent",
-          position: { x: 320, y: i * 80 },
+          position: { x: 0, y: 0 },
           data: {
             label: a.name,
             connectable: daemonConnected && !authoringSuspended,
@@ -370,7 +387,6 @@ function DependencyGraphInner({
     const edges: Edge[] = [];
     const missingNodes = new Map<string, Node>();
     const missingMentions = new Set<string>();
-    let missingIndex = 0;
     let drawIndex = 0;
     for (const command of commands) {
       // parseAgentBlock decorates matching edges with count/goal (additive, §6.0).
@@ -384,7 +400,7 @@ function DependencyGraphInner({
             missingNodes.set(missingId, {
               id: missingId,
               type: "missingAgent",
-              position: { x: 320, y: (agents.length + missingIndex) * 80 },
+              position: { x: 0, y: 0 },
               data: {
                 label: `⚠ ${mention} (does not exist)`,
                 name: mention,
@@ -392,7 +408,6 @@ function DependencyGraphInner({
                 daemonConnected,
               },
             });
-            missingIndex += 1;
           }
         }
         const ref = refByName.get(mention);
@@ -417,8 +432,29 @@ function DependencyGraphInner({
       }
     }
 
+    const allNodes = [...nodes, ...missingNodes.values()];
+
+    // Phase (b) LAYOUT — synchronous dagre call over fixed-estimate node
+    // dimensions (PLAN §4.1: real components auto-size, so a conservative
+    // constant estimate feeds dagre without a second measure-then-relayout
+    // pass, which would break the E10 pure-derivation invariant).
+    const dimensions = allNodes.map((n) => ({
+      id: n.id,
+      width: n.type === "missingAgent" ? MISSING_AGENT_NODE_WIDTH : NODE_WIDTH,
+      height: NODE_HEIGHT,
+    }));
+    const edgePairs = edges.map((e) => ({ source: e.source, target: e.target }));
+    const positions = computeLayout(dimensions, edgePairs);
+
+    // Phase (c) MERGE — only `position` is replaced; every other field
+    // (the whole `data` bag) is preserved exactly as built in Phase (a).
+    const laidOutNodes = allNodes.map((n) => ({
+      ...n,
+      position: positions.get(n.id) ?? n.position,
+    }));
+
     return {
-      baseNodes: [...nodes, ...missingNodes.values()],
+      baseNodes: laidOutNodes,
       baseEdges: edges,
       missingAgentMentions: [...missingMentions],
     };

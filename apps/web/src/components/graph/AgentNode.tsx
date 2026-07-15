@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Handle, Position, type NodeProps } from "reactflow";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { NodeMenu } from "./NodeMenu";
 
 export interface AgentNodeData {
@@ -18,10 +18,13 @@ export interface AgentNodeData {
   onEdit?: () => void;
   onDelete?: () => void;
   daemonConnected?: boolean;
+  /** @xyflow/react v12's `NodeProps<Node<T>>` requires `data` to satisfy
+   *  `Record<string, unknown>` — an index signature, no shape change. */
+  [key: string]: unknown;
 }
 
 /** AgentNode — agent node (design §3.2: violet #a78bfa). Dumb, same contract as CommandNode. */
-export function AgentNode({ data }: NodeProps<AgentNodeData>) {
+export function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const connectable = data.connectable ?? false;

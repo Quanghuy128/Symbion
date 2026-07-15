@@ -9,6 +9,7 @@ import { CreateProjectDialog } from "./CreateProjectDialog";
 import { ImportDialog } from "./ImportDialog";
 import { ProjectView } from "./ProjectView";
 import { Toaster } from "./ui/toast";
+import { RunBar } from "./run/RunBar";
 
 /** S1 — App shell: sidebar + main area. Single SPA-ish shell, all state client-side. */
 export function AppShell() {
@@ -83,20 +84,30 @@ export function AppShell() {
   }, [startHeartbeat]);
 
   return (
-    <div className="flex h-screen bg-bg-app text-text-body">
-      <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={handleSelectProject} />
+    <div className="flex h-screen flex-col bg-bg-app text-text-body">
+      <div className="flex flex-1 overflow-hidden">
+        <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={handleSelectProject} />
 
-      <main className="flex-1 overflow-auto">
-        {currentProject ? (
-          <ProjectView project={currentProject} />
-        ) : projects.length === 0 ? (
-          <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-text-muted">
-            Select a project in the sidebar.
-          </div>
-        )}
-      </main>
+        <main className="flex-1 overflow-auto">
+          {currentProject ? (
+            <ProjectView project={currentProject} />
+          ) : projects.length === 0 ? (
+            <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-text-muted">
+              Select a project in the sidebar.
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* Run engine v1 (P1) — bottom-dock, app-wide run bar (design §3.7 R4).
+       *  It IS the reattach handle for an active run: visible from any screen,
+       *  terminal-until-dismissed. Slight redundancy with the graph's own
+       *  MissionStatusStrip when that project's graph tab is on screen is an
+       *  accepted P1 simplification (design's "hides when the run's own graph
+       *  is visible" nuance is deferred — see STATE build notes). */}
+      <RunBar />
 
       <CreateProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}

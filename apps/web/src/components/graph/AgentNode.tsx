@@ -7,6 +7,9 @@ import { NodeMenu } from "./NodeMenu";
 export interface AgentNodeData {
   label: string;
   highlighted?: boolean;
+  /** Also reused for the run-engine v1 (P1) participant dim: DependencyGraph
+   *  sets `dimmed: !runParticipant` during a mission (design §3.4's "everything
+   *  else 35% opacity") — no separate field needed, same visual treatment. */
   dimmed?: boolean;
   /** gates the target handle (design §5 R). */
   connectable?: boolean;

@@ -61,6 +61,11 @@ const config: Config = {
         danger: "#f87171",
         "danger-hi": "#fca5a5",
         "overwrite-btn": "#dc2626",
+        // graph-execution-realtime design §7 (resolved Q1): run-active reuses
+        // the `skill` hex under a distinct semantic name — pulsing ring, edge
+        // flow, live dots for the run engine, never reused for outcomes.
+        "run-active": "#22d3ee",
+        "run-active-soft": "rgba(34,211,238,.18)",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
@@ -79,6 +84,8 @@ const config: Config = {
         dialog: "0 30px 80px rgba(0,0,0,.6)",
         drawer: "-20px 0 60px rgba(0,0,0,.5)",
         toast: "0 14px 40px rgba(0,0,0,.5)",
+        // graph-execution-realtime design §7: looping run-active glow ring.
+        "glow-run": "0 0 0 4px rgba(34,211,238,.18), 0 0 14px 2px rgba(34,211,238,.18)",
       },
       keyframes: {
         fadeIn: {
@@ -100,12 +107,22 @@ const config: Config = {
           "0%": { boxShadow: "0 0 0 0 rgba(129,140,248,.5)" },
           "100%": { boxShadow: "0 0 0 6px rgba(129,140,248,0)" },
         },
+        // graph-execution-realtime design §5/§7: looping run-active ring pulse
+        // on an executing node (~1.6-2s loop, distinct from the one-shot `pulse`
+        // above). Collapses to a state swap under prefers-reduced-motion
+        // (joins the existing globals.css block).
+        glowPulse: {
+          "0%": { boxShadow: "0 0 0 0 rgba(34,211,238,.5)" },
+          "50%": { boxShadow: "0 0 0 6px rgba(34,211,238,.05)" },
+          "100%": { boxShadow: "0 0 0 0 rgba(34,211,238,.5)" },
+        },
       },
       animation: {
         fadeIn: "fadeIn .16s ease both",
         slideIn: "slideIn .2s cubic-bezier(.2,.8,.2,1) both",
         popIn: "popIn .16s cubic-bezier(.2,.8,.2,1) both",
         pulse: "pulse .9s cubic-bezier(.2,.8,.2,1) 1",
+        glowPulse: "glowPulse 1.8s cubic-bezier(.2,.8,.2,1) infinite",
       },
     },
   },

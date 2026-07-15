@@ -33,7 +33,11 @@ import { DaemonRibbon } from "./graph/DaemonRibbon";
 import { NodeDeleteConfirm } from "./graph/NodeDeleteConfirm";
 import { EdgeRelationModal } from "./graph/EdgeRelationModal";
 import { CopyRunCommandDialog } from "./CopyRunCommandDialog";
+import { RunDialog } from "./run/RunDialog";
+import { MissionStatusStrip } from "./run/MissionStatusStrip";
+import { RunLogTail } from "./run/RunLogTail";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
+import { useRunStore } from "@/lib/run/useRunStore";
 import { newArtifact } from "@/lib/newArtifact";
 import { hasSeenGraphHint, markGraphHintSeen } from "@/lib/graphHintSeen";
 
@@ -41,7 +45,17 @@ export interface DependencyGraphProps {
   artifacts: CanonicalArtifact[];
   /** ProjectView passes `setEditing` — opens the shared BuilderDrawer for add / edit / create-agent. */
   onEditArtifact: (artifact: CanonicalArtifact) => void;
+  /** run engine v1 (P1): current project id/name for Execute + the preflight/consent copy. */
+  projectId: string;
+  projectName: string;
+  /** opens the project's Publish flow (AC-RUN-13's "Publish first →" action). */
+  onPublish?: () => void;
+  /** bumps whenever the (sibling-owned) Publish dialog closes — RunDialog
+   *  re-runs its preflight on change (Defect 3 fix / QA J7). */
+  publishDialogClosedSignal?: number;
 }
+
+const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "timedOut"]);
 
 const nodeTypes = {
   command: CommandNode,
@@ -67,13 +81,40 @@ interface ModalTarget {
  * useNodesState/useEdgesState); only ephemeral UI + the pending-ghost edge are
  * component-local. Layout stays auto (nodesDraggable=false, D1 deferred).
  */
-function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProps) {
+function DependencyGraphInner({
+  artifacts,
+  onEditArtifact,
+  projectId,
+  projectName,
+  onPublish,
+  publishDialogClosedSignal,
+}: DependencyGraphProps) {
   const { fitView } = useReactFlow();
   const saveArtifact = useArtifactStore((s) => s.saveArtifact);
   const deleteArtifact = useArtifactStore((s) => s.deleteArtifact);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
   const showToast = useArtifactStore((s) => s.showToast);
   const pingNow = useArtifactStore((s) => s.pingNow);
+
+  // --- run engine v1 (P1): mission-mode overlay, additive over the graph ---
+  const run = useRunStore((s) => s.run);
+  const elapsedMs = useRunStore((s) => s.elapsedMs);
+  const connection = useRunStore((s) => s.connection);
+  const rawTail = useRunStore((s) => s.rawTail);
+  const activeArtifactId = useRunStore((s) => s.activeArtifactId);
+  const cancelRunAction = useRunStore((s) => s.cancelRun);
+  const attachIfActive = useRunStore((s) => s.attachIfActive);
+  const [runDialogFor, setRunDialogFor] = useState<CanonicalArtifact | null>(null);
+  // F5-reattach: on mount, check for an already-active run in this project and
+  // attach (bar + mission overlay resume) — the store owns the SSE lifecycle.
+  useEffect(() => {
+    void attachIfActive(projectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+  const missionActive = run !== null && !TERMINAL_RUN_STATUSES.has(run.status);
+  // Authoring suspends for the whole graph while a run is active (design §0/§5) —
+  // resumes immediately once the run leaves the non-terminal set.
+  const authoringSuspended = missionActive;
 
   // --- ephemeral UI state (E10) ---
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -257,6 +298,15 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
   // Derivation (E10): nodes/edges are a pure function of artifacts + callbacks.
   // ---------------------------------------------------------------------------
 
+  // Run-engine participant set (design §3.4/§4): the executing command + its
+  // reachable agents (by @mention) glow/stay full-opacity; everything else
+  // dims to 35%. Empty when no run is active — additive, zero-cost otherwise.
+  const runParticipantAgentNames = useMemo(() => {
+    if (!missionActive || !activeArtifactId) return new Set<string>();
+    const activeCommand = commands.find((c) => c.id === activeArtifactId);
+    return activeCommand ? new Set(extractAgentMentions(activeCommand.body)) : new Set<string>();
+  }, [missionActive, activeArtifactId, commands]);
+
   const { baseNodes, baseEdges, missingAgentMentions } = useMemo(() => {
     const nodes: Node[] = [
       ...commands.map((c, i) => {
@@ -265,36 +315,56 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
         const mentions = extractAgentMentions(c.body);
         const backtickNames = [...c.body.matchAll(/`([A-Za-z0-9_-]+)`/g)].map((m) => m[1] ?? "");
         const unlinked = mentions.length === 0 && backtickNames.some((n) => agentNames.has(n));
+
+        // Run engine v1 (P1) — additive data-bag only (design §4's CommandNodeData
+        // diff): runStatus/runParticipant/onExecute/executeDisabledReason.
+        const isRunning = c.id === activeArtifactId;
+        const runStatus = missionActive ? (isRunning ? "active" : undefined) : undefined;
+        const runParticipant = missionActive ? isRunning : true;
+        const executeDisabledReason = !daemonConnected
+          ? "Daemon offline"
+          : missionActive
+            ? "A run is already active — view the running command"
+            : undefined;
+
         return {
           id: c.id,
           type: "command",
           position: { x: 0, y: i * 80 },
           data: {
             label: `/${c.name}`,
-            connectable: daemonConnected,
+            connectable: daemonConnected && !authoringSuspended,
             daemonConnected,
             unlinked,
             justAdded: c.id === justAddedId,
-            onEdit: () => onEditArtifact(c),
-            onEditBody: () => onEditArtifact(c),
-            onDelete: () => requestDelete(c.id),
-            onCopyRun: () => setRunCommandFor(c),
+            onEdit: authoringSuspended ? undefined : () => onEditArtifact(c),
+            onEditBody: authoringSuspended ? undefined : () => onEditArtifact(c),
+            onDelete: authoringSuspended ? undefined : () => requestDelete(c.id),
+            onCopyRun: authoringSuspended ? undefined : () => setRunCommandFor(c),
+            onExecute: executeDisabledReason ? undefined : () => setRunDialogFor(c),
+            executeDisabledReason,
+            runStatus,
+            runParticipant,
           },
         } satisfies Node;
       }),
-      ...agents.map((a, i) => ({
-        id: a.id,
-        type: "agent",
-        position: { x: 320, y: i * 80 },
-        data: {
-          label: a.name,
-          connectable: daemonConnected,
-          daemonConnected,
-          justAdded: a.id === justAddedId,
-          onEdit: () => onEditArtifact(a),
-          onDelete: () => requestDelete(a.id),
-        },
-      })) satisfies Node[],
+      ...agents.map((a, i) => {
+        const runParticipant = missionActive ? runParticipantAgentNames.has(a.name) : true;
+        return {
+          id: a.id,
+          type: "agent",
+          position: { x: 320, y: i * 80 },
+          data: {
+            label: a.name,
+            connectable: daemonConnected && !authoringSuspended,
+            daemonConnected,
+            justAdded: a.id === justAddedId,
+            onEdit: authoringSuspended ? undefined : () => onEditArtifact(a),
+            onDelete: authoringSuspended ? undefined : () => requestDelete(a.id),
+            runParticipant,
+          },
+        } satisfies Node;
+      }),
     ];
 
     const edges: Edge[] = [];
@@ -362,12 +432,22 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
     justAddedId,
     onEditArtifact,
     handleEdgeDelete,
+    authoringSuspended,
+    missionActive,
+    activeArtifactId,
+    runParticipantAgentNames,
   ]);
 
-  // Hover-driven highlight/dim (kept from the read-only original).
+  // Hover-driven highlight/dim (kept from the read-only original). Suspended
+  // during a mission — participant/non-participant dim (design §3.4) is the
+  // only dim signal while a run is active; hover authoring cues stay off.
   const nodes = useMemo(
     () =>
       baseNodes.map((n) => {
+        if (missionActive) {
+          const participant = (n.data as { runParticipant?: boolean }).runParticipant ?? true;
+          return { ...n, data: { ...n.data, highlighted: false, dimmed: !participant } };
+        }
         if (!hoveredId) return n;
         const connected =
           n.id === hoveredId ||
@@ -376,18 +456,32 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
           );
         return { ...n, data: { ...n.data, highlighted: n.id === hoveredId, dimmed: !connected } };
       }),
-    [baseNodes, baseEdges, hoveredId]
+    [baseNodes, baseEdges, hoveredId, missionActive]
   );
 
   const edges = useMemo(() => {
     const decorated = baseEdges.map((e) => {
+      // Mission mode (P1 glow-only, design §2 R3): edges lose their authoring
+      // interactivity (+/× toolbar) and adopt the participant dim, matching
+      // the node treatment above. Dash-flow animation is P2 (design §3.5).
+      if (missionActive) {
+        const targetParticipant = runParticipantAgentNames.has(
+          agents.find((a) => a.id === e.target)?.name ?? ""
+        );
+        const sourceIsActive = e.source === activeArtifactId;
+        const runFlow = sourceIsActive && targetParticipant ? "flowing" : "off";
+        return {
+          ...e,
+          data: { ...e.data, highlighted: false, dimmed: !(sourceIsActive && targetParticipant), interactive: false, runFlow },
+        };
+      }
       const selected = e.id === selectedEdgeId;
       if (!hoveredId) return selected ? { ...e, data: { ...e.data, selected } } : e;
       const connected = e.source === hoveredId || e.target === hoveredId;
       return { ...e, data: { ...e.data, highlighted: connected, dimmed: !connected, selected } };
     });
     // Ephemeral ghost edge during a pending save (Q) — local only, never in store.
-    if (pendingConnection) {
+    if (pendingConnection && !authoringSuspended) {
       decorated.push({
         id: `pending-${pendingConnection.source}->${pendingConnection.target}`,
         source: pendingConnection.source,
@@ -397,7 +491,17 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
       });
     }
     return decorated;
-  }, [baseEdges, hoveredId, pendingConnection, selectedEdgeId]);
+  }, [
+    baseEdges,
+    hoveredId,
+    pendingConnection,
+    selectedEdgeId,
+    missionActive,
+    activeArtifactId,
+    runParticipantAgentNames,
+    agents,
+    authoringSuspended,
+  ]);
 
   const confirmTarget = confirmDeleteId ? artifactById.get(confirmDeleteId) : null;
 
@@ -412,69 +516,88 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
       {!daemonConnected && <DaemonRibbon onRetry={handleRetry} />}
       {showHint && daemonConnected && <GraphHintBar onDismiss={dismissHint} />}
 
+      {missionActive && run && (
+        <MissionStatusStrip
+          run={run}
+          elapsedMs={elapsedMs}
+          connection={connection}
+          onCancel={() => void cancelRunAction()}
+        />
+      )}
+
       <div
         style={{ height: 480 }}
-        className="relative rounded-panel border border-border-hairline bg-bg-panel"
+        className="relative flex rounded-panel border border-border-hairline bg-bg-panel"
       >
-        <GraphToolbar
-          onAdd={handleAdd}
-          onFitView={() => fitView({ duration: 250 })}
-          onToggleLegend={() => setLegendOpen((o) => !o)}
-          disabled={!daemonConnected}
-          fitDisabled={artifacts.length === 0}
-        />
-        <GraphLegend open={legendOpen} onOpenChange={setLegendOpen} />
-
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          nodesDraggable={false}
-          nodesConnectable={daemonConnected}
-          isValidConnection={isValidConnection}
-          onConnect={onConnect}
-          fitView
-          onNodeMouseEnter={(_, node) => setHoveredId(node.id)}
-          onNodeMouseLeave={() => setHoveredId(null)}
-          onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
-          onPaneClick={() => {
-            setContextMenu(null);
-            setSelectedEdgeId(null);
-          }}
-          onPaneContextMenu={(e) => {
-            e.preventDefault();
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            setContextMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-          }}
-        >
-          <Background variant={BackgroundVariant.Dots} />
-        </ReactFlow>
-
-        {contextMenu && (
-          <GraphCanvasMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onClose={() => setContextMenu(null)}
+        <div className="relative flex-1">
+          <GraphToolbar
             onAdd={handleAdd}
             onFitView={() => fitView({ duration: 250 })}
-            disabled={!daemonConnected}
+            onToggleLegend={() => setLegendOpen((o) => !o)}
+            disabled={!daemonConnected || authoringSuspended}
+            fitDisabled={artifacts.length === 0}
           />
-        )}
+          <GraphLegend open={legendOpen} onOpenChange={setLegendOpen} />
 
-        {confirmTarget && (confirmTarget.kind === "command" || confirmTarget.kind === "agent") && (
-          <div className="absolute right-3 top-3">
-            <NodeDeleteConfirm
-              artifactName={confirmTarget.name}
-              kind={confirmTarget.kind}
-              referencingCommands={
-                confirmTarget.kind === "agent" ? referencingCommandsFor(confirmTarget.name) : []
-              }
-              deleting={deletingId === confirmTarget.id}
-              error={deleteError}
-              onCancel={() => setConfirmDeleteId(null)}
-              onConfirm={() => confirmDeleteNode(confirmTarget)}
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            nodesDraggable={false}
+            nodesConnectable={daemonConnected && !authoringSuspended}
+            isValidConnection={authoringSuspended ? () => false : isValidConnection}
+            onConnect={authoringSuspended ? undefined : onConnect}
+            fitView
+            onNodeMouseEnter={authoringSuspended ? undefined : (_, node) => setHoveredId(node.id)}
+            onNodeMouseLeave={authoringSuspended ? undefined : () => setHoveredId(null)}
+            onEdgeClick={authoringSuspended ? undefined : (_, edge) => setSelectedEdgeId(edge.id)}
+            onPaneClick={() => {
+              setContextMenu(null);
+              setSelectedEdgeId(null);
+            }}
+            onPaneContextMenu={(e) => {
+              e.preventDefault();
+              if (authoringSuspended) return;
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              setContextMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+            }}
+          >
+            <Background variant={BackgroundVariant.Dots} />
+          </ReactFlow>
+
+          {contextMenu && !authoringSuspended && (
+            <GraphCanvasMenu
+              x={contextMenu.x}
+              y={contextMenu.y}
+              onClose={() => setContextMenu(null)}
+              onAdd={handleAdd}
+              onFitView={() => fitView({ duration: 250 })}
+              disabled={!daemonConnected}
             />
+          )}
+
+          {confirmTarget && !authoringSuspended && (confirmTarget.kind === "command" || confirmTarget.kind === "agent") && (
+            <div className="absolute right-3 top-3">
+              <NodeDeleteConfirm
+                artifactName={confirmTarget.name}
+                kind={confirmTarget.kind}
+                referencingCommands={
+                  confirmTarget.kind === "agent" ? referencingCommandsFor(confirmTarget.name) : []
+                }
+                deleting={deletingId === confirmTarget.id}
+                error={deleteError}
+                onCancel={() => setConfirmDeleteId(null)}
+                onConfirm={() => confirmDeleteNode(confirmTarget)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Timeline panel (P1: raw log-tail — design §3.4/§5, "this IS the P1 panel"). */}
+        {missionActive && (
+          <div className="w-[320px] shrink-0 border-l border-border-hairline">
+            <RunLogTail lines={rawTail} waiting={rawTail.length === 0} />
           </div>
         )}
       </div>
@@ -491,6 +614,18 @@ function DependencyGraphInner({ artifacts, onEditArtifact }: DependencyGraphProp
 
       {runCommandFor && (
         <CopyRunCommandDialog command={runCommandFor} onClose={() => setRunCommandFor(null)} />
+      )}
+
+      {runDialogFor && (
+        <RunDialog
+          command={runDialogFor}
+          projectId={projectId}
+          projectName={projectName}
+          onClose={() => setRunDialogFor(null)}
+          onStarted={() => setRunDialogFor(null)}
+          onPublish={onPublish}
+          publishDialogClosedSignal={publishDialogClosedSignal}
+        />
       )}
     </div>
   );

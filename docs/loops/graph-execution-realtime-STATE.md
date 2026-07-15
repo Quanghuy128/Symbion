@@ -98,6 +98,8 @@ Typed messages, `interrupt()`, permission hooks (`canUseTool` could intercept fi
 
 **User's premise incorrect: React Flow is MIT/free forever** (installed: `reactflow@^11.11.4`); only "React Flow Pro" (support subscription + pro examples) is paid — never required to use/ship/sell. Symbion just shipped interactive-graph on it (5 custom node/edge components); replacing = pure regression project. The run overlay is *easier* on React Flow than anywhere (props in the existing `data` bag). Alternatives all worse fits (rete/litegraph = canvas executors; cytoscape/sigma = network analysis; hand-rolled = XL for zero value). Optional separate chore: upgrade to `@xyflow/react` v12 (same team/license, v11 is maintenance-mode).
 
+**Follow-up (2026-07-15)**: this question was independently re-researched under a DX/flexibility framing (not cost/license) in `docs/loops/graph-rendering-library-evaluation-STATE.md`, after the mission-mode run overlay above had shipped. That spike **reinforces this "keep React Flow" verdict** with new evidence (Cytoscape.js fails the E10 derive-don't-mirror architecture invariant outright; the mission-mode diff was read directly and confirms zero new React Flow API surface was touched) and escalates the `@xyflow/react` v12 upgrade from "optional" to "worth scheduling soon" given v11 is now >2 years stale on npm. See that STATE file for the full comparison.
+
 ## 5. Ideas & Open Questions
 
 ### Product framing: Author → Launch → Watch → **Learn**

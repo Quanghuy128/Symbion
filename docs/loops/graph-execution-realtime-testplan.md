@@ -244,3 +244,77 @@ Cross-cutting manual checks (any phase): every `$` is `~`-prefixed; badges are f
 | (unnumbered) | telemetry never estimated / degrade-not-die / unattributable flagged | §1.3#6–7, §3.8#1, J15 |
 
 /qa gate: all §1–§3 suites green for the shipped phase + the phase's J-steps pass. §0.1's `fixture-subagent.ndjson` recording is a hard P2 exit criterion — P2 does not pass /qa without it.
+
+---
+
+## 6. P2 additions (architect, 2026-07-15 — companion to STATE §13)
+
+> Appended, not overwritten. §§1.3–1.5, §3.9#2, J12–J16 were already stubbed above; this section
+> makes them concrete against STATE §13's file list and adds the items §13 introduced that weren't
+> previously stubbed (`pricing.ts` reconciliation edge cases, `gitNumstat` integration test, the
+> degraded-chip's two distinct copy paths, the token-cap ceiling's summary presentation).
+
+### 6.1 `aggregate.test.ts` — concretized (supersedes the stub numbering only in file location, not intent; see §1.3 above for the original case list, unchanged)
+
+| # | Case | Expected |
+|---|---|---|
+| 10 | fold the REAL `fixture-subagent.ndjson` (§13.3) | at least one actor bucket key !== `"main"`; `rollup(state, agentNamesInGraph)` does not throw when `agentNamesInGraph` is an empty/unrelated set — the dispatch's `subagentType` falls into `unrecognized`, its fresh tokens still counted in `command.totalFresh` (NEW-1) |
+| 11 | fold the REAL `fixture-subagent.ndjson` with the CORRECT agent name supplied | that agent's bucket shows `ownFresh > 0`; `command.totalFresh === command.ownFresh + agentBucket.ownFresh + unrecognized.fresh` holds exactly (the AC-RUN-2 invariant, now checked against a REAL transcript, not only the synthetic one) |
+| 12 | `fold` called twice with the same `PersistedRunEvent` (`seq` unchanged) | second call is a no-op — returns a state with identical rollup output (seq-guard, belt-and-braces client dedup contract now actually exercised by P2's token math per STATE §13.1) |
+
+### 6.2 `pricing.test.ts` — concretized
+
+| # | Case | Expected |
+|---|---|---|
+| 4 | model string with an unseen date suffix of a KNOWN family (e.g. `claude-haiku-4-5-99999999`) | prefix-match resolves to the same per-mtok rates as the exact-dated entry seen in the fixture (A14) |
+| 5 | a run whose EVERY actor's model is unknown, but `result.totalCostUsd > 0` | `reconcileToTotal`'s pro-rata-by-fresh-token-share fallback distributes the total without divide-by-zero; no node shows `$ —` when a total exists (only the LIVE mid-run view — before terminal — shows `$ —` for unknown models per node) |
+| 6 | zero-usage run (edge case: a run cancelled before any assistant message) | `estimateCostUsd`/`reconcileToTotal` handle an all-zero `FourWay` without NaN; summary renders `$0.00` or `—`, never `NaN`/`Infinity` |
+
+### 6.3 `derive.test.ts` — concretized
+
+| # | Case | Expected |
+|---|---|---|
+| 3 | `runSummary` on `fixture-simple.ndjson` (the ORIGINAL P1 fixture, re-used here as the P2 degraded-check's baseline) | `degraded: false` — the haiku background-model delta (505 in / 11 out, per §8.0) reconciles within the ±1-token tolerance against `result.usage`; this is the FIRST test that actually exercises F6's reconciliation math end-to-end (P1 never computed this) |
+| 4 | `runSummary` on a HAND-DOCTORED copy of `fixture-simple.ndjson` where `result.usage` is inflated by +500 tokens beyond what `modelUsage`'s background delta explains | `degraded: true`; fold's own totals in `perNode` are UNCHANGED from the non-doctored case (never re-based to match the doctored `result` — pins F6's explicit "cross-check only" resolution) |
+| 5 | `timelineRows` on `fixture-subagent.ndjson` | dispatch row (`🤖 Task → <subagentType>`) appears BEFORE any row whose `actor` matches that dispatch's `parentToolUseId`-keyed bucket; subagent rows carry `depth: 1` |
+
+### 6.4 `run-ceilings.test.ts` §3.9#2 — concretized (token cap, wall-clock already P1-passing)
+
+| # | Case | Assert |
+|---|---|---|
+| 2a | fake-CLI fixture whose cumulative fresh tokens cross `ceilings.tokenCap: 1_000` partway through | terminal `status:"timedOut"`, `stopReason:"tokenCap"`; events UP TO the breach are persisted in `events.jsonl` (no events lost, none added after); process confirmed dead (same liveness-verify as the existing wall-clock case) |
+| 2b | `tokenCap: 0` (disabled per project config) | run completes normally regardless of token volume — `0` means "no cap," not "cap immediately" (guard against an off-by-one treating 0 as a real ceiling) |
+| 2c | breach detected exactly on the LAST event before a run would complete anyway (race between natural completion and ceiling breach) | whichever finalize path wins, the run reaches exactly ONE terminal state (never both `completed` AND `timedOut` — `finalize()`'s existing `terminalWritten` guard, unchanged from P1, is what prevents this; test pins that the guard still holds once a second trigger (token-cap) exists alongside wall-clock and natural exit) |
+
+### 6.5 `run-gitNumstat.test.ts` — NEW (daemon integration)
+
+| # | Case | Assert |
+|---|---|---|
+| 1 | a run's target repo has 1 modified tracked file (+N/−M) and 1 new untracked file, both changed by a fake-CLI mode that touches real files in the test's scratch project | `run.json.filesChanged` (post-terminal) contains both: the modified file with correct `plus`/`minus`, the untracked file with `status:"A"` and no `plus`/`minus` (R4 — matches the design mock's own asymmetry) |
+| 2 | a file changed by the agent that was ALSO dirty before the run started (present in `gitBefore.changedFiles`) | that file's entry has `preDirty: true` |
+| 3 | git binary made unavailable (`PATH` stripped for the numstat call, or repo `.git` corrupted) | `filesChanged === "unavailable"`; run's own terminal `status`/`exitCode` unaffected — finalize() still completes normally (NEW-2) |
+| 4 | numstat given an artificially tiny timeout via a test hook and a diff large enough to exceed it | same `"unavailable"` fallback, no thrown error escapes `finalize()` |
+| 5 | `gitNumstat` invoked on a non-repo project | returns `"unavailable"` (or an empty array — pick one, pin it; recommend `"unavailable"` for consistency with `gitStatus`'s own `isRepo:false` short-circuit) |
+
+### 6.6 Manual web journey — P2 items concretized (J12–J16 already stubbed above; adding 3 new checks)
+
+| # | Phase | Step | Expected result | AC / ER |
+|---|---|---|---|---|
+| J12 | P2 | (unchanged from stub above) | — | AC-RUN-2 |
+| J13–J16 | P2 | (unchanged from stub above) | — | §6.6 / ER-4 / FR-5 |
+| J21 | P2 | Trigger BOTH degraded-chip causes in separate runs: (a) `[FAKE, fixture-garbage]` (parse errors), (b) a hand-doctored terminal `result.usage` beyond tolerance (may require a fake-CLI mode emitting a doctored result line) | the amber chip appears in BOTH cases but with **visibly different hover copy** — (a) mentions "raw log kept" / parser tolerance framing, (b) mentions background-model reconciliation framing — confirms `DegradedTelemetryChip` doesn't conflate the two triggers (STATE §13.1's explicit requirement) | ER-4, F6 |
+| J22 | P2 | `[FAKE]` run with `ceilings.tokenCap` set low enough to breach mid-run | run stops early; summary header reads `⚠ STOPPED — token cap reached` (amber, distinct from the wall-clock variant's wording) + `[Adjust ceilings]` (inert per F7, confirm no navigation happens if clicked) | AC-RUN-8, ER-7 |
+| J23 | P2 | Open Settings while a P2-built run is active/completed | confirm NO Execution section/editor exists yet (F7) — only P1/P2's read-only consent-sentence surfaces are present; this is a NEGATIVE check guarding against P3 scope creep | §13.7 |
+
+### 6.7 AC coverage — P2 deltas
+
+| AC | P1 verdict (§12.6) | P2 target |
+|---|---|---|
+| AC-RUN-2 | N/A (P1 shipped no token math) | **PASS target**: §6.1#10–11 (real fixture) + existing §1.3#1–5 (synthetic) — both must pass |
+| AC-RUN-8 | wall-clock only (PASS) | **PASS target extended to tokenCap**: §6.4 |
+| (unnumbered) | telemetry never estimated / degrade-not-die | **PASS target**: §6.3#3–4 (F6), §6.2 (F4), J21 |
+
+/qa gate for P2 (unchanged from the existing file's closing line): all of §1.3–§1.5/§6.1–§6.3 core
+suites green, §3.9#2/§6.4 + §6.5 daemon suites green, `fixture-subagent.ndjson` recorded and present
+at BOTH paths named in STATE §13.3, J12–J16 + J21–J23 pass. P2 does not pass /qa without the real
+fixture — this was already true in the pre-existing testplan text and is unchanged by this addition.

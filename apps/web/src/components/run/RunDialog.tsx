@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CanonicalArtifact } from "@symbion/core";
+import { extractAgentMentions, type CanonicalArtifact } from "@symbion/core";
 import type { PreflightCheck, RunPreflightResult } from "@symbion/rpc-types";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -115,14 +115,22 @@ export function RunDialog({
     setStarting(true);
     setError(null);
     try {
-      const res = await startRun({
-        projectId,
-        artifactId: command.id,
-        requirement: requirement.trim(),
-        model: showModel && model.trim().length > 0 ? model.trim() : undefined,
-        nonce,
-        ackFirstRun: needsAck ? true : undefined,
-      });
+      // P2: the agent names reachable from THIS command (by @mention) — the
+      // same set the daemon resolves independently at startRun time (STATE
+      // §13.1) — passed to the store so its fold-rollup can attribute agent
+      // buckets without a second graph traversal at attach() time.
+      const agentSubagentNames = new Set(extractAgentMentions(command.body));
+      const res = await startRun(
+        {
+          projectId,
+          artifactId: command.id,
+          requirement: requirement.trim(),
+          model: showModel && model.trim().length > 0 ? model.trim() : undefined,
+          nonce,
+          ackFirstRun: needsAck ? true : undefined,
+        },
+        agentSubagentNames
+      );
       onStarted(res.runId);
       onClose();
     } catch (err) {

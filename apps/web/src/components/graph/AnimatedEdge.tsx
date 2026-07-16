@@ -21,6 +21,15 @@ export interface AnimatedEdgeData {
   pending?: boolean;
   onOpenModal?: () => void;
   onDelete?: () => void;
+  /** P2 (design §3.5): edge current state. "off" = not flowing (pre-dispatch
+   *  or non-participant); "flowing" = an active dispatch is streaming;
+   *  "settled" = that dispatch's actor bucket closed — flow stops, stroke
+   *  stays tinted 60% until run end (a THIRD state P1 only shipped "off"|
+   *  "flowing" for — the settled tint needs this widening, STATE §13.1). */
+  runFlow?: "off" | "flowing" | "settled";
+  /** live ×N dispatch counter (design §3.5 "live ×N counters") — read by
+   *  AgentNode's invocations prop, not directly by this edge; kept here only
+   *  if a future edge-label variant of the counter is wanted (currently unused). */
   /** @xyflow/react v12's `EdgeProps<Edge<T>>` requires `data` to satisfy
    *  `Record<string, unknown>` — an index signature, no shape change. */
   [key: string]: unknown;
@@ -73,14 +82,21 @@ export function AnimatedEdge({
   }, [id]);
 
   const pending = data?.pending ?? false;
+  const runFlow = data?.runFlow;
+  const isFlowing = runFlow === "flowing";
+  const isSettled = runFlow === "settled";
   const baseColor = pending
     ? "#565c68"
     : data?.missing
       ? "#f87171"
-      : "#565c68";
+      : isFlowing || isSettled
+        ? "#22d3ee"
+        : "#565c68";
   const color = data?.highlighted ? "#c7d2fe" : baseColor;
-  const strokeWidth = data?.highlighted ? 2.5 : 1.5;
-  const opacity = data?.dimmed ? 0.35 : drawn ? 1 : 0;
+  const strokeWidth = data?.highlighted || isFlowing ? 2.5 : 1.5;
+  // Settled edges (P2 design §3.5): flow stopped, stroke stays tinted 60%
+  // until run end — distinct from the plain dim treatment (0.35).
+  const opacity = data?.dimmed ? 0.35 : isSettled ? 0.6 : drawn ? 1 : 0;
 
   const decorated = !data?.missing && (Boolean(data?.goal) || (data?.count ?? 0) > 1);
   const interactive = Boolean(data?.interactive);
@@ -92,11 +108,12 @@ export function AnimatedEdge({
         id={id}
         path={edgePath}
         markerEnd={markerEnd}
+        className={isFlowing ? "animate-dashFlow" : undefined}
         style={{
           ...style,
           stroke: color,
           strokeWidth,
-          strokeDasharray: data?.missing || pending ? "6 4" : undefined,
+          strokeDasharray: data?.missing || pending ? "6 4" : isFlowing ? "6 4" : undefined,
           opacity,
           transition: "opacity 0.2s cubic-bezier(.2,.8,.2,1), stroke 0.12s ease, stroke-width 0.12s ease",
         }}

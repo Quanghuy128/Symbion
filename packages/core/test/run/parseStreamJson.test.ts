@@ -59,6 +59,46 @@ describe("parseStreamJson — real fixture (§1.1)", () => {
   });
 });
 
+describe("parseStreamJson — real subagent fixture (§1.1 #8, P2, STATE §13.3)", () => {
+  const lines = readLines("fixture-subagent.ndjson");
+  const events = lines.map(parseLine);
+
+  it("parses every line without throwing", () => {
+    for (const line of lines) expect(() => parseLine(line)).not.toThrow();
+  });
+
+  it("has a Task/Agent-family tool_use part naming a subagent", () => {
+    const dispatchParts = events
+      .filter((e): e is Extract<RunEvent, { kind: "message" }> => e.kind === "message")
+      .flatMap((e) => e.parts)
+      .filter((p): p is Extract<typeof p, { kind: "tool_use" }> => p.kind === "tool_use")
+      .filter((p) => p.tool === "Task" || p.tool === "Agent");
+    expect(dispatchParts.length).toBeGreaterThan(0);
+  });
+
+  it("has at least one message with a non-null parentToolUseId AND a top-level subagentType", () => {
+    const messages = events.filter((e): e is Extract<RunEvent, { kind: "message" }> => e.kind === "message");
+    const dispatched = messages.filter((e) => e.parentToolUseId !== null);
+    expect(dispatched.length).toBeGreaterThan(0);
+    expect(dispatched.some((e) => e.topLevelSubagentType === "general-purpose")).toBe(true);
+  });
+
+  it("tolerates the new event types this longer transcript revealed (NEW-3): system/thinking_tokens, system/task_started, system/task_updated, system/task_notification, a second system/init", () => {
+    // parseLine only recognizes system/init as a distinct kind; every other
+    // system/* subtype (thinking_tokens, task_started, task_updated,
+    // task_notification) falls through to "unknown" — already-covered by the
+    // P1 unknown-type contract, no parser change required for this fixture.
+    const kinds = events.map((e) => e.kind);
+    expect(kinds).toContain("init");
+    expect(kinds).toContain("unknown");
+    expect(kinds).toContain("message");
+    expect(kinds).toContain("result");
+    // exactly two inits in this transcript (the async Agent dispatch's
+    // completion re-emits an init frame) — both parse as "init", not a crash.
+    expect(kinds.filter((k) => k === "init").length).toBe(2);
+  });
+});
+
 describe("parseStreamJson — garbage fixture (§1.1 #6)", () => {
   const lines = readLines("fixture-garbage.ndjson");
 

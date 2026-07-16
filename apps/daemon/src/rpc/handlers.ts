@@ -5,6 +5,7 @@ import {
   AUTHOR_REGISTRY,
   computeDiff as coreComputeDiff,
   dedupeImportNames,
+  extractAgentMentions,
   parseClaudeDir,
   renderArtifacts,
   renderRunCommand as coreRenderRunCommand,
@@ -1099,6 +1100,12 @@ export const handlers = {
         allowedTools: config.allowedTools,
       });
 
+      // P2: agent names reachable from this artifact (by @mention) — same
+      // traversal preflight already does for missingReferencedAgents; reused
+      // by runManager for the token-cap rollup + terminal runSummary (one
+      // graph walk, no daemon-side reimplementation of aggregate's roll-up).
+      const agentSubagentNames = new Set(extractAgentMentions(artifact.body));
+
       const run = runManager.start({
         projectId,
         projectRoot: path,
@@ -1112,6 +1119,7 @@ export const handlers = {
         allowedTools: config.allowedTools,
         ceilings: config.ceilings,
         cliVersion,
+        agentSubagentNames,
       });
 
       return { runId: run.runId, run };

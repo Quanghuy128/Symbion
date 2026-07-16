@@ -158,7 +158,7 @@ export function parseLine(line: string): RunEvent {
 
   if (type === "assistant") {
     const message = isRecord(obj["message"]) ? (obj["message"] as Record<string, unknown>) : {};
-    return {
+    const ev: RunEvent = {
       kind: "message",
       messageId: asString(message["id"]),
       parentToolUseId:
@@ -167,6 +167,17 @@ export function parseLine(line: string): RunEvent {
       usage: readUsage(message["usage"]),
       parts: readContentParts(message["content"]),
     };
+    // P2 real-fixture finding (STATE §13 BUILD notes): the CLI reports the
+    // dispatched subagent's name as a TOP-LEVEL `subagent_type` field on the
+    // assistant event itself (sibling of parent_tool_use_id) — NOT nested
+    // inside the dispatching tool_use's `input.subagent_type` as originally
+    // assumed pre-recording. Both shapes are captured defensively: this
+    // top-level field is the verified-real one; readContentParts still reads
+    // an input.subagent_type if a future/legacy shape nests it there instead.
+    if (typeof obj["subagent_type"] === "string" && obj["subagent_type"].length > 0) {
+      (ev as Extract<RunEvent, { kind: "message" }>).topLevelSubagentType = obj["subagent_type"];
+    }
+    return ev;
   }
 
   if (type === "result") {

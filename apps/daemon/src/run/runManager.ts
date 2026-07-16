@@ -16,12 +16,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { PersistedRunEvent, RunInfo, RunStatus } from "../rpc/contract.js";
-import type { StopReason } from "@symbion/core";
-import { parseLine } from "@symbion/core";
+import type { RunState, StopReason } from "@symbion/core";
+import { fold, initRunState, parseLine, rollup, runSummary } from "@symbion/core";
 import { LineBuffer } from "./lineBuffer.js";
 import { RunBroadcaster } from "./sse.js";
-import { appendEvent, closeEventsFd, ensureRunsDir, openEventsFd, prune, writeRunJson } from "./runStore.js";
-import { gitStatus } from "../git/status.js";
+import { appendEvent, closeEventsFd, ensureRunsDir, openEventsFd, prune, readEvents, writeRunJson } from "./runStore.js";
+import { gitStatus, gitNumstat } from "../git/status.js";
 
 const STDERR_TAIL_LINES = 20;
 const SIGKILL_GRACE_MS = 5_000;
@@ -38,6 +38,15 @@ export interface ActiveRun {
   wallClockTimer: NodeJS.Timeout | null;
   cancelKillTimer: NodeJS.Timeout | null;
   terminalWritten: boolean;
+  /** P2: daemon-side fold, kept per-run purely to drive the token-cap ceiling
+   *  check via the SAME pure core.fold/core.rollup the web store uses (A2) —
+   *  never a second source of aggregation logic. */
+  foldState: RunState;
+  /** the agent names reachable from this artifact (by @mention), resolved
+   *  ONCE at start() time — reused for the token-cap rollup AND the terminal
+   *  runSummary(), matching preflight's own missingReferencedAgents traversal
+   *  (no second graph walk). */
+  agentSubagentNames: Set<string>;
 }
 
 export interface StartRunInput {
@@ -53,6 +62,10 @@ export interface StartRunInput {
   allowedTools: string[];
   ceilings: { wallClockMs: number; tokenCap: number };
   cliVersion: string;
+  /** P2: agent names reachable from this artifact — resolved by the caller
+   *  (startRun handler) the same way preflight's missingReferencedAgents is,
+   *  reused for the token-cap rollup + terminal runSummary. */
+  agentSubagentNames: Set<string>;
 }
 
 /** Sentinel marker used to reserve a project's Map slot BEFORE any async work
@@ -180,6 +193,8 @@ export class RunManager {
       wallClockTimer: null,
       cancelKillTimer: null,
       terminalWritten: false,
+      foldState: initRunState(),
+      agentSubagentNames: input.agentSubagentNames,
     };
     this.active.set(input.projectId, activeRun);
 
@@ -247,12 +262,28 @@ export class RunManager {
     const seq = ar.run.lastSeq + 1;
     ar.run.lastSeq = seq;
     const persisted: PersistedRunEvent = { seq, ts: Date.now(), ev };
+    // Append + broadcast FIRST (unchanged P1 ordering — run-sse.test.ts/
+    // run-happyPath.test.ts assert on this byte-for-byte); the fold below is
+    // purely an ADDITIONAL daemon-local consumer of the same event, never a
+    // gate on persistence/delivery.
     appendEvent(ar.eventsFd, persisted);
     // Capture sessionId from the init event.
     if (ev.kind === "init" && ev.sessionId) {
       ar.run.sessionId = ev.sessionId;
     }
     ar.broadcaster.emit(persisted);
+
+    // P2: fold for the token-cap ceiling check — the SAME pure core.fold/
+    // core.rollup the web store uses (A2). tokenCap:0 means "no cap" (§6.4#2b).
+    ar.foldState = fold(ar.foldState, persisted);
+    const tokenCap = ar.run.ceilings.tokenCap;
+    if (Number.isFinite(tokenCap) && tokenCap > 0) {
+      const totalFresh = rollup(ar.foldState, ar.agentSubagentNames).command.totalFresh;
+      if (totalFresh > tokenCap && !this.pendingTerminal.has(ar.runId)) {
+        this.pendingTerminal.set(ar.runId, { status: "timedOut", stopReason: "tokenCap" });
+        this.killGroup(ar);
+      }
+    }
   }
 
   private pushStderr(ar: ActiveRun, line: string): void {
@@ -363,6 +394,52 @@ export class RunManager {
     // short; the full tail rides the run.json errorMessage only when present).
     if (outcome.status === "failed" && ar.stderrTail.length > 0 && !ar.run.errorMessage) {
       ar.run.errorMessage = ar.stderrTail.join("\n");
+    }
+
+    // P2: populate filesChanged/totals at terminal (STATE §13.1 finalize()
+    // entry) — the ONLY place gitNumstat is invoked (never mid-run, A13).
+    // Wrapped in its own try/catch (NEW-2): a numstat/runSummary failure must
+    // NEVER block writing the terminal run.json — the run's own completion is
+    // independent of the summary's files-changed section.
+    try {
+      const filesChangedRaw = gitNumstat(ar.projectRoot);
+      const filesChanged =
+        filesChangedRaw === "unavailable"
+          ? "unavailable"
+          : filesChangedRaw.map((f) => ({
+              ...f,
+              preDirty: ar.run.gitBefore.changedFiles.includes(f.path) || undefined,
+            }));
+      ar.run.filesChanged = filesChanged;
+
+      // finalMessage needs the raw event list (state only retains aggregated
+      // usage, not text) — read back events.jsonl (already fsync'd by the
+      // closeEventsFd() call above... actually closeEventsFd happens AFTER
+      // this block, so the fd is still open; readEvents opens its own fd via
+      // readFileSync, which sees everything written so far regardless).
+      const allEvents = readEvents(ar.projectRoot, ar.runId, 0, Number.MAX_SAFE_INTEGER);
+      const summary = runSummary(
+        ar.foldState,
+        { run: ar.run, agentSubagentNames: ar.agentSubagentNames, events: allEvents },
+        filesChanged
+      );
+      ar.run.totals = {
+        fresh: summary.totals.fresh,
+        costUsd: summary.totals.costUsd,
+        perNode: summary.perNode.map((n) => ({
+          nodeId: n.nodeId,
+          label: n.label,
+          ownFresh: n.ownFresh,
+          totalFresh: n.totalFresh,
+          costUsd: n.costUsd,
+          unrecognized: n.unrecognized,
+        })),
+      };
+    } catch {
+      // Degrade, don't die (NEW-2): the run's own terminal status/exitCode
+      // above is already committed to ar.run — a summary-computation failure
+      // never unwinds that.
+      ar.run.filesChanged = "unavailable";
     }
 
     closeEventsFd(ar.eventsFd);

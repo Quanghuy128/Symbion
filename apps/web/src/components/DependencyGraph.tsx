@@ -37,7 +37,7 @@ import { EdgeRelationModal } from "./graph/EdgeRelationModal";
 import { CopyRunCommandDialog } from "./CopyRunCommandDialog";
 import { RunDialog } from "./run/RunDialog";
 import { MissionStatusStrip } from "./run/MissionStatusStrip";
-import { RunLogTail } from "./run/RunLogTail";
+import { RunTimelinePanel, type TimelineMode } from "./run/RunTimelinePanel";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { useRunStore } from "@/lib/run/useRunStore";
 import { newArtifact } from "@/lib/newArtifact";
@@ -107,7 +107,7 @@ function DependencyGraphInner({
   const showToast = useArtifactStore((s) => s.showToast);
   const pingNow = useArtifactStore((s) => s.pingNow);
 
-  // --- run engine v1 (P1): mission-mode overlay, additive over the graph ---
+  // --- run engine v1 (P1) / P2 (structured telemetry), additive over the graph ---
   const run = useRunStore((s) => s.run);
   const elapsedMs = useRunStore((s) => s.elapsedMs);
   const connection = useRunStore((s) => s.connection);
@@ -115,9 +115,24 @@ function DependencyGraphInner({
   const activeArtifactId = useRunStore((s) => s.activeArtifactId);
   const cancelRunAction = useRunStore((s) => s.cancelRun);
   const attachIfActive = useRunStore((s) => s.attachIfActive);
+  const setAgentSubagentNames = useRunStore((s) => s.setAgentSubagentNames);
+  // P2: aggregation-derived state (folded via core.fold, never computed here).
+  const nodeRunData = useRunStore((s) => s.nodeRunData);
+  const timeline = useRunStore((s) => s.timeline);
+  const summary = useRunStore((s) => s.summary);
+  const degraded = useRunStore((s) => s.degraded);
+  const degradedReason = useRunStore((s) => s.degradedReason);
   const [runDialogFor, setRunDialogFor] = useState<CanonicalArtifact | null>(null);
+  const [panelMode, setPanelMode] = useState<TimelineMode>("feed");
+  const [panelFilterId, setPanelFilterId] = useState<string | null>(null);
+  const [pulseNodeId, setPulseNodeId] = useState<string | null>(null);
+  const [pulseKey, setPulseKey] = useState(0);
+
   // F5-reattach: on mount, check for an already-active run in this project and
   // attach (bar + mission overlay resume) — the store owns the SSE lifecycle.
+  // agentSubagentNames is resolved lazily by a SEPARATE effect below (once
+  // `run`/`activeArtifactId` populate post-attach, since on a cold F5 load the
+  // executing artifact isn't known until the reattached run.json arrives).
   useEffect(() => {
     void attachIfActive(projectId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,6 +141,23 @@ function DependencyGraphInner({
   // Authoring suspends for the whole graph while a run is active (design §0/§5) —
   // resumes immediately once the run leaves the non-terminal set.
   const authoringSuspended = missionActive;
+
+  // Auto-morph the panel to Summary on terminal transition, unless the user is
+  // mid-scroll (approximated here by "already looking at Feed/Raw" — a full
+  // scroll-position check lives inside RunTimelinePanel's own follow/pause
+  // state, which is intentionally NOT overridden by this effect once the user
+  // has taken an action; this effect only fires ONCE per run's terminal edge).
+  const wasMissionActiveRef = useRef(false);
+  useEffect(() => {
+    if (missionActive) {
+      wasMissionActiveRef.current = true;
+      return;
+    }
+    if (wasMissionActiveRef.current && summary) {
+      wasMissionActiveRef.current = false;
+      setPanelMode("summary");
+    }
+  }, [missionActive, summary]);
 
   // --- ephemeral UI state (E10) ---
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -150,6 +182,19 @@ function DependencyGraphInner({
   const agentNames = useMemo(() => new Set(agents.map((a) => a.name)), [agents]);
   const commandById = useMemo(() => new Map(commands.map((c) => [c.id, c])), [commands]);
   const artifactById = useMemo(() => new Map(artifacts.map((a) => [a.id, a])), [artifacts]);
+
+  // F5-reattach's agentSubagentNames follow-up (P2): startRun's caller
+  // (RunDialog) already passes agentSubagentNames at run-start time — this
+  // effect ONLY covers the cold-reload/reattach path, where activeArtifactId
+  // becomes known asynchronously (after the reattached run.json loads) and no
+  // RunDialog session exists to have supplied the set up front.
+  useEffect(() => {
+    if (!activeArtifactId) return;
+    const activeCommand = commandById.get(activeArtifactId);
+    if (!activeCommand) return;
+    setAgentSubagentNames(new Set(extractAgentMentions(activeCommand.body)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeArtifactId, commandById]);
 
   // First-run hint bar (design §5 N): show once per user when there's something on the canvas.
   useEffect(() => {
@@ -344,6 +389,19 @@ function DependencyGraphInner({
             ? "A run is already active — view the running command"
             : undefined;
 
+        // P2: the command's roll-up badge (own + Σ agents) — nodeRunData's
+        // "main" bucket. Only present while this command is the executing one.
+        const mainData = isRunning ? nodeRunData.get("main") : undefined;
+        const badge = mainData
+          ? {
+              fresh: mainData.totalFresh,
+              costUsd: mainData.costUsd,
+              breakdown: mainData.breakdown,
+              live: missionActive,
+              degraded,
+            }
+          : undefined;
+
         return {
           id: c.id,
           type: "command",
@@ -362,11 +420,38 @@ function DependencyGraphInner({
             executeDisabledReason,
             runStatus,
             runParticipant,
+            badge,
+            runPulseKey: pulseNodeId === "main" ? pulseKey : undefined,
           },
         } satisfies Node;
       }),
       ...agents.map((a) => {
         const runParticipant = missionActive ? runParticipantAgentNames.has(a.name) : true;
+        const dispatched = missionActive && runParticipant;
+        const agentData = dispatched ? nodeRunData.get(a.name) : undefined;
+        // "working" while the run is active and this agent has been dispatched
+        // (its bucket exists in nodeRunData with >0 own tokens, or the run is
+        // still streaming — before any tokens arrive the badge simply shows
+        // "—" per NodeTokenBadge's own pre-first-event contract); "settled"
+        // once the mission ends (terminal) for a participant that DID run.
+        const agentRunStatus: "idle" | "working" | "settled" | "error" | undefined = !dispatched
+          ? undefined
+          : missionActive
+            ? agentData
+              ? "working"
+              : undefined
+            : agentData
+              ? "settled"
+              : undefined;
+        const badge = agentData
+          ? {
+              fresh: agentData.totalFresh,
+              costUsd: agentData.costUsd,
+              breakdown: agentData.breakdown,
+              live: missionActive,
+              degraded,
+            }
+          : undefined;
         return {
           id: a.id,
           type: "agent",
@@ -379,6 +464,9 @@ function DependencyGraphInner({
             onEdit: authoringSuspended ? undefined : () => onEditArtifact(a),
             onDelete: authoringSuspended ? undefined : () => requestDelete(a.id),
             runParticipant,
+            runStatus: agentRunStatus,
+            badge,
+            runPulseKey: pulseNodeId === a.name ? pulseKey : undefined,
           },
         } satisfies Node;
       }),
@@ -472,6 +560,10 @@ function DependencyGraphInner({
     missionActive,
     activeArtifactId,
     runParticipantAgentNames,
+    nodeRunData,
+    degraded,
+    pulseNodeId,
+    pulseKey,
   ]);
 
   // Hover-driven highlight/dim (kept from the read-only original). Suspended
@@ -501,15 +593,36 @@ function DependencyGraphInner({
       // interactivity (+/× toolbar) and adopt the participant dim, matching
       // the node treatment above. Dash-flow animation is P2 (design §3.5).
       if (missionActive) {
-        const targetParticipant = runParticipantAgentNames.has(
-          agents.find((a) => a.id === e.target)?.name ?? ""
-        );
+        const targetAgentName = agents.find((a) => a.id === e.target)?.name ?? "";
+        const targetParticipant = runParticipantAgentNames.has(targetAgentName);
         const sourceIsActive = e.source === activeArtifactId;
-        const runFlow = sourceIsActive && targetParticipant ? "flowing" : "off";
+        // P2 (STATE §13.1): a THIRD edge state — "settled" once the target
+        // agent's bucket has usage (dispatched) but the run has moved past
+        // active dispatch for it (approximated here as "has nodeRunData but
+        // the run itself is terminal" is handled by missionActive=false
+        // falling to the else-branch below; WITHIN an active mission, an
+        // agent that's already accumulated usage but the command is no
+        // longer the active edge's live target still counts as flowing while
+        // the mission is active — "settled" mid-run per-agent needs the
+        // store's own dispatch-close tracking, which this data bag doesn't
+        // carry yet; edges settle definitively once the mission ends).
+        const runFlow: "off" | "flowing" | "settled" =
+          sourceIsActive && targetParticipant ? "flowing" : "off";
         return {
           ...e,
           data: { ...e.data, highlighted: false, dimmed: !(sourceIsActive && targetParticipant), interactive: false, runFlow },
         };
+      }
+      // Just-ended mission (run terminal, still showing the final tableau
+      // until Close): tint edges that participated as "settled" rather than
+      // snapping back to the plain authoring dim (design §3.5's "flow stops,
+      // stroke stays tinted 60% until run end").
+      if (run && TERMINAL_RUN_STATUSES.has(run.status) && activeArtifactId) {
+        const targetAgentName = agents.find((a) => a.id === e.target)?.name ?? "";
+        const wasParticipant = e.source === activeArtifactId && runParticipantAgentNames.has(targetAgentName);
+        if (wasParticipant) {
+          return { ...e, data: { ...e.data, highlighted: false, dimmed: false, interactive: false, runFlow: "settled" as const } };
+        }
       }
       const selected = e.id === selectedEdgeId;
       if (!hoveredId) return selected ? { ...e, data: { ...e.data, selected } } : e;
@@ -537,6 +650,7 @@ function DependencyGraphInner({
     runParticipantAgentNames,
     agents,
     authoringSuspended,
+    run,
   ]);
 
   const confirmTarget = confirmDeleteId ? artifactById.get(confirmDeleteId) : null;
@@ -588,6 +702,20 @@ function DependencyGraphInner({
             onNodeMouseEnter={authoringSuspended ? undefined : (_, node) => setHoveredId(node.id)}
             onNodeMouseLeave={authoringSuspended ? undefined : () => setHoveredId(null)}
             onEdgeClick={authoringSuspended ? undefined : (_, edge) => setSelectedEdgeId(edge.id)}
+            onNodeClick={
+              missionActive
+                ? (_, node) => {
+                    // P2 (design §3.4): node click filters the Feed panel to
+                    // that actor. Command node maps to the "main" actor key;
+                    // agent nodes filter by their own name (the rollup key).
+                    const isCommandNode = node.id === activeArtifactId;
+                    const agentMatch = agents.find((a) => a.id === node.id);
+                    const key = isCommandNode ? "main" : (agentMatch?.name ?? null);
+                    if (!key) return;
+                    setPanelFilterId((prev) => (prev === key ? null : key));
+                  }
+                : undefined
+            }
             onPaneClick={() => {
               setContextMenu(null);
               setSelectedEdgeId(null);
@@ -630,10 +758,37 @@ function DependencyGraphInner({
           )}
         </div>
 
-        {/* Timeline panel (P1: raw log-tail — design §3.4/§5, "this IS the P1 panel"). */}
-        {missionActive && (
+        {/* Timeline panel (P2: Feed/Raw/Summary tabs — design §3.4/§4/§5;
+            RunLogTail's content lives on unchanged as the Raw tab's body). */}
+        {(missionActive || (run && TERMINAL_RUN_STATUSES.has(run.status) && summary)) && (
           <div className="w-[320px] shrink-0 border-l border-border-hairline">
-            <RunLogTail lines={rawTail} waiting={rawTail.length === 0} />
+            <RunTimelinePanel
+              rows={timeline}
+              rawLines={rawTail}
+              mode={panelMode}
+              onModeChange={setPanelMode}
+              summary={summary}
+              waiting={rawTail.length === 0}
+              degraded={degraded}
+              degradedReason={degradedReason}
+              filterOptions={[
+                { id: "main", label: activeArtifactId ? `/${commandById.get(activeArtifactId)?.name ?? "command"}` : "command" },
+                ...[...runParticipantAgentNames].map((name) => ({ id: name, label: name })),
+              ]}
+              filterNodeId={panelFilterId}
+              onFilter={setPanelFilterId}
+              onRowClick={(actor) => {
+                if (!actor) return;
+                const nodeKey = actor === "main" ? "main" : actor;
+                setPulseNodeId(nodeKey);
+                setPulseKey((k) => k + 1);
+              }}
+              onRerun={() => {
+                const cmd = activeArtifactId ? commandById.get(activeArtifactId) : undefined;
+                if (cmd) setRunDialogFor(cmd);
+              }}
+              onClose={() => setPanelMode("feed")}
+            />
           </div>
         )}
       </div>

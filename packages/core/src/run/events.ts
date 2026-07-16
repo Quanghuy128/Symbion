@@ -60,6 +60,11 @@ export type RunEvent =
       model: string;
       usage: FourWay;
       parts: ContentPart[];
+      /** P2 (real fixture, STATE §13): the CLI reports the dispatched
+       *  subagent's name as a TOP-LEVEL field on the assistant event itself
+       *  (sibling of parent_tool_use_id) for messages produced INSIDE that
+       *  dispatch — present only on non-main-actor messages in practice. */
+      topLevelSubagentType?: string;
     }
   | {
       kind: "result";

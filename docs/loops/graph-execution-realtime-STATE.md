@@ -724,3 +724,596 @@ J6 (permission-mode change re-triggers ack) was not independently re-driven thro
 No regressions in `npm run build`, `test:core` (181/181), `test:daemon` (384/384), `test:web` (11/11) — all exact matches to this task's expected counts. The original dev daemon (20135) and web (3000) were never restarted and remained 200/200 throughout this QA pass. No implementation code was modified during this QA pass — findings only. The hermetic QA rig (scratch project, scratch config dir, port-12802 daemon) was fully torn down after this pass.
 
 **This feature is clear to proceed to `/ship`.**
+
+## 13. PLAN — P2 Architecture (2026-07-15, architect)
+
+> Scoped strictly to STATE §8.7's P2 bullet ("structured telemetry (L)"). P1 (§9, §11) and its QA
+> (§10, §12) are DONE and untouched here; P3 (history/reattach/settings UI) is explicitly out of
+> scope — see §13.7 for what P2 must NOT build. This section implements §6 (Scope, LOCKED), the
+> canonical design doc's P2-tagged surfaces, and resolves/absorbs Flaws F4–F7 from §8.8 rather than
+> re-deriving them. Companion test items appended to `graph-execution-realtime-testplan.md`.
+
+### 13.0 What P1 already shipped that P2 builds on (ground truth, re-verified by reading the code)
+
+- `packages/core/src/run/events.ts` **already declares** `FourWay`, `ContentPart`, `ModelUsageEntry`,
+  the full `RunEvent` union, `RunInfo` (incl. `filesChanged`/`totals` fields, currently always
+  `null`), `FileChange`, `RunTotals`, `RunListItem`, `TimelineRow`, `RunView` — P2 does **not**
+  invent new shapes here, it fills in the logic that produces values for fields that already exist
+  structurally (`totals`, `filesChanged`) and adds `derive.ts`'s row-producer for `TimelineRow`.
+- `packages/core/src/run/parseStreamJson.ts` is COMPLETE and pinned to the real `fixture-simple.ndjson`.
+  P2 adds a second real fixture (subagent) but does **not** modify the parser's contract — the
+  parser already emits `parentToolUseId` and `subagentType` correctly per §8.0's verification.
+- `apps/daemon/src/run/runManager.ts`'s `ingestLine()` already seq-stamps, appends to `events.jsonl`,
+  and broadcasts — it does **not** fold anything (no `aggregate` import). P2 adds a fold call here
+  (daemon-side `RunState` per run, kept in `ActiveRun`) purely to drive the token-cap ceiling check;
+  it must NOT change the append/broadcast contract already tested by `run-sse.test.ts`/`run-happyPath.test.ts`.
+- `apps/daemon/src/run/preflight.ts`/`runConfig.ts` (`resolveRunConfig`, `configHash`, `ackSettingsHash`,
+  `buildConsentSentence`) are DONE, including the Defect-1 fix (`ackSettingsHash` for the ack
+  comparison). P2 does not touch these.
+- `apps/daemon/src/git/status.ts` has `gitStatus()` only (`git status --porcelain`, advisory,
+  read-only). P2 adds a sibling `gitNumstat()` — same file, same pattern, same argv-array precedent.
+- `apps/web/src/lib/run/useRunStore.ts` currently holds `rawTail: RawTailLine[]` (P1's raw-only
+  panel) and **no token math** — this is the P1 boundary explicitly named in §9's file list
+  ("P1 raw tail only… no token aggregation (P2's `core.fold` is not wired to any UI yet)"). P2 adds
+  `nodeRunData`/`timeline`/`summary`/`degraded` state derived by folding the SAME `PersistedRunEvent`
+  stream (already flowing over SSE/`getRunEvents` since P1) through `core.fold` — no new wire
+  protocol, no new RPC method needed for telemetry itself.
+- `apps/web/src/components/DependencyGraph.tsx` already threads `runFlow: "flowing"|"off"` into
+  `AnimatedEdgeData` (a P1 pull-forward per §9's file notes: "ships `runFlow` in the edge data bag
+  for a P2 `AnimatedEdge` consumer, but `AnimatedEdge` itself is untouched in P1"). P2's job on the
+  edge is purely visual consumption of a field that already exists — not new plumbing.
+- `RunLogTail.tsx` (P1's interim panel) stays; P2 adds `RunTimelinePanel` as a new component and the
+  design's "Raw demoted to a tab" means `RunLogTail`'s content becomes the Raw tab's body inside the
+  new panel, not a separate deletion+rewrite.
+
+### 13.1 Architecture — exact file list
+
+#### `packages/core/src/run/` (PURE — AC-RUN-11 unchanged)
+
+| File | Status | Responsibility |
+|---|---|---|
+| `pricing.ts` | **NEW** | `MODEL_PRICING: Record<string, {inputPerMtok; outputPerMtok; cacheReadPerMtok; cacheWritePerMtok}>` seeded from the fixture's two observed models (`claude-fable-5`/main-model-family pricing tier, `claude-haiku-4-5-20251001`) plus the other Claude model-family tiers documented publicly (sonnet/opus/haiku), keyed by exact model string with a normalizing prefix-match fallback (model strings carry date suffixes, e.g. `claude-haiku-4-5-20251001` — match on the family+tier prefix, not exact string, else every dated release breaks pricing). `estimateCostUsd(usage: FourWay, model: string): number \| undefined` — `undefined` for no match (F4's `$ —`). `reconcileToTotal(perNodeEstimates: Map<key, number>, totalCostUsd: number): Map<key, number>` — proportional rescale so Σ === `totalCostUsd` (ties/zero-total handled: if all estimates are 0 but `totalCostUsd > 0`, distribute pro-rata by fresh-token share instead of by-$ share, so a run with only unknown-model estimates still gets a sane terminal split rather than divide-by-zero). |
+| `aggregate.ts` | **NEW** | `initRunState(): RunState`; `fold(state, PersistedRunEvent): RunState` (pure, returns a NEW state — daemon and web call this identically, per A2). `RunState = { lastSeq: number; init?: {sessionId; model; permissionMode; cliVersion; slashCommands}; actors: Map<actorKey, ActorUsage>; dispatches: Map<toolUseId, {subagentType?: string; atSeq: number}>; result?: RunEvent & {kind:"result"}; parseErrors: number; unknownEvents: number }` where `ActorUsage = { usage: FourWay; messageIds: Set<string> }` and `actorKey = parentToolUseId ?? "main"`. **Dedup (F5)**: inside `fold`, a `message` event's usage is added to the actor's running `FourWay` ONLY if `messageId` is not already in that actor's `messageIds` set; if present, the fold is a no-op for token accounting (still counts toward `unknownEvents`/`parseErrors` bookkeeping as applicable, i.e. those counters are untouched by a dedup'd message — it's simply skipped). **Seq guard**: `fold` is a no-op (returns `state` unchanged, same object reference) if `persisted.seq <= state.lastSeq` — this is the belt-and-braces client dedup contract already documented in Flaw F2/A2; P2 is the first caller to actually rely on it for token math (P1's raw tail didn't need it since it never double-counted). `rollup(state, agentSubagentNames: Set<string>): RollupResult` — `RollupResult = { command: {ownFresh, totalFresh, ownUsd?, totalUsd?}; byAgent: Map<subagentType, {ownFresh, totalFresh, ownUsd?, totalUsd?}>; unrecognized: {fresh, usd?} }`. Derivation: for each actor bucket, if `actorKey === "main"` → command's own bucket; else resolve `dispatches.get(actorKey)?.subagentType` — if it names an agent in `agentSubagentNames` → that agent's own bucket; else → `unrecognized` (F8, never dropped). `command.totalFresh = ownFresh + Σ(all byAgent ownFresh) + unrecognized.fresh` (the invariant AC-RUN-2 pins). Property: **order-independence** — attribution keys off `parentToolUseId` alone (not event order), so folding the same event set in any permutation yields identical `rollup()` output; this is what the shuffle test in the testplan pins. **Locked fresh formula**: `fresh = usage.input + usage.output` everywhere (§6.6) — `cacheRead`/`cacheWrite` never enter a headline number, only the `FourWay` breakdown. |
+| `derive.ts` | **NEW** | `timelineRows(events: PersistedRunEvent[], state: RunState): TimelineRow[]` — pure projection: `init` → one `⚙ init session · <model>` row; `message` with a `tool_use` part whose `tool === "Task"` → a dispatch-card row (`{icon:"🤖", label:"Task → <subagentType>", depth:0}`) PLUS the triggering-message's own text/tool rows at `depth: parentToolUseId ? 1 : 0` (actor-suffixed per design §5: `label` gets `(<subagentType or actorKey>)` appended when `parentToolUseId !== null`); a `result` event → one settle row per actor whose bucket just closed (`✓ <actor> settled  Σ <fresh>`) — since `derive` only sees the terminal `result` (not streaming actor-close detection, which needs live dispatch-tracking state the store already keeps — see §13.4), `derive.timelineRows` computes SETTLED rows only for the terminal batch; the live per-actor "just settled" row that appears mid-run (per design §3.4's "settled: ✓ / frozen count" card) is a `useRunStore` derived transition (comparing successive `rollup()` snapshots), not something `derive.ts` needs to know about — kept in core only for the parts that are pure functions of the full event list. `runSummary(state: RunState, meta: {run: RunInfo}, filesChanged: FileChange[] \| "unavailable"): RunSummary` — pure projection matching the design's `RunSummary` contract (status/exitCode/durationMs/startedAt/totals/perNode/filesChanged/finalMessage/stderrTail/stopReason); `perNode` built directly from `rollup()`'s `command`/`byAgent`/`unrecognized`, `finalMessage` extracted from the LAST `message` event's text parts on the `"main"` actor before `result`, `totals.costUsd` computed by calling `pricing.reconcileToTotal` when `result.totalCostUsd` is present (F4/F6: this is where the "Σ per-node == total_cost_usd" reconciliation actually happens — ONE call site, not scattered). **Degraded-telemetry detection (F6)**: `runSummary` (and a streaming equivalent the web store also computes — see §13.4) compares `state`'s own fold-derived total fresh-tokens-attributable-to-`result.usage`'s scope (i.e. sum of ONLY the `"main"`-actor-and-resolved-subagent buckets whose model matches `result.usage`'s reporting scope) against `result.usage` itself; because `result.usage` is main-model-only (F6) while the fold's total spans every actor including hidden background models, a NAIVE compare would always "mismatch". The correct check (this plan's resolution, not previously spelled out in §8.8): compute `expectedBackgroundDelta = Σ(modelUsage entries whose model is NOT the main `result` model)`'s fresh tokens, then assert `foldTotal - expectedBackgroundDelta ≈ result.usage main fresh` within a small tolerance (±1 token per model, to absorb any off-by-one in what "counts" as background vs. main across CLI versions); a mismatch BEYOND that expected delta sets `degraded: true` (never re-bases the fold's numbers — the fold's own totals remain what the UI shows, per F6's explicit resolution). |
+| `test/run/aggregate.test.ts`, `test/run/pricing.test.ts`, `test/run/derive.test.ts` | **NEW** | per testplan §1.3–1.5 below |
+| `test/fixtures/run/fixture-subagent.ndjson` | **NEW — recorded, see §13.3** | real Task-dispatch transcript |
+| `test/fixtures/run/fixture-rollup-synthetic.ndjson`, `fixture-duplicate-usage.ndjson` | **NEW — hand-written** | per testplan §0.1 (already specced; P2 authors them) |
+
+`src/index.ts` gains barrel exports for `run/pricing.js`, `run/aggregate.js`, `run/derive.js`.
+
+#### `packages/rpc-types` (types only — additive)
+
+- `PreflightCheck`/`RunPreflightResult`/etc. **unchanged** — P2 needs NO new RPC method for telemetry
+  (it rides the existing SSE/`getRunEvents` channel P1 already shipped; the aggregation happens
+  client-side in `useRunStore` and daemon-side in `runManager` for the ceiling check, both calling
+  the SAME `core.fold`/`core.rollup`). This is a deliberate architecture choice — see §13.9 A11.
+- `RunInfo.filesChanged`/`RunInfo.totals` types **already exist** (P1) — P2 is the first code that
+  ever populates them with real values instead of `null`. No type change needed for those two fields.
+- `RunSummary`/`TimelineRow` (web-consumed shapes) are re-exported from core's `derive.ts`/`events.ts`
+  the same way `RunView` already is — additive re-export line in `rpc-types/src/index.ts`, no new
+  interface authored redundantly in rpc-types itself (avoids the P1 pattern of re-declaring core
+  shapes twice; P1's `TimelineRow`/`RunView` already live in core only and are re-exported, so P2
+  follows the established precedent, not a new one).
+
+#### `apps/daemon/src/` — modified + one new file
+
+| File | Change |
+|---|---|
+| `git/status.ts` | **+`gitNumstat(repoPath): FileChange[] \| "unavailable"`** — sibling function, same file (matches STATE §8.1's own instruction: "`git/status.ts` gains a read-only `gitNumstat(repoPath)`"). `execFileSync("git", ["diff", "--numstat", "HEAD"], {cwd, encoding:"utf-8", timeout: 10_000})` parsed into `{path, plus, minus}` rows; UNTRACKED new files (`git status --porcelain`'s `??` entries, already available from the existing `gitStatus()` call) are merged in as `{status:"A", plus: undefined, minus: undefined}` (numstat alone doesn't report untracked-file line counts without `--no-index` gymnastics that risk including symbion's OWN `.symbion/` tree — deliberately NOT attempted; untracked files get a status glyph but no ± counts, which the design's wireframe already shows as acceptable — `A docs/loops/rate-limit-STATE.md` with no ± in §3.9's mock). `status` classification: reuses `git status --porcelain`'s first two columns per path (`M`/`A`/`D`) rather than re-deriving it from numstat's own limited vocabulary. On ANY failure (git missing, `--numstat` throws, timeout, not a repo) → returns the string literal `"unavailable"` — never throws, never blocks run finalization (F4/F6-style "degrade, don't die" posture applied to a new subsystem). `preDirty` flag: cross-referenced against `run.gitBefore.changedFiles` (already persisted at run start) — a changed path already in `gitBefore.changedFiles` gets `preDirty: true` (design §3.9's "⚠ includes N files dirty before the run"). |
+| `run/runManager.ts` | **fold wiring for the token-cap ceiling.** `ActiveRun` gains `foldState: RunState` (from `core.initRunState()`), updated in `ingestLine()` via `ar.foldState = fold(ar.foldState, persisted)` (called AFTER the existing append+broadcast — ordering doesn't matter for correctness since fold is pure/idempotent-under-seq-guard, but keeping append/broadcast first preserves P1's existing test assertions about write-then-emit ordering byte-for-byte). After each fold, if `ar.run.ceilings.tokenCap > 0`, compute `rollup(ar.foldState, subagentNamesForThisArtifact).command.totalFresh` and compare — breach → `this.pendingTerminal.set(ar.runId, {status:"timedOut", stopReason:"tokenCap"})` + `this.killGroup(ar)`, IDENTICAL code path to the existing wall-clock breach (§9/§8.1's `armWallClock`), just a second trigger into the same `killGroup`/`finalize` machinery — no new kill logic. `subagentNamesForThisArtifact` is resolved once at `start()` time from the artifact's referenced agents (already computed for preflight's `missingReferencedAgents` — reuse, don't recompute a second traversal) and stored on `ActiveRun`. |
+| `run/runManager.ts` `finalize()` | **populate `filesChanged`/`totals` at terminal** (currently always `null`, per §9 note #8/§9.1's Deferred list). On terminal: `ar.run.filesChanged = gitNumstat(ar.projectRoot)`; `ar.run.totals = ` computed via `runSummary(ar.foldState, {run: ar.run}, ar.run.filesChanged).totals`-equivalent shape (using the SAME `derive.runSummary`/`aggregate.rollup` the web store uses — no daemon-side reimplementation of the roll-up math, per A2's "one reducer" invariant extended to this new call site). This is the ONLY place `gitNumstat` is invoked — never mid-run (numstat against a live, possibly-changing tree mid-run would be noisy/racy and isn't needed until the summary screen anyway). |
+| `run/runStore.ts` | **no schema change** — `run.json`'s `filesChanged`/`totals` fields already exist (P1 typed them, always null); P2 just writes non-null values through the EXISTING `writeRunJson` atomic-write path. Zero migration: old P1-era `run.json` files on disk with `filesChanged: null` remain valid (readers already handle null per P1's own type: `FileChange[] | "unavailable" | null`). |
+| `rpc/handlers.ts`, `server.ts`, `sse.ts`, `sseRoute.ts` | **unchanged** — P2 adds no RPC method and no new SSE frame type; `RunSseStateFrame` (== `RunInfo`) already carries the new `filesChanged`/`totals` once populated, for free, since it's a structural re-export of `RunInfo`. |
+
+#### `apps/web/src/` — modified + new components
+
+| File | Change |
+|---|---|
+| `lib/run/useRunStore.ts` | **the P2 aggregation wiring.** Adds `foldState: RunState` (mirrors the daemon's, built via `core.initRunState()`/`core.fold` — SAME reducer, per A2, imported from `@symbion/core`, never reimplemented). Every place P1 already applies an incoming `PersistedRunEvent[]` (`applyEvents`, called from both the SSE handler and the poll-fallback loop — P1's existing single choke point, per §9.1's Finding 2 fix) now ALSO folds each event through `foldState = fold(foldState, ev)` immediately after the existing seq-dedup/rawTail append (so the seq-guard is applied once, consistently, to both raw-tail and token accounting — no risk of the two diverging). Derives `nodeRunData: Map<nodeId, {runStatus; ownFresh; totalFresh; costUsd; breakdown: FourWay}>` from `rollup(foldState, agentSubagentNamesInGraph)` on every fold (agentSubagentNamesInGraph passed in by `DependencyGraph` at `attach()`/`startRun()` time, resolved from the artifact graph the same way the daemon resolves `subagentNamesForThisArtifact`). Derives `timeline: TimelineRow[]` via `derive.timelineRows(allPersistedEventsSoFar, foldState)` — recomputed incrementally is acceptable at P2's data volumes (a few hundred to low-thousands of events per run; recompute-from-scratch on every batch, NOT a streaming diff, since `derive.timelineRows` is a pure function over the full list and premature streaming-diff optimization isn't justified without a demonstrated perf problem — flagged as A12 below for the Checker to revisit only if J-step timing shows jank). Derives `degraded: boolean` from the daemon-populated `result`'s cross-check ONCE the run reaches terminal (mid-run degraded state is driven by `state.parseErrors > 0` only, exactly as P1 already speced in ER-4 — the F6 reconciliation-mismatch degraded trigger is inherently a TERMINAL-only check since it needs `result`). `summary: RunSummary \| undefined` populated at terminal via `derive.runSummary`. **Nothing above touches the SSE wire protocol, the seq-dedup contract, or the poll-fallback logic P1 already shipped and tested** — this is purely a new derived-state layer sitting on top of the exact same event stream. |
+| `components/graph/NodeTokenBadge.tsx` | **NEW** — per design's contract table (`{fresh, costUsd, breakdown, live, degraded?}`), tabular-nums mono 11px, fixed-width from first render, `~$`-prefixed cost, `—` pre-first-event, tween ≤300ms via rAF (design §5). |
+| `components/run/TokenBreakdownCard.tsx` | **NEW** — hover portal per design §3.6 (own/+agents/total columns, fresh headline bold, cache rows muted, footnote). |
+| `components/graph/CommandNode.tsx` | **modified** — consumes the new `badge?: NodeTokenBadgeProps` field (already typed as a TODO-shaped placeholder per §9's additive-data-bag note; P1 left `badge` undefined/unused since token math didn't exist) — renders `<NodeTokenBadge>` below the label when `badge` is present; wraps the badge in a hover trigger for `TokenBreakdownCard`; adds the "lock-in" 300ms flash keyframe on a `done` transition when `badge` was previously live (design §3.5). |
+| `components/graph/AgentNode.tsx` | **modified** — same `badge` consumption; the settle "pulse → lock-in flash → steady outline" sequence (design §3.5's agent-node anatomy) — this is the FIRST place agent-node token badges render at all (P1 dimmed/undimmed agent nodes but never gave them a badge, since `aggregate` didn't exist). |
+| `components/graph/AnimatedEdge.tsx` | **modified** — consumes the ALREADY-THREADED `runFlow: "flowing"|"off"` field (P1 shipped the data-bag plumbing, not the visual: §9 "AnimatedEdge itself is untouched in P1"). P2 adds the `stroke-dasharray 6/4` + `dashoffset` CSS animation gated on `runFlow==="flowing"`, `settled` tint (`runFlow==="off"` post-run stroke stays tinted 60% — needs a THIRD edge state actually, since design distinguishes pre-dispatch/flowing/settled but the current data bag only has 2 values; **flag**: extend `AnimatedEdgeData.runFlow` to `"off" \| "flowing" \| "settled"` — a small additive type widening, `DependencyGraph.tsx`'s edge-memo sets `"settled"` once an agent's actor bucket has closed (no more expected messages after `result`/that actor's dispatch resolved), not just "not currently flowing"). Live ×N counter (`1/3 → 2/3 → ✓3`) reads `invocations.done`/`invocations.total` off `AgentNodeData` (design §4's contract already names this field; P2 is the first to populate it, counting `dispatches` entries resolved to that `subagentType` in `foldState`). |
+| `components/run/RunTimelinePanel.tsx` | **NEW** — replaces `RunLogTail` as the mounted panel in `DependencyGraph.tsx`; internally hosts THREE tab bodies: **Feed** (structured `TimelineRow[]` rows, virtualized hand-rolled fixed-row-height per A8, filter chips from `nodeRunData`'s keys, row click→node pulse via `runPulseKey`, node click→filter, follow/pause per design §5), **Raw** (P1's `RunLogTail` component reused verbatim AS the Raw tab's body — not reimplemented, per §13.0's note), **Summary** (new `RunSummarySection`, auto-shown on terminal transition unless mid-scroll, exactly per design §3.9/§8.4's "auto-morphs" behavior — P1 never had a summary state to morph into, since `derive.runSummary` didn't exist). |
+| `components/run/RunSummarySection.tsx` | **NEW** — cost-by-node table (from `summary.perNode`, rows hoverable → `TokenBreakdownCard`, unrecognized-subagent row shown when present), FILES CHANGED (from `summary.filesChanged`, `⚠ includes N files dirty before the run` banner when any `preDirty`), FINAL MESSAGE (expand/collapse + copy), STDERR tail (failed runs only), `[Adjust ceilings]`/`[change]` links rendered but **inert** (F7 — P3 wires them; P2 must not build `RunSettingsSection`, see §13.7). |
+| `components/run/DegradedTelemetryChip.tsx` | **NEW, small** — amber chip, renders when `useRunStore`'s `degraded` is true; hover tooltip text per ER-4 ("counts may be incomplete; raw log kept") for the parse-error trigger, and a DISTINCT tooltip for the new F6 reconciliation-mismatch trigger ("background-model usage couldn't be fully reconciled — totals may be slightly off; raw log kept") — two different root causes, one visual treatment, but the copy must not conflate them (a Checker-visible distinction, not a cosmetic nicety: F6's mismatch is a daemon/CLI-behavior signal, ER-4's is a parser-tolerance signal, and conflating them would mislead a user trying to determine "is my CLI/network flaky, or did Symbion's parser choke"). |
+| `DependencyGraph.tsx` | **modified, additive only** — passes `nodeRunData` selections into the existing node/edge memo (extends the P1 pattern already there for `runStatus`/`runParticipant`); resolves `agentSubagentNamesInGraph` (a `Set<string>` of agent artifact names reachable from the executing command, already computed once for `runParticipantAgentNames` in P1 — reuse that exact Set, do not recompute) and passes it to `useRunStore`'s fold-rollup calls; swaps the mounted panel from `RunLogTail` to `RunTimelinePanel`. |
+
+### 13.2 Data flow — how it composes without duplicating P1's fold
+
+```
+[daemon: same P1 pipeline, unchanged]
+child stdout → LineBuffer → parseLine (core, unchanged) → seq-stamp → append events.jsonl + broadcast (unchanged)
+                                                              │
+                                                              ├──▶ [NEW P2] ar.foldState = fold(ar.foldState, persisted)
+                                                              │        → rollup(...).command.totalFresh vs ceilings.tokenCap
+                                                              │        → breach: SAME killGroup()/finalize() as wall-clock (P1)
+                                                              │
+                                                              └──▶ (on terminal, finalize()) gitNumstat() + runSummary()
+                                                                       → run.json.filesChanged / .totals populated (NEW P2)
+
+[transport: UNCHANGED from P1 — SSE backfill-then-live, seq-ordered; getRunEvents poll fallback]
+
+[web: same P1 SSE/poll pipeline up to applyEvents(), then NEW P2 layer]
+EventSource / getRunEvents → applyEvents() (P1, seq-dedup + rawTail append, UNCHANGED)
+                                    │
+                                    └──▶ [NEW P2] foldState = fold(foldState, ev)  ← SAME core.fold as daemon (A2)
+                                              → rollup(foldState, agentSubagentNamesInGraph) → nodeRunData (badges/breakdown)
+                                              → derive.timelineRows(...) → timeline (Feed tab rows)
+                                              → (terminal) derive.runSummary(...) → summary (Summary tab)
+                                              → DependencyGraph merges nodeRunData into node/edge data bag (unchanged memo pattern)
+```
+
+**Key invariant preserved**: the daemon's fold (for the ceiling check) and the web's fold (for the
+UI) are two INDEPENDENT calls to the exact same pure `core.fold`/`core.rollup` functions over what
+is provably the same ordered event stream (seq-numbered, backfill-then-live, already proven gap/dup-
+free by `run-sse.test.ts` #4 in P1) — this is what makes "numbers cannot drift" (A2) actually true,
+not just asserted. Neither side ever sends the other its computed rollup; only raw events cross the
+wire, exactly as today.
+
+### 13.3 Real subagent fixture recording — process
+
+**Trigger**: a named, one-time manual `/build` P2 task (STATE §8.0/§8.7 already call this out; this
+plan specifies HOW). Using the real `claude` CLI (2.1.187, already verified installed and
+authenticated in this environment — §8.0), run a command that is KNOWN to dispatch a Task subagent
+— the dogfood target is Symbion's own `.claude/commands/` if one exists with an `@`-agent reference,
+else a minimal throwaway test repo with one command (`/probe`) whose body explicitly instructs
+"dispatch the `ba` subagent via the Task tool for a trivial sub-task" to guarantee at least one
+`tool_use` with `subagent_type` and ≥1 downstream `assistant` event carrying non-null
+`parent_tool_use_id`. Command: `claude -p "/probe do something trivial" --output-format stream-json
+--verbose --permission-mode acceptEdits > fixture-subagent.ndjson` in a scratch cwd (never the real
+Symbion repo root, to avoid the agent's writes landing somewhere they'd need cleanup).
+
+**Storage**: raw transcript copied to BOTH `docs/loops/graph-execution-realtime-fixture-subagent.ndjson`
+(source-of-truth, alongside the existing `fixture-simple.ndjson` — same convention) and
+`packages/core/test/fixtures/run/fixture-subagent.ndjson` (the copy tests actually read, matching
+P1's existing `fixture-simple.ndjson` dual-location convention already established in §9's file list).
+
+**Cost**: real tokens, ~$0.01–0.10 range typically for a trivial dispatch — a one-time, deliberate
+spend, not a recurring test cost (all subsequent test runs replay the recorded file, $0).
+
+**Pinning both fixtures**: `parseStreamJson.test.ts` (P1, already pinned to `fixture-simple.ndjson`
+per testplan §1.1) gains new cases (testplan §1.1#8, already stubbed) asserting the subagent
+fixture's `tool_use`/`subagentType`/non-null-`parentToolUseId` shape; `aggregate.test.ts` (NEW, P2)
+folds the REAL subagent fixture (not just the hand-written synthetic) and asserts: (a) at least one
+actor bucket other than `"main"` exists, (b) `rollup()` doesn't throw/misattribute when the
+dispatch's `subagent_type` string doesn't exactly match any agent name in a synthetic "graph" passed
+to the test (exercises the `unrecognized` path against a REAL event shape, not just a contrived one)
+— this is the concrete "does the multi-block dedup / real-shape assumption actually hold" check the
+task explicitly asked for, not re-derived from the synthetic fixture alone. **If the real fixture
+reveals the content-block multi-message-per-id shape (F5) actually occurring** (it may not — the
+existing simple fixture has exactly one assistant message, so this is unconfirmed either way).
+`fixture-duplicate-usage.ndjson` (hand-written) remains the DETERMINISTIC pin for F5's dedup logic
+regardless of what the real fixture shows, precisely because whether the real fixture happens to
+exercise that shape is non-deterministic (depends on response length/chunking) — do not make the
+hand-written fixture's test conditional on or redundant with the real one.
+
+### 13.4 Local-store schema — deltas from P1 (no SQL DB, files only, per CLAUDE.md)
+
+- **`run.json`**: NO field-shape change (all P2 fields — `filesChanged`, `totals` — were already
+  declared by P1's `RunInfo` type as `FileChange[] | "unavailable" | null` / `RunTotals | null`).
+  P2 is purely a "who writes real values into already-existing optional fields" change. Old P1-era
+  run.json files with `filesChanged: null` remain valid reads (`RunListItem`/history rows already
+  handle `costUsd: null`/`durationMs: null` per P1's own null-tolerant shape).
+  `schemaVersion` stays **1** — no migration needed.
+- **`events.jsonl`**: unchanged wire/storage shape. `PersistedRunEvent` already carries everything
+  `derive.timelineRows`/`aggregate.fold` need (the `RunEvent` union already has `parentToolUseId`,
+  `usage`, `subagentType` on `tool_use` parts, `modelUsage` on `result` — all P1-shipped).
+- **`ProjectRunConfig`**: unchanged — `tokenCap` was already a field (P1 threaded it through,
+  persisted, surfaced in the consent sentence, but never checked against live usage per §9 note #8).
+  P2 is the first code path that actually reads and enforces it. No schema change.
+- **No new files under `.symbion/runs/<runId>/`** — P2 needs no separate telemetry-cache file;
+  `runSummary`'s output is cheap to recompute from `events.jsonl` + `run.json` on demand (history
+  reopen in P3 will do exactly this) rather than persisting a redundant denormalized copy, avoiding
+  a second source of truth that could drift from the events log.
+
+### 13.5 Edge cases (F4/F5/F6 concretely, plus new ones found in this pass)
+
+| # | Case | Resolution |
+|---|---|---|
+| F4 | Unknown model in `modelUsage`/an assistant `message.model` | `pricing.estimateCostUsd` returns `undefined` → badge/breakdown/summary render `$ —` (never `$0.00`/`NaN`); the model's FRESH TOKENS still count fully toward the roll-up (F4 only concerns `$`, never tokens — FR-3's "tokens never estimated" holds). `reconcileToTotal`'s pro-rata-by-fresh-token fallback (§13.1's `pricing.ts` entry) covers the degenerate case where EVERY per-node estimate was `undefined`/0 but `total_cost_usd` is nonzero. |
+| F5 | Multiple `assistant` events sharing one `message.id` (per-content-block emission) | `fold`'s per-actor `messageIds: Set<string>` dedup — pinned by BOTH the hand-written `fixture-duplicate-usage.ndjson` (deterministic) and, if it happens to occur, the real subagent fixture (opportunistic confirmation, not required to pass). |
+| F6 | `result.usage` main-model-only; background models only in `modelUsage` | `runSummary`'s degraded check computes `expectedBackgroundDelta` from `modelUsage` entries excluding the main model, subtracts from the fold's own main-actor-scoped total, compares to `result.usage` within tolerance — mismatch beyond that → `degraded:true`, **fold's own totals remain authoritative and unchanged** (never re-based). |
+| F7 | R7 Settings→Execution editor scope creep risk | P2 explicitly reads `ProjectSettings.run` via the EXISTING `resolveRunConfig` (P1) with `DEFAULT_RUN_CONFIG` fallback — no editor UI, `[change]`/`[Adjust ceilings]` links render but are inert (`onClick` absent or a no-op — see §13.7's explicit checklist item for the Checker to verify this wasn't accidentally built). |
+| NEW-1 | A real subagent dispatch's `subagent_type` string doesn't match ANY agent name in the graph (e.g. a built-in agent like `general-purpose` used ad hoc, not one of Symbion's authored `@`-linked agents) | Falls into `unrecognized` (same bucket as an unrecognized-by-construction case in the synthetic fixture) — command total still includes it, flagged, never dropped. This is the REAL-WORLD version of the already-planned unrecognized-bucket mechanism; §13.3 explicitly tests it against the real fixture, not just synthetically. |
+| NEW-2 | `gitNumstat` fails or times out mid-finalize (git binary missing, corrupted repo, `git diff` hangs on a huge diff) | `execFileSync` with a `timeout: 10_000` throws on timeout (Node throws `ETIMEDOUT`-shaped error on `execFileSync` timeout) → caught, returns `"unavailable"` literal (already the typed escape hatch) — `finalize()` must NOT let a numstat failure block writing the terminal `run.json` at all (the run's OWN completion is independent of the summary's files-changed section); implemented by wrapping the `gitNumstat` call in its own try/catch inside `finalize()`, not inside `gitNumstat` alone reporting a value that a caller could still mishandle. |
+| NEW-3 | A THIRD, previously-unseen event `type` appears in the real subagent fixture (the simple fixture already proved `rate_limit_event` is undocumented — a subagent-dispatch transcript, being longer, has more surface area to reveal e.g. a `system/hook` event, a `stream_event` partial-message frame, or similar) | Already structurally handled — `parseStreamJson.ts`'s `unknown` fallback (P1, unchanged) tolerates ANY unrecognized `type` with raw retained; `aggregate.fold`'s `unknownEvents` counter increments; this is exactly why P1's parser shipped complete rather than deferred (§8.7's own stated rationale). P2 adds NO new parser logic for this case by design — if the real fixture reveals one, the fixture and a pinned "yes, this type exists and is tolerated" test case are the artifact, not a parser change. Flagging explicitly since the task asked to consider this scenario: **the resolution is "already covered," not a new mechanism** — worth stating so the Checker doesn't expect a code diff here. |
+| NEW-4 | Token-cap ceiling breaches WHILE `filesChanged`/`totals` are being computed in `finalize()` (ordering race between the ceiling's async kill and the exit handler's `finalize()` call) | Not actually racy: `armWallClock`/the new token-cap check only ever SET `pendingTerminal` + call `killGroup()` — they never call `finalize()` directly (unchanged from P1's existing wall-clock pattern); `finalize()` is called exactly once, from the child's `close` event handler, which reads `pendingTerminal` to decide the final `status`/`stopReason`. P2's token-cap check reuses this exact mechanism, so no new race is introduced — flagging only to confirm this was checked, not because a new safeguard was needed. |
+| NEW-5 | `derive.timelineRows` recomputing from the full event list on every batch (§13.1's flagged A12) becomes visibly janky on a very long/verbose run (thousands of events) | Not resolved in this plan — flagged as A12 (§13.9) for the Checker/QA to watch for during J12 (the real dogfood run); if observed, the fix is an incremental-diff variant of `timelineRows` (append-only for new events since the last call) rather than a full recompute, deferred until a real perf problem is demonstrated rather than speculatively built. |
+
+### 13.6 Test plan
+
+See `docs/loops/graph-execution-realtime-testplan.md` — new §"P2 additions" appended below the
+existing content (nothing overwritten). Summary of what's added: `aggregate.test.ts` roll-up
+invariant against BOTH fixtures (simple + the new real subagent one) plus the synthetic/duplicate-
+usage fixtures already stubbed in §0.1/§1.3; `pricing.test.ts`; `derive.test.ts`; a `run-ceilings.test.ts`
+token-cap case (already stubbed at §3.9#2, now concretely specified against the fold-wired
+`runManager`); a NEW `run-gitNumstat.test.ts` (integration); manual web journey items J12–J16
+(already stubbed in the existing testplan, now cross-referenced to the concrete components this
+plan names) plus 3 new manual checks for the degraded-telemetry chip's TWO distinct trigger copies
+and the token-cap ceiling's summary presentation.
+
+### 13.7 Explicit non-goals (Checker: flag if found in the P2 diff)
+
+- **No `RunSettingsSection` / Settings→Execution editor** (F7 — P3). Verify `[change]`/`[Adjust
+  ceilings]` links render inert (no navigation, no form) in the P2 build.
+- **No 🕘 history popover / `PastRunBanner` / read-only past-run overlay** (P3). `runSummary`/
+  `filesChanged`/`totals` being computed and PERSISTED in P2 is deliberately reusable by P3's history
+  feature later — but P2 must not build the history UI itself.
+- **No R8 full reattach choreography beyond what P1 already shipped** (basic bar+tail resume). P2's
+  F5 behavior is UNCHANGED from P1 except that `nodeRunData`/`timeline` now populate correctly on
+  reattach too, because `foldState` fast-forwards through the SAME backfilled events P1's reattach
+  already replays — this is a natural consequence of wiring `fold` into `applyEvents`, not new
+  reattach logic.
+- **No new RPC method.** If the P2 diff adds one (e.g. a tempting `getRunSummary` RPC), that's scope
+  creep against this plan's explicit "no new RPC surface for telemetry" decision (§13.1) — flag it.
+- **No change to the SSE wire protocol, seq-dedup contract, or poll-fallback logic.** All of P1's
+  `run-sse.test.ts`/`run-getRunEvents.test.ts` assertions must remain green UNCHANGED.
+
+### 13.8 Flaws / risks found in THIS plan (not treated as infallible)
+
+- **Risk R1 — pricing table staleness.** `MODEL_PRICING`'s prefix-match fallback is a maintenance
+  burden the moment Anthropic ships a new model family (already flagged as A6 in §8.9 for the
+  overall feature; this plan's addition is the concrete mechanism — prefix match rather than exact
+  string — which trades "silently wrong price for a truly novel family" for "at least SOME price for
+  a dated variant of a known family." Accepted trade, not eliminated.
+- **Risk R2 — `derive.timelineRows`'s full-recompute-per-batch approach (§13.1, flagged NEW-5/A12)**
+  is the one place this plan consciously defers a known-possible perf problem rather than solving it
+  preemptively. This is a judgment call the Checker should explicitly bless or reject, not a silent
+  omission — flagging loudly here rather than only in the file-list table.
+- **Risk R3 — the F6 degraded-check's tolerance band (§13.1's "±1 token per model") is a GUESS**, not
+  independently verified against real background-model behavior across multiple CLI versions (only
+  ONE real fixture, `fixture-simple.ndjson`, has ever been observed, and it has exactly one
+  background-model entry). If /build's real subagent fixture recording (§13.3) reveals a background-
+  model delta that ISN'T a clean token-for-token match (e.g. the CLI rounds, or background-model
+  token counts appear in `modelUsage` but shifted by some fixed overhead), this tolerance may need
+  widening — flagged so nobody treats "±1" as load-bearing precision rather than an initial, testable
+  guess subject to revision once the real fixture exists.
+- **Risk R4 — `gitNumstat`'s untracked-file ± omission** (§13.1) means the FILES CHANGED summary
+  table will show new files with no `+N −0` counts, which is a slightly weaker guarantee than the
+  design mock implies is possible for SOME rows (the mock shows `+142 −3` for a modified file and no
+  counts for an added file — so this actually MATCHES the mock exactly; flagging only to confirm this
+  was a deliberate reading of the wireframe, not an oversight, since a first glance at "files changed
+  via git" might expect ± everywhere).
+- **Self-review note**: the §8 PLAN (my own prior authorship) is generally sound for P2's scope, but
+  one omission is worth naming rather than silently patching: §8.1's `derive.ts` entry described
+  `timelineRows`/`runSummary` at a high level without addressing HOW the F6 degraded check's
+  "expected background-model delta" would actually be computed, or that `derive.timelineRows` would
+  need decisions about incremental-vs-full recompute — those are genuine gaps in the original PLAN
+  that this P2 pass had to resolve, not just "implement," and R2/R3 above are flagged accordingly as
+  open judgment calls rather than treated as already-settled by §8's letter.
+
+### 13.9 Trade-offs & assumptions (P2 additions to §8.9's table)
+
+| # | Decision / assumption | Why / risk |
+|---|---|---|
+| A11 | No new RPC method for telemetry — aggregation is 100% client/daemon-local over the existing event stream | Smallest surface, preserves "one reducer, numbers can't drift" (A2); a `getRunSummary` RPC would be redundant with recomputing from already-fetched events and would risk a THIRD place the roll-up math could diverge |
+| A12 | `derive.timelineRows` recomputes from the full event list on every new batch rather than an incremental diff | Simplicity over premature optimization; flagged (NEW-5/R2) for the Checker/QA to watch during the real dogfood run (J12) — promote to incremental only if jank is actually observed |
+| A13 | `gitNumstat` invoked ONLY at terminal (`finalize()`), never mid-run | Avoids racy/noisy mid-run diffs against a tree the agent is actively mutating; the summary screen is the only P2 consumer of files-changed data anyway |
+| A14 | Pricing table uses family-prefix matching, not exact model-string matching | Dated model releases (e.g. `-20251001` suffixes) would otherwise silently return `undefined` for every dated variant of a known family; accepted staleness risk documented as R1 |
+| A15 | F6's degraded-mismatch tolerance (±1 token/model) is a first-pass guess pending the real subagent fixture | Better to ship a testable, revisable number than block P2 on perfect CLI-behavior certainty; flagged as R3 for post-fixture-recording review |
+
+## 14. BUILD — P2 implementation notes (2026-07-15, feature-builder)
+
+> Implements §13's PLAN in full, including recording the REAL subagent fixture (§13.3) — it was
+> possible in this sandboxed environment (the `claude` 2.1.187 CLI is installed and authenticated),
+> so this is NOT a blocking gap. All findings from the real recording are documented below since two
+> of them are genuine deviations from §13's pre-recording assumptions that the parser/aggregator had
+> to absorb.
+
+### 14.1 Real subagent fixture — recorded (not blocked)
+
+- Recorded via a scratch repo (`/tmp/.../scratchpad/probe-repo`, never the Symbion repo root) with a
+  throwaway `.claude/commands/probe.md` instructing "dispatch the general-purpose subagent via the
+  Task tool for a trivial task, reply pong" — exactly the §13.3 process. Command:
+  `claude -p "/probe do something trivial" --output-format stream-json --verbose --permission-mode
+  acceptEdits > fixture-subagent.ndjson`. Real tokens spent (~$0.32 total across the outer + inner
+  session per the two `result` events) — a one-time deliberate cost, not a recurring test cost.
+- Stored at BOTH paths per §13.3: `docs/loops/graph-execution-realtime-fixture-subagent.ndjson` and
+  `packages/core/test/fixtures/run/fixture-subagent.ndjson` (18 lines).
+- **Two real-world deviations from §13's pre-recording assumptions, both absorbed by the parser/
+  aggregator (not treated as blockers, since NEW-3 already anticipated "the real fixture will reveal
+  something new" as an expected, already-covered outcome for unknown event TYPES — these two are
+  additionally about known event SHAPES needing a field-location fix):**
+  1. **The dispatch tool is named `Agent`, not `Task`** in this CLI version/mode (an async agent-
+     launch tool). `aggregate.ts`'s dispatch-detection (`part.tool === "Task" || part.tool === "Agent"`)
+     and `derive.ts`'s timeline dispatch-row detection were written to accept both from the start,
+     informed by this recording — not a post-hoc patch.
+  2. **The dispatched subagent's name (`subagent_type: "general-purpose"`) arrives as a TOP-LEVEL
+     field on the assistant `message` event itself** (sibling of `parent_tool_use_id`), not nested
+     inside the dispatching `tool_use`'s `input.subagent_type` as STATE §13.1 originally assumed.
+     `parseStreamJson.ts` now reads BOTH shapes defensively: `topLevelSubagentType` (new field on the
+     `message` RunEvent variant, the VERIFIED-real one) plus the original `input.subagent_type` nested
+     read (kept for a legacy/future shape, never removed). `aggregate.fold`'s dispatch-name resolution
+     backfills from `topLevelSubagentType` when the dispatching tool_use's own subagentType was absent.
+  3. **The transcript contains an async two-session shape**: the `Agent` tool launches a background
+     sub-session (`task_started`/`task_updated`/`task_notification` system events) that reports back
+     with its OWN `result` + a SECOND `system/init` frame later in the same file. This is NOT a new
+     parser mechanism (NEW-3's stated resolution: unknown `system/*` subtypes fall through to
+     `unknown`, already covered) — `parseStreamJson.test.ts`'s new subagent-fixture describe block
+     pins that a second `init` and four new `unknown`-typed system subtypes parse without throwing.
+
+### 14.2 Files changed
+
+**`packages/core/src/run/`**
+- `pricing.ts` (NEW) — `MODEL_PRICING` (family-prefix keyed) + `estimateCostUsd` + `reconcileToTotal`
+  (pro-rata-by-fresh-token-share fallback for the all-unknown-model degenerate case).
+- `aggregate.ts` (NEW) — `initRunState`/`fold`/`rollup`/`freshOf`. Dedup by `messageId` per actor (F5);
+  seq-guard no-op (same object reference) below `state.lastSeq`; `rollup` resolves dispatch-name to
+  agent/unrecognized buckets, order-independent by construction (attribution keys off
+  `parentToolUseId` alone).
+- `derive.ts` (NEW) — `timelineRows` (pure projection over events+state) and `runSummary` (perNode /
+  totals / filesChanged / finalMessage / stderrTail / stopReason / degraded). `computeDegraded`'s F6
+  cross-check compares the fold's own `"main"` actor bucket DIRECTLY against `result.usage` (± the
+  ±1-token tolerance) — see 14.3 for why this differs from §13.1's originally-worded subtraction.
+- `events.ts` (MODIFIED, additive) — `message` RunEvent variant gains optional `topLevelSubagentType`.
+- `parseStreamJson.ts` (MODIFIED) — reads the top-level `subagent_type` field into
+  `topLevelSubagentType` (14.1#2); dispatch tool_use detection elsewhere already tolerant.
+- `test/run/{aggregate,pricing,derive}.test.ts` (NEW), `test/run/parseStreamJson.test.ts` (extended
+  with a real-subagent-fixture describe block), `test/fixtures/run/{fixture-subagent,
+  fixture-rollup-synthetic,fixture-duplicate-usage}.ndjson` (NEW — subagent is the REAL recording;
+  the other two are hand-written per testplan §0.1's exact spec).
+- `src/index.ts` — barrel exports for `pricing.js`/`aggregate.js`/`derive.js`.
+
+**`packages/rpc-types/src/index.ts`** — additive re-exports: `FourWay`, `RunState`, `RunSummary`,
+`TimelineRow` (following the established precedent of re-exporting core shapes rather than
+re-declaring them, per §13.1).
+
+**`apps/daemon/src/`**
+- `git/status.ts` — **new** `gitNumstat(repoPath): FileChange[] | "unavailable"` per §13.1 exactly
+  (porcelain-derived status classification + untracked-as-"A"-no-±, never throws). **Also fixes a
+  pre-existing P1 bug found while building this**: `gitStatus()`'s `changedFiles` parsing did
+  `.trim()` the WHOLE porcelain line BEFORE `.slice(3)`, which silently ate the first 1-2 characters
+  of the filename for any status row with a leading space (e.g. a plain modified-file row ` M
+  README.md` → wrongly returned `"EADME.md"`). This was invisible in P1 because the only existing
+  test of `changedFiles` used an untracked (`?? file`, no leading space) row, which happened to still
+  work under the buggy trim-then-slice. P2's `preDirty` cross-reference (matching `filesChanged`
+  entries against `gitBefore.changedFiles` by exact path) is the first real consumer that needed
+  EXACT paths for modified files too, and failed a new test until fixed. Fix: filter blank lines on
+  the raw (untrimmed) line, then slice+trim each line individually. **Flagging for the Checker**:
+  this is a behavior change to an existing P1 function outside this plan's original file list — it
+  was necessary (P2's own acceptance criterion depends on it) but is worth an explicit look since it
+  touches `gitStatus()`'s output for every dirty-tree preflight check across the whole feature, not
+  just P2's new code paths. Re-ran the FULL existing daemon suite (392 tests) after the fix — all
+  green, including the pre-existing `rpc.integration.test.ts` T14 gitStatus block.
+- `run/runManager.ts` — `ActiveRun` gains `foldState`/`agentSubagentNames`; `ingestLine()` folds after
+  append+broadcast (unchanged ordering, per §13.1) and checks the token-cap ceiling via the SAME
+  `killGroup()`/`pendingTerminal` machinery as the existing wall-clock timer (`tokenCap:0` = disabled,
+  §6.4#2b); `finalize()` populates `run.filesChanged`/`run.totals` via `gitNumstat` + `core.runSummary`,
+  wrapped in its own try/catch so a numstat/summary failure NEVER blocks writing the terminal
+  `run.json` (NEW-2).
+- `rpc/handlers.ts` — `startRun` resolves `agentSubagentNames` via `extractAgentMentions(artifact.body)`
+  (same traversal preflight already does) and passes it into `runManager.start()`.
+- `test/fixtures/fake-claude.mjs` — **new** `FAKE_CLAUDE_MODE=write-files` (modifies a tracked file +
+  creates one untracked file in cwd) — needed for `run-gitNumstat.test.ts`'s integration coverage;
+  additive, no existing mode changed.
+- `test/run-ceilings.test.ts` — 3 new cases (§6.4#2a/2b/2c: token-cap breach, `tokenCap:0` disables the
+  cap, breach-vs-natural-completion race resolves to exactly one terminal state).
+- `test/run-gitNumstat.test.ts` (NEW) — 5 cases per testplan §6.5 (modified+untracked files, preDirty
+  flag, corrupted-repo degrade-not-die, direct gitNumstat never-throw, non-repo → "unavailable").
+
+**`apps/web/src/`**
+- `lib/run/useRunStore.ts` — adds `foldState`/`allEvents`/`nodeRunData`/`timeline`/`summary`/
+  `degraded`/`degradedReason`/`agentSubagentNames` + `setAgentSubagentNames` action (for the F5
+  cold-reattach path, where the executing artifact's @mentions aren't known until the reattached
+  `run.json` arrives — re-derives `nodeRunData` from the ALREADY-folded state via a fresh `rollup()`
+  call, no re-fold needed). `applyEvents` now folds every accepted event through `core.fold`
+  immediately after the existing seq-dedup (one dedup gate, shared by raw-tail and token math, per
+  §13.1). `computeTerminalSummary` (new) runs `core.runSummary` on both the SSE "state" terminal
+  transition AND the poll-fallback's terminal branch — both call sites now covered (P1 only had the
+  poll-fallback path stop timers; this adds the summary computation to both).
+- `components/graph/NodeTokenBadge.tsx` (NEW), `components/run/TokenBreakdownCard.tsx` (NEW),
+  `components/run/DegradedTelemetryChip.tsx` (NEW), `components/run/RunTimelinePanel.tsx` (NEW —
+  Feed/Raw/Summary tabs, filter chips, row expand, follow/pause; Raw tab reuses `RunLogTail`
+  verbatim as its body, per §13.0's explicit instruction not to delete/rewrite it),
+  `components/run/RunSummarySection.tsx` (NEW — cost-by-node, files-changed, final message, stderr
+  tail; `[Adjust ceilings]`/`[change]` rendered INERT per F7/§13.7 — no `onClick`, `disabled` where
+  applicable).
+- `components/graph/CommandNode.tsx` / `AgentNode.tsx` — consume `badge`/`runPulseKey`; agent nodes
+  get `runStatus` ("working"/"settled"), an inline ×N invocation counter, and their first-ever token
+  badge; both get the "lock-in" 300ms flash keyframe on their respective active/working→done/settled
+  transition, plus a SEPARATE feed-row-click pulse (re-fires the existing `countLockIn` keyframe when
+  `runPulseKey` changes).
+- `components/graph/AnimatedEdge.tsx` — `AnimatedEdgeData.runFlow` widened to `"off"|"flowing"|
+  "settled"` (a genuine type change from P1's 2-value field, per §13.1's explicit flag); dash-flow
+  animation (`animate-dashFlow`) while flowing; 60%-opacity tint while settled.
+- `DependencyGraph.tsx` — additive: passes `nodeRunData`/`degraded` into the existing node/edge memo;
+  swaps the mounted panel from `RunLogTail` to `RunTimelinePanel`; auto-morphs the panel to the
+  Summary tab on the mission's terminal transition (a ref-tracked one-shot effect, not a forced
+  override of a user's own Feed/Raw choice mid-run); wires node-click → feed filter and feed-row-click
+  → node pulse (both directions, store-mediated per design §0's cross-highlight decision);
+  `agentSubagentNames` is supplied by `RunDialog` at `startRun()` time (the natural place — it already
+  has the command artifact) and by a small reattach-only effect here for the F5 cold-load path.
+- `tailwind.config.ts` — adds the `dashFlow`/`countLockIn` keyframes+animations design §7 proposed but
+  P1 never shipped (P1 only shipped `glowPulse`). Both collapse under the existing global
+  `prefers-reduced-motion` block (a universal `*` selector — no new media-query entry needed).
+
+### 14.3 Deviations from §13's letter (flagged, not silent)
+
+- **F6 degraded-check math corrected from §13.1's literal wording.** §13.1 said: "assert
+  `foldTotal - expectedBackgroundDelta ≈ result.usage main fresh`" (i.e. subtract the background delta
+  FROM the fold before comparing). Building + testing against the REAL `fixture-simple.ndjson` proved
+  this arithmetic wrong: background-model token usage (the haiku 505in/11out entry in `modelUsage`)
+  NEVER appears inside any `assistant` event's own `usage` block — it is invisible to the parser/fold
+  entirely, visible ONLY via `result.modelUsage`. So the fold's `"main"` actor bucket already equals
+  `result.usage` almost exactly on a healthy run, with NOTHING to subtract; subtracting
+  `expectedBackgroundDelta` from it (as literally written) produces a manufactured false-positive
+  mismatch on every healthy run (confirmed by a failing test during development — see
+  `derive.test.ts` #3, which now passes). **Implemented instead**: direct comparison
+  `mainActorUsage vs result.usage` (± the tolerance), with `expectedBackgroundDelta` kept in the code
+  ONLY as an explanatory comment for future maintainers, not as a term in the actual formula. Flagged
+  per CLAUDE.md's "call out anything unsure about" — the Checker should independently verify this
+  reasoning against the real fixture's numbers rather than trust the docstring.
+- No other deviations from §13's file list, data flow, or non-goals checklist.
+
+### 14.4 Assumptions for the Checker to verify independently
+
+- **A16 (new)**: the `Agent`-vs-`Task` tool name and the top-level `subagent_type` field placement
+  (14.1) are correct for CLI 2.1.187 in THIS installation's exact mode/config; a different CLI
+  version or a genuinely synchronous `Task` dispatch (as opposed to the async `Agent` launch this
+  recording happened to produce) might still emit the originally-assumed nested
+  `input.subagent_type` shape — both are read defensively, but only the top-level path has been
+  observed for real. Worth a second real recording across a synchronous dispatch if one is easy to
+  produce, to broaden fixture coverage beyond this one async-agent shape.
+  Verify: `packages/core/src/run/parseStreamJson.ts`'s assistant-event branch,
+  `packages/core/test/fixtures/run/fixture-subagent.ndjson` line 12.
+- **A17 (new)**: the `gitStatus()` porcelain-parsing bugfix (14.2) is scoped narrowly (filter-then-
+  slice-then-trim) and re-verified against the full existing daemon suite, but it changes the exact
+  string returned for every existing `changedFiles` entry system-wide (previously-passing untracked-
+  file paths were ALSO subtly wrong — trimmed correctly by luck, but the fix makes the trimming
+  explicit and correct for all cases rather than accidental for one case). Recommend the Checker
+  spot-check any OTHER caller of `gitStatus().changedFiles` beyond this feature (e.g. the dirty-git
+  preflight warning's file COUNT is unaffected since it only reads `.length`, but any future caller
+  reading exact paths should be re-verified).
+- **A11–A15 (STATE §13.9)**: all implemented as specified; A15's ±1-token tolerance is now backed by
+  ONE real fixture (`fixture-simple.ndjson`, a single background-model entry with a clean, exact
+  match — no rounding/overhead observed) — still a single data point, R3's "guess pending more real
+  data" caveat stands even though the recording in 14.1 happened; the SUBAGENT fixture's `result`
+  events don't exercise F6's degraded-check path meaningfully (both are internally consistent by
+  construction, not injected with a synthetic mismatch), so A15/R3 is NOT yet more validated than
+  before — only `fixture-simple.ndjson`'s single background-model delta has been checked end-to-end.
+- **Deferred to P3 (confirmed out of scope, not accidentally built)**: `RunSettingsSection`/Settings→
+  Execution editor (F7), 🕘 history popover, `PastRunBanner`, any new RPC method. Manually verified:
+  grepped the diff for a tempting `getRunSummary`-style RPC addition — none introduced;
+  `[Adjust ceilings]`/`[change]` links render as disabled/no-op buttons only.
+- **Not independently re-verified by the Maker (Checker should)**: the visual/motion claims (glow
+  timing, pulse choreography, dash-flow speed) were implemented per the design doc's numbers but only
+  checked by reading the code, not by an actual browser/chrome-devtools visual pass — that's /qa's
+  job per this feature's own testplan (J12–J16, J21–J23), not something this BUILD pass ran.
+- **`derive.timelineRows`'s incremental-vs-full-recompute** stays a full recompute per batch, exactly
+  as A12 specified — not revisited, since no perf problem was observed in the automated test suite
+  (which only exercises small fixtures); a real dogfood run's jank-or-not is /qa's J12 to judge.
+
+### 14.5 Build/test verification
+
+- `npm run build` (root, all 4 workspaces): **clean** — `@symbion/core`, `@symbion/rpc-types`,
+  `@symbion/daemon` (`tsc`), `@symbion/web` (`next build`, incl. type-check + lint-adjacent
+  "Linting and checking validity of types" step) all pass with zero errors.
+- `npx vitest run` (whole repo, all 3 projects): **618/618 passed**, 63 test files, 0 failures.
+  - `packages/core`: includes the new `aggregate.test.ts` (12), `pricing.test.ts` (6),
+    `derive.test.ts` (5), plus `parseStreamJson.test.ts` extended to 13 (4 new real-subagent-fixture
+    cases). AC-RUN-2's roll-up invariant passes against BOTH the hand-written synthetic fixture
+    (exact 100k/130k · 30k/30k) and the REAL subagent fixture (non-zero unrecognized bucket when the
+    agent set doesn't match, correct attribution when it does).
+  - `apps/daemon`: all 392 pre-existing tests still green UNCHANGED (P1 contracts intact), plus the 3
+    new token-cap cases in `run-ceilings.test.ts` and the 5 new `run-gitNumstat.test.ts` cases (37
+    P2-net-new daemon assertions across those two files).
+  - `apps/web`: all 4 pre-existing test files still green (18 tests) — no new web unit tests were
+    added in this pass (the new components are presentation-heavy; `RunTimelinePanel`/
+    `RunSummarySection`/badge components were verified via `next build`'s type-check only, not
+    component tests — **flagging this as a gap for the Checker**: /review may want at least a smoke
+    test for `RunTimelinePanel`'s tab-switching and filter logic, since CancelControl.test.tsx shows
+    the repo's convention for testing run/ components exists and wasn't extended here).
+- Core purity (AC-RUN-11): `grep -rn "node:" packages/core/src/run/` → zero matches;
+  `grep -rn "from \"fs\"\|require(" packages/core/src/run/` → zero matches. Confirmed clean.
+
+## 15. REVIEW — P2 (2026-07-15)
+
+Three independent Checkers reviewed §14's implementation in parallel: `code-reviewer`, `architect`,
+and `security-reviewer` (triggered per CLAUDE.md — this diff touches `apps/daemon/src/git/status.ts`
+and `apps/daemon/src/rpc/handlers.ts`, both daemon filesystem/git-execution + RPC surface).
+
+**All three verdicts: PASS.**
+
+Each Checker independently re-verified (not took on faith) the three things the Maker self-disclosed
+in §14:
+
+1. **The `gitStatus()` porcelain-parsing bugfix** (outside §13's declared file list) — `code-reviewer`
+   reproduced the bug standalone (`" M README.md"` → old code wrongly returned `"EADME.md"`, new code
+   correctly returns `"README.md"`); confirmed the only other caller (`preflight.ts`) reads only
+   `.length`, unaffected; `architect` independently judged fixing it here (rather than filing
+   separately) was the right call, since P2's own `preDirty` check is the first real consumer needing
+   exact paths. `security-reviewer` confirmed the fix changes no trust boundary (still read-only,
+   still argv-array `execFileSync`).
+2. **The corrected F6 degraded-telemetry formula** (§13.1's original subtraction-based formula vs. the
+   Maker's direct-comparison replacement) — both `code-reviewer` and `architect` independently
+   extracted the real fixture's actual JSON and confirmed the background model's usage never enters
+   any `assistant`/`result` usage block, meaning §13.1's original formula would have produced a
+   false-positive mismatch on every healthy run. **`architect` explicitly flagged this as a genuine
+   flaw in its own prior §13.1 authorship**, not a defense of the original spec — the correction
+   preserves F6's actual intent (a real mismatch still trips the degraded chip).
+3. **The two real-fixture-driven parser deviations** (`Agent` not `Task`; top-level `subagent_type`) —
+   `code-reviewer` parsed the real fixture directly and confirmed both the originally-assumed shape
+   AND the newly-discovered real shape are handled defensively in `parseStreamJson.ts`/`aggregate.ts`,
+   not just the one actually observed.
+
+**Security review (targeted, since this diff touches daemon fs/RPC surface)**: PASS. Command
+injection: clean (argv-array `execFileSync` throughout, `repoPath` never client-supplied — flows
+server-side from the registered project path). RPC surface: confirmed the `handlers.ts` `+8` lines
+are wiring into the *existing* `startRun` handler, not a new RPC method (matches §13.7's non-goals).
+Destructive-write safety: clean (only read operations plus the pre-existing atomic `writeRunJson`).
+One non-blocking finding: `gitNumstat()`'s two sequential `execFileSync` calls block the daemon's
+single event loop for up to ~20s on a slow/large diff — recommend converting to async `execFile`
+(mirroring `preflight.ts`'s existing pattern) as a follow-up, not a ship-blocker.
+
+**Non-blocking findings carried forward (both `code-reviewer` and `architect` agree, neither blocks
+PASS)**:
+- No web unit/smoke tests were added for the new presentation components (`RunTimelinePanel`,
+  `RunSummarySection`, badge components) — verified only via `next build`'s typecheck. Acceptable
+  since all aggregation math lives in `packages/core` (fully unit-tested), but `CancelControl.test.tsx`
+  establishes a repo convention for testing `components/run/*` that wasn't extended here. Recommend a
+  follow-up smoke test for `RunTimelinePanel`'s tab-switching/filter-chip logic before or shortly
+  after `/qa`.
+- `TimelineRow.unattributed` is declared and consulted by `RunTimelinePanel`'s warning styling but
+  never actually set by `derive.timelineRows` — a small loose end (pre-existing since P1, not
+  introduced here) worth a follow-up ticket, not a regression.
+- Risk R3 (±1 token tolerance validated against only one real fixture's single background-model
+  delta) remains open per §14's own honest accounting — track for a future CLI-version fixture
+  recording.
+- The event-loop-blocking `execFileSync` pattern in `gitNumstat()` (security review, above).
+
+**Verdict: PASS.** No 🔴/🟠 blockers from any of the three reviews.
+
+## 16. QA — SKIPPED (user explicit decision, 2026-07-15)
+
+Per `/ship`'s gate ("only ship after both `/review` PASS and `/qa` PASS"), a skip must be explicitly
+recorded with the residual risk named, not silently proceeded past. The user explicitly chose to
+skip the live QA pass for this P2 shipment (confirmed directly, not inferred) — shipping on
+`/review`-only: all three independent Checkers (code-reviewer, architect, security-reviewer) PASS,
+618/618 automated tests green, `npm run build` clean.
+
+**What this skip means was NOT verified**: no live browser/dev-server pass exercised the actual P2
+UI journey (token badges rendering correctly on real node positions, the timeline panel's Feed/Raw/
+Summary tab-switching, the degraded-telemetry chip actually appearing under a real mismatch, the
+summary screen's cost-by-node/files-changed/final-message rendering against a real completed run).
+Per the interactive-graph feature's own learnings entry ("a UI component can be 100% correct in
+isolation... and still be effectively unusable because the path to reveal/reach it is broken"), this
+is a real, named gap — automated tests + 3 independent code/architecture/security reviews do not
+substitute for driving the actual browser UI.
+
+**Residual risk accepted, named explicitly**:
+- The new web presentation components (`RunTimelinePanel`, `RunSummarySection`, `NodeTokenBadge`,
+  `TokenBreakdownCard`, `DegradedTelemetryChip`) have zero unit/smoke test coverage (§15's carried-
+  forward finding) AND were never manually exercised live in this shipment — this is the layer with
+  the least verification of any part of this feature.
+- Risk R3 (±1 token degraded-mismatch tolerance validated against only one real fixture) remains
+  untested against a second real run.
+- The event-loop-blocking `gitNumstat()` pattern (security review, §15) has not been observed under
+  real concurrent-RPC load, only reasoned about.
+
+**Recommendation**: the next time the Symbion web app is run locally against a real project with an
+active run (e.g. via `/run` or manual `npm run dev` + a live Execute), do a quick pass on exactly the
+P2 surfaces named above before treating this feature as fully proven — this is the natural next
+live-verification moment, not a new obligation.
+
+## 17. Done — P2
+
+**Shipped 2026-07-15** via `/review`-only (QA explicitly skipped, residual risk recorded in §16).
+
+**What was verified**: `packages/core` pricing/aggregate/derive logic (F4/F5/F6 all correctly
+implemented, one genuine flaw in the original §13.1 degraded-telemetry formula found and fixed
+during build, independently confirmed correct by 2 Checkers against real fixture data); the real
+subagent-fixture recording (revealed 2 real deviations from pre-build assumptions, both handled
+defensively); `gitNumstat` + token-cap ceiling wiring in the daemon (security-reviewed clean); the
+full P2 web surface (token badges, breakdown card, per-agent lighting, edge flow, timeline panel,
+summary screen, degraded-telemetry chip) built additively over P1 without regressing its contract.
+618/618 automated tests green; `npm run build` clean; 3 independent Checkers (code-reviewer,
+architect, security-reviewer) all PASS.
+
+**What was NOT verified** (accepted risk, see §16): live browser exercise of the new UI surfaces;
+component-level tests for the new presentation components.
+
+**Unblocks**: `docs/loops/self-coded-graph-migration-STATE.md`'s hard precondition is now half-
+cleared — P2 has shipped. P3 (history/reattach/settings) is still required before that migration's
+own `/plan` can proceed.

@@ -11,6 +11,7 @@
 import type {
   CanonicalArtifact,
   DiffFile,
+  FourWay,
   PersistedRunEvent,
   ProjectRunConfig,
   ProjectSettings,
@@ -19,9 +20,12 @@ import type {
   RenderedFile,
   RunInfo,
   RunListItem,
+  RunState,
   RunStatus,
+  RunSummary,
   TargetId,
   TemplateListItem,
+  TimelineRow,
 } from "@symbion/core";
 
 export interface PingParams {}
@@ -743,6 +747,7 @@ export interface RpcErrorBody {
 export type {
   CanonicalArtifact,
   DiffFile,
+  FourWay,
   PersistedRunEvent,
   ProjectRunConfig,
   ProjectSettings,
@@ -751,7 +756,10 @@ export type {
   RenderedFile,
   RunInfo,
   RunListItem,
+  RunState,
   RunStatus,
+  RunSummary,
   TargetId,
   TemplateListItem,
+  TimelineRow,
 };

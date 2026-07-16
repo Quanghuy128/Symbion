@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { NodeMenu } from "./NodeMenu";
 import { Tooltip } from "@/components/ui/tooltip";
+import { NodeTokenBadge, type NodeTokenBadgeProps } from "./NodeTokenBadge";
 
 export interface CommandNodeData {
   label: string;
@@ -33,6 +34,13 @@ export interface CommandNodeData {
   runStatus?: "idle" | "starting" | "active" | "done" | "error" | "cancelled";
   /** false → 35% dim, no hover (non-participant during a mission). Defaults true (no run). */
   runParticipant?: boolean;
+  /** P2 (design §3.5/§4): roll-up token badge (own + Σ agents). Undefined
+   *  outside a run OR before the first usage event. */
+  badge?: NodeTokenBadgeProps;
+  /** P2: bumped by DependencyGraph on a timeline feed-row click for this
+   *  node's actor — re-keying replays the one-shot pulse once (design §5's
+   *  "feed row click pulses the node"). */
+  runPulseKey?: number;
 
   /** @xyflow/react v12's `NodeProps<Node<T>>` requires `data` to satisfy
    *  `Record<string, unknown>` — an index signature, no shape change. */
@@ -60,10 +68,40 @@ export function CommandNode({ data }: NodeProps<Node<CommandNodeData>>) {
   const isRunError = data.runStatus === "error";
   const isRunCancelled = data.runStatus === "cancelled";
 
+  // P2 (design §3.5): one-shot "lock-in" flash the instant this node
+  // transitions from active -> done (was live, now settled) — the previous
+  // runStatus is tracked in a ref so this only fires on the ACTIVE->DONE edge,
+  // never on every render while done.
+  const wasActiveRef = useRef(false);
+  const [lockIn, setLockIn] = useState(false);
+  useEffect(() => {
+    if (isRunActive) {
+      wasActiveRef.current = true;
+    } else if (isRunDone && wasActiveRef.current) {
+      wasActiveRef.current = false;
+      setLockIn(true);
+      const t = window.setTimeout(() => setLockIn(false), 300);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [isRunActive, isRunDone]);
+
+  // P2: feed-row-click -> node pulse (design §5). Re-fires the one-shot
+  // `pulse` keyframe whenever runPulseKey changes (a new key = a new click).
+  const [rowPulse, setRowPulse] = useState(false);
+  const lastPulseKeyRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (data.runPulseKey === undefined || data.runPulseKey === lastPulseKeyRef.current) return;
+    lastPulseKeyRef.current = data.runPulseKey;
+    setRowPulse(true);
+    const t = window.setTimeout(() => setRowPulse(false), 900);
+    return () => window.clearTimeout(t);
+  }, [data.runPulseKey]);
+
   return (
     <div
       className={`group relative rounded-nav-item px-3 py-2 text-[12.5px] font-medium text-white transition-opacity ${
-        isRunActive ? "animate-glowPulse" : ""
+        isRunActive ? "animate-glowPulse" : lockIn || rowPulse ? "animate-countLockIn" : ""
       }`}
       style={{
         background: "#818cf8",
@@ -96,6 +134,8 @@ export function CommandNode({ data }: NodeProps<Node<CommandNodeData>>) {
       />
 
       <span className="pr-4">{data.label}</span>
+
+      {data.badge && <NodeTokenBadge {...data.badge} label={data.label} />}
 
       {/* Unlinked-command chip (design §5 O) — warning, never danger. */}
       {data.unlinked && (

@@ -5,11 +5,26 @@
  * Owns the EventSource, seq-dedup, connection state, F5 attach-on-mount, and
  * client-side elapsed ticks from startedAt.
  *
- * P1 scope: NO token math (aggregate is P2). The store tracks lifecycle
- * (RunInfo), the raw event tail (for the P1 log panel), the set of run-active
- * node ids (glow), and connection state.
+ * P1 scope: NO token math. P2 (STATE §13.1's useRunStore.ts entry) adds the
+ * aggregation layer on top of the SAME event stream: folds every
+ * PersistedRunEvent through `core.fold` (the SAME reducer the daemon uses for
+ * its own token-cap check, A2/A11 — numbers cannot drift), derives
+ * `nodeRunData` (roll-up per node), `timeline` (Feed tab rows), `summary`
+ * (Summary tab, terminal-only), and `degraded`. Nothing here touches the SSE
+ * wire protocol, the seq-dedup contract, or the poll-fallback logic P1 shipped.
  */
 import { create } from "zustand";
+import {
+  fold,
+  initRunState,
+  rollup,
+  runSummary as coreRunSummary,
+  timelineRows as coreTimelineRows,
+  type FourWay,
+  type RunState,
+  type RunSummary,
+  type TimelineRow,
+} from "@symbion/core";
 import type {
   GetRunEventsParams,
   GetRunEventsResult,
@@ -39,12 +54,21 @@ export interface RawTailLine {
 
 const RAW_TAIL_CAP = 200;
 
+/** Per-node roll-up view (P2) — the source data for NodeTokenBadge/TokenBreakdownCard. */
+export interface NodeRunData {
+  runStatus?: "idle" | "starting" | "active" | "done" | "error" | "cancelled" | "working" | "settled";
+  ownFresh: number;
+  totalFresh: number;
+  costUsd?: number;
+  breakdown: FourWay & { agents?: FourWay };
+}
+
 interface RunStoreState {
   /** The project the store is currently attached to. */
   projectId: string | null;
   /** Live run metadata (null when no run active/attached). */
   run: RunInfo | null;
-  /** Raw event tail for the P1 log panel (capped). */
+  /** Raw event tail for the P1 log panel (capped) — now the Raw tab's body. */
   rawTail: RawTailLine[];
   connection: RunConnection;
   /** highest seq folded — the dedup key. */
@@ -53,15 +77,41 @@ interface RunStoreState {
   elapsedMs: number;
   /** the artifact id whose command node should glow while active. */
   activeArtifactId: string | null;
+  /** agent names reachable from the executing command (by @mention) — passed
+   *  in by DependencyGraph at attach()/startRun() time (reuses the same Set
+   *  already computed for runParticipantAgentNames, per STATE §13.1). */
+  agentSubagentNames: Set<string>;
+
+  // ── P2: aggregation state (folds the SAME event stream through core.fold) ──
+  /** the folded reducer state (core.RunState) — SAME core.fold as the daemon
+   *  (A2/A11); the store NEVER does token math itself. */
+  foldState: RunState;
+  /** every persisted event seen so far — kept for derive.timelineRows/runSummary
+   *  (a full recompute per batch, A12 — deliberately NOT an incremental diff). */
+  allEvents: PersistedRunEvent[];
+  /** per-node roll-up, keyed by the AGENT NAME for agent nodes, "main" for
+   *  the executing command (DependencyGraph maps "main" -> the active artifact id). */
+  nodeRunData: Map<string, NodeRunData>;
+  timeline: TimelineRow[];
+  summary?: RunSummary;
+  /** true once state.parseErrors > 0 (mid-run) OR the terminal F6 reconcile-
+   *  mismatch check fires (only known at terminal, via `summary.degraded`). */
+  degraded: boolean;
+  degradedReason: "parse-error" | "reconcile-mismatch" | null;
 
   // actions
   preflight: (projectId: string, artifactId: string) => Promise<RunPreflightResult>;
-  startRun: (params: StartRunParams) => Promise<StartRunResult>;
+  startRun: (params: StartRunParams, agentSubagentNames?: Set<string>) => Promise<StartRunResult>;
   cancelRun: () => Promise<void>;
   /** attach to a run (SSE backfill-then-live). F5-reattach owner. */
-  attach: (projectId: string, runId: string, afterSeq?: number) => void;
+  attach: (projectId: string, runId: string, afterSeq?: number, agentSubagentNames?: Set<string>) => void;
   /** on mount: listRuns → auto-attach if a run is active. */
-  attachIfActive: (projectId: string) => Promise<void>;
+  attachIfActive: (projectId: string, agentSubagentNames?: Set<string>) => Promise<void>;
+  /** update the agent-name set AFTER attach (F5 cold-load path: the executing
+   *  artifact/its @mentions aren't known until the reattached run.json
+   *  arrives) — re-derives nodeRunData from the ALREADY-folded state so a
+   *  late-arriving agent set doesn't require re-folding any events. */
+  setAgentSubagentNames: (names: Set<string>) => void;
   detach: () => void;
 }
 
@@ -140,6 +190,14 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
   lastSeq: 0,
   elapsedMs: 0,
   activeArtifactId: null,
+  agentSubagentNames: new Set(),
+  foldState: initRunState(),
+  allEvents: [],
+  nodeRunData: new Map(),
+  timeline: [],
+  summary: undefined,
+  degraded: false,
+  degradedReason: null,
 
   async preflight(projectId, artifactId) {
     return callRpc<{ projectId: string; artifactId: string }, RunPreflightResult>("runPreflight", {
@@ -148,7 +206,7 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
     });
   },
 
-  async startRun(params) {
+  async startRun(params, agentSubagentNames) {
     const result = await callRpc<StartRunParams, StartRunResult>("startRun", params);
     // Attach to the fresh run immediately (backfill + live).
     set({
@@ -158,8 +216,15 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       lastSeq: 0,
       elapsedMs: 0,
       activeArtifactId: params.artifactId,
+      foldState: initRunState(),
+      allEvents: [],
+      nodeRunData: new Map(),
+      timeline: [],
+      summary: undefined,
+      degraded: false,
+      degradedReason: null,
     });
-    get().attach(params.projectId, result.runId, 0);
+    get().attach(params.projectId, result.runId, 0, agentSubagentNames);
     startElapsed(set, get);
     return result;
   },
@@ -170,10 +235,23 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
     await callRpc("cancelRun", { projectId, runId: run.runId });
   },
 
-  attach(projectId, runId, afterSeq = 0) {
+  attach(projectId, runId, afterSeq = 0, agentSubagentNames) {
     stopEventSource();
     stopPolling();
-    set({ projectId, connection: "reconnecting", lastSeq: afterSeq });
+    // afterSeq > 0 => resuming an already-attached run (e.g. an SSE error
+    // handler re-arming the same attach) — keep the existing foldState so a
+    // reconnect never re-folds from scratch; afterSeq === 0 is a FRESH attach
+    // (new run OR F5 reattach's full backfill) and resets fold/timeline/summary.
+    const resetAggregation = afterSeq === 0;
+    set({
+      projectId,
+      connection: "reconnecting",
+      lastSeq: afterSeq,
+      agentSubagentNames: agentSubagentNames ?? get().agentSubagentNames,
+      ...(resetAggregation
+        ? { foldState: initRunState(), allEvents: [], nodeRunData: new Map(), timeline: [], summary: undefined, degraded: false, degradedReason: null }
+        : {}),
+    });
     armPollFallback(set, get, projectId, runId);
 
     const url = `${getDaemonOrigin()}/run-events?projectId=${encodeURIComponent(projectId)}&runId=${encodeURIComponent(runId)}&afterSeq=${afterSeq}`;
@@ -204,6 +282,7 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
           stopPolling();
           stopElapsed();
           set({ connection: "idle" });
+          computeTerminalSummary(set, get, info);
         }
       } catch {
         /* ignore */
@@ -219,7 +298,7 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
     });
   },
 
-  async attachIfActive(projectId) {
+  async attachIfActive(projectId, agentSubagentNames) {
     const { runs, activeRunId } = await callRpc<{ projectId: string }, { runs: unknown[]; activeRunId?: string }>(
       "listRuns",
       { projectId }
@@ -228,16 +307,51 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
     if (activeRunId) {
       // Pull run.json + attach from seq 0 (backfill fast-forwards).
       set({ projectId, activeArtifactId: null });
-      get().attach(projectId, activeRunId, 0);
+      get().attach(projectId, activeRunId, 0, agentSubagentNames);
       startElapsed(set, get);
     }
+  },
+
+  setAgentSubagentNames(names) {
+    const state = get();
+    // Re-derive nodeRunData from the ALREADY-folded state — no re-fold needed
+    // (rollup() is a pure re-derivation over the same foldState).
+    const rolled = rollup(state.foldState, names);
+    const nodeRunData = new Map<string, NodeRunData>();
+    nodeRunData.set("main", {
+      ownFresh: rolled.command.ownFresh,
+      totalFresh: rolled.command.totalFresh,
+      breakdown: mainBreakdown(state.foldState, rolled),
+    });
+    for (const [name, bucket] of rolled.byAgent) {
+      nodeRunData.set(name, {
+        ownFresh: bucket.ownFresh,
+        totalFresh: bucket.totalFresh,
+        breakdown: agentBreakdown(state.foldState, name),
+      });
+    }
+    set({ agentSubagentNames: names, nodeRunData });
   },
 
   detach() {
     stopEventSource();
     stopPolling();
     stopElapsed();
-    set({ run: null, rawTail: [], connection: "idle", lastSeq: 0, elapsedMs: 0, activeArtifactId: null });
+    set({
+      run: null,
+      rawTail: [],
+      connection: "idle",
+      lastSeq: 0,
+      elapsedMs: 0,
+      activeArtifactId: null,
+      foldState: initRunState(),
+      allEvents: [],
+      nodeRunData: new Map(),
+      timeline: [],
+      summary: undefined,
+      degraded: false,
+      degradedReason: null,
+    });
   },
 }));
 
@@ -291,6 +405,7 @@ function startPollLoop(
         stopPolling();
         stopElapsed();
         set({ connection: "idle" });
+        computeTerminalSummary(set, get, result.run);
         return;
       }
     } catch {
@@ -311,14 +426,115 @@ function applyEvents(
   const state = get();
   let lastSeq = state.lastSeq;
   const additions: RawTailLine[] = [];
+  const newEvents: PersistedRunEvent[] = [];
+  let foldState = state.foldState;
   for (const ev of events) {
     if (ev.seq <= lastSeq) continue; // seq-dedup (belt-and-braces over one channel)
     lastSeq = ev.seq;
     additions.push(eventToTail(ev));
+    newEvents.push(ev);
+    // P2: fold every accepted event through the SAME core.fold the daemon
+    // uses (A2/A11) — applied AFTER the seq-dedup check above, so raw-tail
+    // and token accounting share exactly one dedup gate (STATE §13.1).
+    foldState = fold(foldState, ev);
   }
   if (additions.length === 0) return;
   const rawTail = [...state.rawTail, ...additions].slice(-RAW_TAIL_CAP);
-  set({ rawTail, lastSeq });
+  const allEvents = [...state.allEvents, ...newEvents];
+
+  const rolled = rollup(foldState, state.agentSubagentNames);
+  const nodeRunData = new Map<string, NodeRunData>();
+  nodeRunData.set("main", {
+    ownFresh: rolled.command.ownFresh,
+    totalFresh: rolled.command.totalFresh,
+    breakdown: mainBreakdown(foldState, rolled),
+  });
+  for (const [name, bucket] of rolled.byAgent) {
+    nodeRunData.set(name, {
+      ownFresh: bucket.ownFresh,
+      totalFresh: bucket.totalFresh,
+      breakdown: agentBreakdown(foldState, name),
+    });
+  }
+
+  // Mid-run degraded signal (ER-4): parseErrors > 0. The F6 reconcile-mismatch
+  // trigger is terminal-only (needs `result`) — computed in computeTerminalSummary.
+  const midRunDegraded = foldState.parseErrors > 0;
+
+  set({
+    rawTail,
+    lastSeq,
+    foldState,
+    allEvents,
+    nodeRunData,
+    timeline: coreTimelineRows(allEvents, foldState),
+    ...(midRunDegraded && !state.degraded ? { degraded: true, degradedReason: "parse-error" as const } : {}),
+  });
+}
+
+/** Best-effort per-actor model lookup for the breakdown card — aggregate.ts
+ *  doesn't track a per-actor model string, so this reads it off the LAST
+ *  message seen for that actor in foldState's own bookkeeping is unavailable;
+ *  fresh/cache breakdown is exact (comes straight from the actor's FourWay),
+ *  only the $ estimate (not shown per-actor in the node badge, only in the
+ *  terminal summary) would need a model — the live badge shows tokens only. */
+function mainBreakdown(state: RunState, rolled: ReturnType<typeof rollup>): FourWay & { agents?: FourWay } {
+  const main = state.actors.get("main")?.usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const agentsUsage = [...rolled.byAgent.keys()].reduce(
+    (acc, name) => {
+      const bucket = findAgentActorUsage(state, name);
+      return {
+        input: acc.input + bucket.input,
+        output: acc.output + bucket.output,
+        cacheRead: acc.cacheRead + bucket.cacheRead,
+        cacheWrite: acc.cacheWrite + bucket.cacheWrite,
+      };
+    },
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  );
+  return { ...main, agents: agentsUsage };
+}
+
+function agentBreakdown(state: RunState, subagentType: string): FourWay & { agents?: FourWay } {
+  return findAgentActorUsage(state, subagentType);
+}
+
+function findAgentActorUsage(state: RunState, subagentType: string): FourWay {
+  let usage: FourWay = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  for (const [actorKey, actor] of state.actors) {
+    if (actorKey === "main") continue;
+    const dispatch = state.dispatches.get(actorKey);
+    if (dispatch?.subagentType === subagentType) {
+      usage = {
+        input: usage.input + actor.usage.input,
+        output: usage.output + actor.usage.output,
+        cacheRead: usage.cacheRead + actor.usage.cacheRead,
+        cacheWrite: usage.cacheWrite + actor.usage.cacheWrite,
+      };
+    }
+  }
+  return usage;
+}
+
+/** Terminal-only: compute the F6 degraded cross-check + the Summary tab via
+ *  derive.runSummary — the F6 trigger inherently needs `result` (STATE §13.1). */
+function computeTerminalSummary(
+  set: (partial: Partial<RunStoreState>) => void,
+  get: () => RunStoreState,
+  run: RunInfo
+): void {
+  const { foldState, allEvents, agentSubagentNames, degraded, degradedReason } = get();
+  const filesChanged = run.filesChanged ?? "unavailable";
+  const summary = coreRunSummary(foldState, { run, agentSubagentNames, events: allEvents }, filesChanged);
+  set({
+    summary,
+    // Only escalate to reconcile-mismatch if we weren't ALREADY flagged for
+    // parse-error (never conflate the two triggers, per the DegradedTelemetryChip
+    // contract) — a run can only show one chip; parse-error is discovered
+    // first (mid-run) so it takes priority as the recorded reason.
+    degraded: degraded || summary.degraded,
+    degradedReason: degradedReason ?? (summary.degraded ? "reconcile-mismatch" : null),
+  });
 }
 
 function startElapsed(

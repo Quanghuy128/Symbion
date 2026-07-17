@@ -130,7 +130,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
     containerRef,
   });
 
-  const content = useMemo(() => boundingBox(nodes), [nodes]);
+  // STATE §19 (connect-drag SVG clipping fix): fold the live drag cursor into
+  // the bounding box so the SVG edge layer's width/height, the container's
+  // minHeight, and fitView()'s scroll target all expand to keep the ghost
+  // connect-drag line in view, not clipped at the pre-drag node bounds.
+  const content = useMemo(
+    () => boundingBox(nodes, dragConnect ? [dragConnect.cursor] : []),
+    [nodes, dragConnect]
+  );
 
   useImperativeHandle(
     ref,

@@ -213,3 +213,37 @@ convention of numbered J-cases)
 - [ ] No `packages/core` or `apps/daemon` changes in the diff (this migration's own architectural
       boundary per PLAN §9.4) — if the diff touches either, that's architectural drift to flag at
       `/review`.
+
+---
+
+## 4. Addendum — connect-drag SVG clipping fix (STATE §19, 2026-07-17)
+
+Scoped regression-test addition for the bug fixed in STATE §19 (root cause: STATE §18). These tests
+would have caught the original bug (SVG `width`/`height` never grew to include a live drag cursor
+outside the node bounding box).
+
+### Unit (Vitest)
+
+**`apps/web/src/components/graph/graphGeometry.test.ts`** — new cases for `boundingBox`'s extra-points
+parameter:
+
+| ID | Case | Assertion |
+|----|------|-----------|
+| T-2.6 | `boundingBox(nodes, [{x: 900, y: 500}])` where all nodes are within `x:0-460, y:0-140` | `maxX === 900`, `maxY === 500` — box expands to include the extra point past the node bounds |
+| T-2.7 | `boundingBox(nodes, [{x: -200, y: -100}])` — extra point in the negative direction relative to node bounds (`minX`/`minY` currently 0) | `minX === -200`, `minY === -100` — box expands in the negative direction too, not just positive |
+| T-2.8 | `boundingBox(nodes, [])` (default/omitted second arg) | identical output to the pre-fix `boundingBox(nodes)` single-arg call, for the same `nodes` input — confirms zero behavior change on the default path (backward compatibility) |
+| T-2.9 | `boundingBox([], [{x: 50, y: 50}])` — zero nodes, one extra point (defensive/edge case) | returns a box containing that point, not the hardcoded zero-default (`minX/maxX === 50`, not `0`) |
+
+### Component (Vitest + Testing Library, `GraphCanvas.test.tsx`)
+
+| ID | Case | Assertion |
+|----|------|-----------|
+| T-5.9 | **Regression test for the exact bug**: render `GraphCanvas` with 2 nodes whose bounding box is small (e.g. `x:0-160, y:0-40`), start a connect-drag from node `cmd-1`'s source handle (`fireEvent.mouseDown` on `[data-handle-role="source"]` inside `NodeConnectBoundary`), then simulate `mousemove` to a `clientX`/`clientY` FAR outside that bounding box (e.g. equivalent local point `{x: 900, y: 700}`, mocking `containerRef`'s `getBoundingClientRect` as needed to control the local-coordinate translation) | after the rAF-throttled update flushes, query the rendered `<svg>` element and assert its `style.width`/`style.height` (or computed `width`/`height` attrs) are `>= 900`/`>= 700` respectively — i.e., large enough to contain the drag cursor, not clipped to the pre-drag node bounding box (`160+40=200` / `40+40=80`) |
+| T-5.10 | Same setup as T-5.9, then fire `mouseup` (or `Escape`) to end the drag | SVG `width`/`height` shrink back down to the plain node-bounding-box values (no permanent bloat) — assert against the same values `GraphCanvas` would render with `dragConnect` never having been set |
+| T-5.11 | Drag toward negative-x/negative-y local coordinates (cursor moves left/above the existing node bounding box, not just right/below) | ghost `<path>` element's `d` attribute is present and its endpoint matches the negative cursor coordinates (smoke-level: confirms the code path doesn't throw/silently clamp negative extra-points to 0 in `boundingBox`) — full clipping-visual confirmation is a live-browser QA concern (J27 below), since jsdom does not enforce real SVG clip-to-viewport rendering the way a browser does |
+
+### E2E / live-browser QA journey (chrome-devtools, added to §2's journey table)
+
+| ID | Journey | Confirm |
+|----|---------|---------|
+| J27 | Connect-drag ghost line stays visible during a long drag, in all 4 directions | Start a connect-drag from a node near the edge of the canvas, drag the cursor far right, far left, far down, and far up (past the current node bounding box in each direction) — the dashed ghost line must remain fully visible (not clipped/truncated) throughout each drag, and the container must not show an unexpected permanent scrollbar/size increase after the drag ends (mouseup) and a fresh interaction begins. This journey is the live-browser confirmation for the negative-direction SVG-origin caveat noted in STATE §19 edge case #2, which cannot be fully verified by jsdom-based unit tests alone (this is the SAME category of defect — SVG/DOM-content-model-specific, invisible to jsdom — that caused this bug and the round-1 namespace bug to both escape unit/typecheck coverage per STATE §18). |

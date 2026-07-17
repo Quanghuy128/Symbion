@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { GraphCanvas, type GraphCanvasEdge, type GraphCanvasHandle, type GraphCanvasNode } from "./GraphCanvas";
 
@@ -7,7 +7,21 @@ function TestNode({ data }: { data: { label: string } }) {
   return <div data-testid={`node-${data.label}`}>{data.label}</div>;
 }
 
+// Variant that renders a source handle marker (`data-handle-role="source"`)
+// so tests can simulate `NodeConnectBoundary`'s mousedown-capture drag-start
+// path (STATE §19 addendum, T-5.9/T-5.10/T-5.11) without pulling in the real
+// `NodeHandle`/`CommandNode` components.
+function TestNodeWithHandle({ data }: { data: { label: string } }) {
+  return (
+    <div data-testid={`node-${data.label}`}>
+      {data.label}
+      <div role="presentation" data-handle-role="source" />
+    </div>
+  );
+}
+
 const nodeTypes = { command: TestNode, agent: TestNode, missingAgent: TestNode };
+const nodeTypesWithHandle = { command: TestNodeWithHandle, agent: TestNode, missingAgent: TestNode };
 
 function baseNodes(): GraphCanvasNode[] {
   return [
@@ -49,6 +63,21 @@ function renderCanvas(overrides?: Partial<React.ComponentProps<typeof GraphCanva
 }
 
 describe("GraphCanvas", () => {
+  beforeEach(() => {
+    // Same rAF-synchronous mock used by useConnectDrag.test.ts — throttled
+    // mousemove updates need to flush within the test's own tick, jsdom's
+    // real requestAnimationFrame never fires without a live render loop.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("T-5.1: renders N nodes at their given positions (style.left/top match input position)", () => {
     renderCanvas();
     const wrapper = screen.getByTestId("node-cmd-1").closest("[data-node-id]") as HTMLElement;
@@ -114,6 +143,115 @@ describe("GraphCanvas", () => {
     Object.defineProperty(root, "scrollTo", { value: scrollToSpy, writable: true });
     ref.current?.fitView();
     expect(scrollToSpy).toHaveBeenCalled();
+  });
+
+  it("T-5.9: connect-drag cursor far outside the node bounding box expands the SVG's width/height (regression for STATE §18/§19 clipping bug)", () => {
+    const smallNodes: GraphCanvasNode[] = [
+      { id: "cmd-1", type: "command", position: { x: 0, y: 0 }, width: 160, height: 40, data: { label: "cmd-1" } },
+      { id: "agent-1", type: "agent", position: { x: 0, y: 0 }, width: 160, height: 40, data: { label: "agent-1" } },
+    ];
+    const { container } = renderCanvas({ nodes: smallNodes, edges: [], nodeTypes: nodeTypesWithHandle });
+    const root = container.firstChild as HTMLElement;
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 1000,
+      width: 1000,
+      height: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const handle = container.querySelector('[data-handle-role="source"]') as HTMLElement;
+    fireEvent.mouseDown(handle, { clientX: 10, clientY: 10 });
+
+    // mousemove to a point far outside the node bounding box (x:0-160, y:0-40).
+    fireEvent(window, new MouseEvent("mousemove", { clientX: 900, clientY: 700 }));
+
+    // The DotGridBackground renders its OWN <svg> first (z-index 0); the
+    // edge layer is the second <svg> in DOM order (z-index 1) — select it
+    // explicitly rather than relying on document order alone being stable.
+    const svgs = container.querySelectorAll("svg");
+    const svg = svgs[svgs.length - 1] as SVGSVGElement;
+    expect(parseFloat(svg.style.width)).toBeGreaterThanOrEqual(900);
+    expect(parseFloat(svg.style.height)).toBeGreaterThanOrEqual(700);
+
+    fireEvent(window, new MouseEvent("mouseup", { clientX: 900, clientY: 700 }));
+  });
+
+  it("T-5.10: SVG width/height shrink back to the plain node bounding box after the drag ends", () => {
+    const smallNodes: GraphCanvasNode[] = [
+      { id: "cmd-1", type: "command", position: { x: 0, y: 0 }, width: 160, height: 40, data: { label: "cmd-1" } },
+      { id: "agent-1", type: "agent", position: { x: 0, y: 0 }, width: 160, height: 40, data: { label: "agent-1" } },
+    ];
+    const { container } = renderCanvas({ nodes: smallNodes, edges: [], nodeTypes: nodeTypesWithHandle });
+    const root = container.firstChild as HTMLElement;
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 1000,
+      width: 1000,
+      height: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const handle = container.querySelector('[data-handle-role="source"]') as HTMLElement;
+    fireEvent.mouseDown(handle, { clientX: 10, clientY: 10 });
+    fireEvent(window, new MouseEvent("mousemove", { clientX: 900, clientY: 700 }));
+
+    // The DotGridBackground renders its OWN <svg> first (z-index 0); the
+    // edge layer is the second <svg> in DOM order (z-index 1).
+    const svgs = container.querySelectorAll("svg");
+    const svg = svgs[svgs.length - 1] as SVGSVGElement;
+    expect(parseFloat(svg.style.width)).toBeGreaterThanOrEqual(900);
+
+    // End the drag — bounds should collapse back to the plain node bounding
+    // box (maxX=160, maxY=40 -> +40 padding per GraphCanvas's width/height calc).
+    fireEvent(window, new MouseEvent("mouseup", { clientX: 900, clientY: 700 }));
+
+    expect(parseFloat(svg.style.width)).toBeLessThan(900);
+    expect(parseFloat(svg.style.width)).toBeCloseTo(200, 0); // 160 + 40
+    expect(parseFloat(svg.style.height)).toBeCloseTo(80, 0); // 40 + 40
+  });
+
+  it("T-5.11: dragging toward negative-x/negative-y coordinates renders a ghost path without throwing (smoke; full clip confirmation is live-browser QA, J27)", () => {
+    const smallNodes: GraphCanvasNode[] = [
+      { id: "cmd-1", type: "command", position: { x: 300, y: 300 }, width: 160, height: 40, data: { label: "cmd-1" } },
+      { id: "agent-1", type: "agent", position: { x: 300, y: 300 }, width: 160, height: 40, data: { label: "agent-1" } },
+    ];
+    const { container } = renderCanvas({ nodes: smallNodes, edges: [], nodeTypes: nodeTypesWithHandle });
+    const root = container.firstChild as HTMLElement;
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 1000,
+      width: 1000,
+      height: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const handle = container.querySelector('[data-handle-role="source"]') as HTMLElement;
+    fireEvent.mouseDown(handle, { clientX: 310, clientY: 310 });
+
+    expect(() => {
+      fireEvent(window, new MouseEvent("mousemove", { clientX: -200, clientY: -100 }));
+    }).not.toThrow();
+
+    // The ghost path's `d` attribute should end at the negative local point —
+    // confirms the code path doesn't silently clamp negative extraPoints to 0.
+    const paths = Array.from(container.querySelectorAll("svg path"));
+    const ghost = paths.find((p) => p.getAttribute("d")?.includes("-200") && p.getAttribute("d")?.includes("-100"));
+    expect(ghost).toBeDefined();
+
+    fireEvent(window, new MouseEvent("mouseup", { clientX: -200, clientY: -100 }));
   });
 
   it("E10 (T-7.2 analog): GraphCanvas holds NO useState/useReducer copy of nodes/edges — re-render with new props reflects immediately", () => {

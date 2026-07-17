@@ -72,9 +72,15 @@ export interface BoundingBox {
  * at 0 artifacts (`GraphToolbar`'s `fitDisabled={artifacts.length === 0}`),
  * so callers should already be gating the empty case upstream; this is a
  * defensive fallback, not the primary empty-graph guard.
+ *
+ * `extraPoints` (STATE §19, connect-drag SVG clipping fix): optional extra
+ * points folded into the min/max envelope alongside node positions — used to
+ * expand the box to include a live connect-drag cursor position, which can
+ * legitimately move outside the node bounding box mid-drag. Defaults to `[]`
+ * so every pre-existing zero-arg-2 call site behaves identically to before.
  */
-export function boundingBox(nodes: GeometryNode[]): BoundingBox {
-  if (nodes.length === 0) {
+export function boundingBox(nodes: GeometryNode[], extraPoints: Point[] = []): BoundingBox {
+  if (nodes.length === 0 && extraPoints.length === 0) {
     return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
   }
   let minX = Infinity;
@@ -86,6 +92,12 @@ export function boundingBox(nodes: GeometryNode[]): BoundingBox {
     minY = Math.min(minY, n.position.y);
     maxX = Math.max(maxX, n.position.x + n.width);
     maxY = Math.max(maxY, n.position.y + n.height);
+  }
+  for (const p of extraPoints) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
   }
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }

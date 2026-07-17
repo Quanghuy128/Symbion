@@ -1142,3 +1142,364 @@ user's explicit, repeated confirmation after being shown the cost/risk analysis 
 prior research was not wrong given the evidence available at the time — the user's decision to
 proceed anyway was a legitimate taste call about product control/DX, not a correction of a
 mistaken analysis.
+
+## 18. INVESTIGATE — connect-drag ghost line clips/disappears (2026-07-18)
+
+**Bug report (user, with screenshot)**: dragging a connect-drag ghost line causes it to visually
+disappear partway through the drag — screenshot showed a dashed line trailing from `/analyze`
+toward empty canvas space, cut off before reaching any target.
+
+**A second, distinct ask was bundled in the same message**: "allow free node dragging." This is a
+net-new feature reopening the twice-locked `nodesDraggable=false` decision (STATE §7, confirmed
+again during this migration's own scope-lock: auto-layout stays, no free-drag). Per user decision,
+**out of scope for this investigation** — the bug fix below does not implicitly authorize free-drag,
+and no free-drag work is included in the fix that follows.
+
+### Process followed (per `/investigate`'s Iron Law)
+
+1. **Isolate**: `.claude/.freeze` set to `apps/web/src/components/graph/` +
+   `apps/web/src/components/DependencyGraph.tsx` for the duration of the investigation.
+2. **Hypothesize**: first suspect was `useConnectDrag.ts`'s state machine (the natural place to
+   look for "drag interaction is broken") — read it in full. Logically sound in isolation: rAF
+   throttling, mouseup/mousemove/Escape handling, node-rect hit-testing all check out.
+3. **Root cause found one layer up**, in `GraphCanvas.tsx`'s SVG sizing, not the drag hook:
+   - The `<svg>` edge layer's `width`/`height` are set from `content = boundingBox(nodes)`
+     (`graphGeometry.ts`), a `useMemo` keyed **only on `nodes`** — zero dependency on
+     `dragConnect`/the live cursor position.
+   - The ghost connect-drag line (`GraphCanvas.tsx` ~line 213-228) is a `<path>` drawn from the
+     source node's anchor to `dragConnect.cursor`, rendered **inside that same fixed-size `<svg>`**.
+   - SVG elements clip content to their own dimensions by default (unlike a `<div>`, which never
+     clips unless told to). Since the `<svg>`'s bounds never grow to include the drag cursor's
+     actual position, dragging the ghost line past the edge of the nodes' bounding box — exactly
+     the scenario in the bug screenshot — clips the line at the SVG viewport boundary.
+4. **Verified, not guessed**: confirmed by reading the actual source (the `useMemo`'s dependency
+   array, the SVG element's `width`/`height` props, SVG's default `overflow` behavior) — not by
+   trial-and-error or speculation. No code changes were made during this investigation phase
+   (freeze was active throughout).
+
+### Root cause
+
+`GraphCanvas.tsx`'s `<svg>` edge-layer is statically sized to the graph's node bounding box and
+never accounts for the connect-drag cursor's live position, which can legitimately move outside
+that box during a drag. This is a real regression specific to the self-coded renderer — xyflow's
+own canvas never sized its SVG root this way, so it never had this failure mode.
+
+**This is a direct, concrete confirmation of the exact residual risk named at ship time (§16)**:
+"a structurally similar, less-detectable defect could be present in this shipped code right now,"
+drawing on the round-1 review's SVG-namespace bug as precedent. This is now a SECOND, independent
+instance of an SVG/DOM-content-model-specific defect in this exact feature, invisible to
+build/typecheck/jsdom-based testing, surfacing within one user session of shipping without live
+browser verification.
+
+### Fix approach (for `/build`)
+
+Not yet implemented (investigation phase only, freeze lifted after this section was written). The
+fix should make the `<svg>` edge layer's bounds account for the live drag cursor when a drag is in
+progress — either (a) expand `content`'s bounding-box computation to include `dragConnect.cursor`
+when non-null, or (b) set `overflow: visible` on the `<svg>` (simpler, but changes clipping
+behavior for ALL edge-layer content, not just the ghost line — worth explicit consideration of
+whether any currently-relied-upon clipping exists elsewhere in the edge layer before choosing this
+over option (a)). `/build` should investigate both and pick the one that doesn't have side effects
+on the (currently correctly-clipped, if any) rest of the edge layer.
+
+### Next step
+
+`/build` (feature-builder fixes per the root cause above) → `/review` → `/qa`, per the standard
+pipeline `/investigate` hands off to. Free node dragging is explicitly NOT part of this fix — if
+wanted, it needs its own `/office-hours` pass, since it reopens a twice-locked decision.
+
+## 19. PLAN — connect-drag SVG clipping fix (2026-07-17)
+
+Scoped bug fix per §18's confirmed root cause. No new architecture, no RPC surface, no
+`packages/core`/`apps/daemon` involvement — pure `apps/web` presentational fix. Free node dragging
+remains explicitly out of scope (per §18).
+
+### Chosen fix: (a) — expand the bounding box to include `dragConnect.cursor`
+
+**Reasoning**, grounded in reading the actual edge-layer code (`GraphCanvas.tsx`, `GraphEdgePath.tsx`,
+`GraphEdgeLabel.tsx`):
+
+- The edge layer's `<svg>` currently relies on NOTHING being clipped in normal (non-drag) operation:
+  `content = boundingBox(nodes)` already spans every node, so every real edge's `<path>` (source
+  anchor → target anchor, both always inside some node's rect, per `sourceAnchor`/`targetAnchor` in
+  `graphGeometry.ts`) and its 20px hover hit-area path are already fully inside the SVG's
+  `maxX+40`/`maxY+40` bounds today. Nothing in `GraphEdgePath.tsx` or `GraphEdgeLabel.tsx` depends on
+  being clipped — `GraphEdgeLabel.tsx`'s badge/toolbar/delete-confirm content isn't even inside the
+  `<svg>` (it's portaled to `labelLayerEl`, a plain HTML sibling per the round-1 REVIEW fix), so it's
+  unaffected by SVG clipping either way. So option (b) (`overflow: visible`) would be "safe" in the
+  sense that no existing visual would change — but it's the less precise fix: it makes the SVG
+  boundary purely decorative/meaningless (its `width`/`height` no longer bound anything it draws),
+  which is confusing given `content`'s bounding-box value is *also* used for the container's
+  `minHeight` (line 172) and `fitView()`'s scroll target (line 145) — those two purposes should stay
+  anchored to a `content` value that means what it says ("the actual bounds of what's drawn"), not
+  silently diverge from the SVG's true rendered extent.
+- Option (a) keeps `content`'s bounding-box computation as the SINGLE source of truth for "what's
+  actually drawn," extended for the one case (a live drag) where drawn content can legitimately
+  exceed the node bounding box. This also automatically fixes a second latent issue for free:
+  `content` also drives the scrollable container's `minHeight` (line 172) — with (b) alone, the
+  *container* itself would still not grow during a drag toward positive y beyond current bounds,
+  so a fast drag toward the bottom-right could still get clipped by the container's `overflow-auto`
+  boundary even after the SVG itself stopped clipping. Option (a) fixes both layers with one change
+  since both read from the same `content` value.
+- Trade-off accepted: (a) requires `content`'s `useMemo` to also depend on `dragConnect`, so it
+  recomputes on every rAF-throttled cursor update during a drag (already throttled by
+  `useConnectDrag`'s existing rAF batching per §18 pt. 2 — so this is bounded to ~60fps, not
+  unthrottled mousemove frequency). This is a deliberately accepted, bounded cost — not a performance
+  concern given the existing throttle.
+
+### Exact code change
+
+**`apps/web/src/components/graph/graphGeometry.ts`** — extend `boundingBox()`'s signature to
+optionally fold in extra points, OR add a small new helper. Minimal-diff approach: add an optional
+second parameter to `boundingBox`:
+
+```ts
+export function boundingBox(nodes: GeometryNode[], extraPoints: Point[] = []): BoundingBox {
+  if (nodes.length === 0 && extraPoints.length === 0) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    minX = Math.min(minX, n.position.x);
+    minY = Math.min(minY, n.position.y);
+    maxX = Math.max(maxX, n.position.x + n.width);
+    maxY = Math.max(maxY, n.position.y + n.height);
+  }
+  for (const p of extraPoints) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+```
+
+  - Kept backward-compatible (existing zero-arg-2 callers, e.g. `graphGeometry.test.ts`'s T-2.1–T-2.5,
+    behave identically — `extraPoints` defaults to `[]`).
+  - The `nodes.length === 0 && extraPoints.length === 0` guard preserves the existing empty-graph
+    zero-default (T-2.4) while still producing a sane box if a drag somehow starts with zero nodes
+    (defensive; `startDrag` can't fire without a source node existing, so this is unreachable in
+    practice, but keeps the function total or well-defined for any input).
+
+**`apps/web/src/components/graph/GraphCanvas.tsx`** — line 133, change the `content` `useMemo`'s
+dependency array and call:
+
+```ts
+const content = useMemo(
+  () => boundingBox(nodes, dragConnect ? [dragConnect.cursor] : []),
+  [nodes, dragConnect]
+);
+```
+
+No other lines change. The `<svg>`'s `width`/`height` (lines 187-188), the container's `minHeight`
+(line 172), and `fitView()`'s scroll target (line 145) all already read from `content` and
+automatically pick up the expanded bounds — no separate change needed at those call sites.
+
+### Edge cases to verify
+
+1. **Shrinks back down after drag ends**: `dragConnect` becomes `null` on mouseup/Escape/cancel
+   (`useConnectDrag.cancelDrag`), so `content`'s `useMemo` recomputes with `extraPoints = []` on the
+   very next render after drag-end — bounds return to the plain node bounding box. No permanent
+   bloat, since `content` is derived fresh every render, never accumulated/merged with a prior value.
+2. **Negative-direction drag** (cursor moves left/above existing content, not just right/below as in
+   the bug screenshot): `boundingBox`'s `extraPoints` loop takes `Math.min` against `minX`/`minY` too,
+   not just `Math.max` against `maxX`/`maxY` — so a drag toward negative x/y correctly expands
+   `minX`/`minY` downward. **Caveat to verify live**: the SVG element itself is positioned
+   `left:0 top:0` (line 185) and only `width`/`height` are set from `content.maxX`/`content.maxY` —
+   there is no `content.minX`/`minY`-based offset/transform applied to the SVG's origin. This means
+   even with (a)'s fix, if `content.minX` goes negative during a negative-direction drag, the SVG's
+   drawable area only extends to `content.maxX`, not compensated by `minX` — a cursor at a negative
+   local x could still render off-canvas to the left of the SVG's own origin (SVG doesn't clip
+   negative-coordinate content the way it clips content past `width`/`height`, so this specific
+   direction may already "work" without explicit intervention, since only the max-bound overflow
+   clips — but this must be confirmed live in browser QA, not assumed, since this exact class of bug
+   was proven non-obvious from static reading alone twice already in this feature per §18's own
+   framing). Flag explicitly for QA journey below rather than asserting a guarantee here.
+3. **`fitView()` during an active drag**: `fitView()` is not reachable while a connect-drag is in
+   progress in current UX (toolbar/keyboard triggers, not something that fires mid-mousedown-drag),
+   so no interaction expected in practice — but if triggered programmatically, it would scroll to
+   `content.minX - 20`/`content.minY - 20`, which — while a drag is active — includes the cursor
+   position. This is benign (worst case: scrolls slightly further to keep the live ghost line
+   in view) and not a regression, so no special-case guard needed.
+4. **No permanent effect on non-drag rendering**: when `dragConnect` is `null` (the overwhelmingly
+   common case), `boundingBox(nodes, [])` behaves byte-for-byte identically to the pre-fix
+   `boundingBox(nodes)` call (verified by the added default-parameter compatibility) — zero risk to
+   the already-shipped, already-reviewed non-drag rendering path.
+
+### Assumptions / trade-offs for dev + Checker to track
+
+- This fix intentionally does NOT address container scroll-position/viewport clipping (i.e., if the
+  container itself is scrolled such that the cursor's drag position is outside the currently-visible
+  scroll viewport, the ghost line may still be off-screen — that's normal scrollable-viewport
+  behavior, not a bug, and out of scope).
+- `dragConnect.cursor` is in container-local coordinates per `useConnectDrag.toLocalPoint` (relative
+  to `containerRef`'s bounding rect, NOT scroll-adjusted) — this already matches the coordinate space
+  `content`/node positions use, so no coordinate-space conversion is needed in the fix itself.
+- If dev finds during implementation that the SVG-origin caveat in edge case #2 above is real (ghost
+  line still clips on a negative-direction drag), the follow-up fix is to also apply a
+  `translate(-content.minX, -content.minY)` on the SVG's `<g>` content and adjust node/edge rendering
+  coordinate offsets accordingly — but this is NOT implemented preemptively here since node positions
+  today are always non-negative in practice (dagre-computed layout, confirmed by `computeLayout.ts`
+  being untouched per §17's sign-off checklist) and speculative additional complexity should not be
+  added without confirming the case is reachable. Flag to Checker if skipped.
+
+### Next step
+
+`/build` (dev implements per the exact code change above) → `/review` → `/qa` (execute the new J27
+journey in the testplan below, paying particular attention to the negative-direction-drag caveat).
+
+## 20. BUILD — connect-drag SVG clipping fix (2026-07-17)
+
+Implemented exactly the fix specified in §19, no deviation from the plan (current code matched the
+plan's description of it byte-for-byte — no drift found before editing). This went through
+`/simplify-implementation`'s fast-track (plan→build→ship); review/QA are intentionally skipped for
+this small, scoped change per user decision — no independent Checker has looked at this diff.
+
+### Files changed
+
+- **`apps/web/src/components/graph/graphGeometry.ts`** — `boundingBox(nodes, extraPoints: Point[] = [])`:
+  added the optional second parameter exactly as specified in §19's code block, folding
+  `extraPoints` into the same min/max loop as the node positions. Kept the empty-graph guard
+  (`nodes.length === 0 && extraPoints.length === 0`) so `boundingBox([])` (no second arg) still
+  returns the exact `{0,0,0,0,0,0}` default T-2.4 already asserts, while `boundingBox([], [pt])`
+  now returns a box around just that point (T-2.9).
+- **`apps/web/src/components/graph/GraphCanvas.tsx`** — the `content` `useMemo` at (what was) line
+  133 now reads `boundingBox(nodes, dragConnect ? [dragConnect.cursor] : [])` with `dragConnect`
+  added to the dependency array. No other lines changed — the `<svg>` width/height, the container's
+  `minHeight`, and `fitView()`'s scroll target all already read from `content` and pick up the
+  expanded bounds automatically, per §19's own note that no other call site needed touching.
+- **`apps/web/src/components/graph/graphGeometry.test.ts`** — added T-2.6–T-2.9 exactly per
+  testplan §4 Addendum (positive-direction expansion, negative-direction expansion, default-arg
+  backward compatibility, zero-nodes-plus-one-point edge case). All pass.
+- **`apps/web/src/components/graph/GraphCanvas.test.tsx`** — added T-5.9–T-5.11 per testplan §4
+  Addendum:
+  - T-5.9: starts a connect-drag (via a `TestNodeWithHandle` fixture exposing
+    `data-handle-role="source"`, since the plain `TestNode` fixture already used by this file's
+    other tests has no handle) and asserts the edge-layer `<svg>`'s `style.width`/`style.height`
+    expand to cover a cursor position (900, 700) far outside the 2-node bounding box.
+  - T-5.10: same setup, then fires `mouseup` and asserts the SVG shrinks back to the plain
+    node-bounding-box dimensions (`200x80` for a 160x40 node at the origin, matching the `+40`
+    padding `GraphCanvas` already applies) — no permanent bloat.
+  - T-5.11: drags toward negative local coordinates and asserts (a) no throw, and (b) the ghost
+    `<path>`'s `d` attribute actually contains the negative endpoint coordinates — a smoke check
+    that `boundingBox`'s negative-direction branch is exercised end-to-end through `GraphCanvas`,
+    NOT a claim that the SVG visually renders/clips correctly at negative local coordinates in a
+    real browser (see Deferred/Gaps below — this is exactly the caveat §19 flagged).
+  - Added a `beforeEach`/`afterEach` rAF mock (mirroring the existing pattern already used in
+    `useConnectDrag.test.ts`) at the `describe("GraphCanvas", ...)` level, since none of this
+    file's pre-existing tests previously needed `dragConnect`'s cursor to actually update
+    (T-5.9–T-5.11 are the first tests in this file to drive a live connect-drag through
+    `mousemove`, which is rAF-throttled inside `useConnectDrag`).
+
+### Assumptions made (for the record — no independent Checker this round)
+
+1. **Selecting the edge-layer `<svg>` in tests**: `GraphCanvas` renders TWO `<svg>` elements —
+   `DotGridBackground`'s (z-index 0, rendered first in DOM order) and the edge layer (z-index 1,
+   rendered second). T-5.9/T-5.10 select `container.querySelectorAll("svg")` and take the LAST
+   element rather than the first `querySelector("svg")` match (which silently picked up
+   `DotGridBackground` and produced a `NaN` assertion failure before this was caught — confirmed by
+   an isolated debug run, not assumed). This relies on DOM order staying `DotGridBackground` then
+   edge-layer `<svg>`, which matches `GraphCanvas.tsx`'s current JSX order; flagging since it's a
+   test-implementation detail a future refactor could silently invalidate without a compiler error.
+2. **`TestNodeWithHandle` fixture**: added a second test-only leaf component
+   (`data-handle-role="source"`) alongside the existing `TestNode`, rather than reusing/modifying
+   `TestNode`, so pre-existing tests (T-5.1–T-5.8, E10) that assert on plain `TestNode` output are
+   byte-for-byte unaffected. `NodeConnectBoundary`'s real mousedown-capture logic
+   (`target.closest('[data-handle-role="source"]')`) is exercised as-is against this fixture — not
+   mocked or bypassed.
+3. **rAF mock addition is additive, not a behavior change to other tests**: the new
+   `beforeEach`/`afterEach` in `GraphCanvas.test.tsx` mocks `window.requestAnimationFrame`
+   synchronously (same technique already used in `useConnectDrag.test.ts`). Re-ran the full
+   `GraphCanvas.test.tsx` suite after adding it — all pre-existing T-5.1–T-5.8 and E10 tests still
+   pass unchanged, confirming the mock has no observable effect on tests that don't drive a drag.
+4. **No other `boundingBox()` call site exists** — confirmed via
+   `grep -rn "boundingBox(" apps/web/src` before editing: only `GraphCanvas.tsx:133` (production)
+   and `graphGeometry.test.ts` (tests). The optional-second-parameter approach is fully
+   backward-compatible by construction (default `[]`), and this grep confirms there was nothing
+   else that needed updating.
+5. **Free node dragging remains untouched** — no changes to `nodesDraggable`-equivalent behavior,
+   `GraphNode.tsx`, or any drag-to-reposition logic. This fix only affects connect-drag (link
+   creation), matching §18/§19's explicit scope boundary.
+
+### Deferred / gaps (flagged per the task's explicit instruction, not silently passed over)
+
+- **Negative-direction-drag SVG-origin caveat (§19 edge case #2, testplan J27)**: NOT verified live
+  in a browser in this session (no reachable Chrome/chrome-devtools available in this environment).
+  T-5.11 only confirms, at the jsdom/React-state level, that (a) the code path doesn't throw and
+  (b) the ghost path's `d` attribute correctly contains negative coordinates — i.e., `boundingBox`'s
+  `Math.min` branch and `GraphCanvas`'s rendering of `dragConnect.cursor` both work correctly as
+  *data*. It does **NOT** and **cannot** confirm whether the `<svg>` (positioned `left:0 top:0`,
+  with no `translate(-content.minX, -content.minY)` compensation, exactly as §19 itself flagged)
+  visually clips or renders correctly on-screen when `content.minX`/`minY` go negative — jsdom does
+  not implement real SVG viewport/clip-path rendering the way a browser layout engine does. This is
+  the same category of defect (SVG/DOM-content-model-specific, invisible to jsdom) that caused both
+  the original bug (§18) and the round-1 SVG-namespace bug to escape unit/typecheck coverage. J27 in
+  the testplan addendum is the correct follow-up and remains un-executed — flagging explicitly
+  rather than claiming this edge case is closed.
+- Per §19's own note, if J27 (when eventually run) finds the negative-direction case DOES still
+  clip, the documented follow-up is a `translate(-content.minX, -content.minY)` on the SVG's `<g>`
+  plus corresponding node/edge coordinate-offset adjustments — deliberately NOT implemented
+  preemptively here, per §19's explicit reasoning (dagre-computed layout keeps node positions
+  non-negative in practice today, so speculative complexity wasn't added without confirming the
+  case is reachable).
+- Review (`code-reviewer`) and QA are both skipped for this change per the user's
+  `/simplify-implementation` fast-track decision — noted here so it isn't mistaken for "reviewed and
+  passed."
+
+### Build/test output confirmation
+
+- `npx vitest run apps/web/src/components/graph/graphGeometry.test.ts apps/web/src/components/graph/GraphCanvas.test.tsx`
+  → 21/21 passed (11 in `graphGeometry.test.ts` including new T-2.6–T-2.9; 10 in `GraphCanvas.test.tsx`
+  including new T-5.9–T-5.11).
+- `npm test` (full monorepo Vitest run, `packages/core` + `apps/daemon` + `apps/web`) → **74 test
+  files, 681 tests, all passed**, zero regressions in any other suite.
+- `npm run build` (root, all workspaces) → `@symbion/core`, `@symbion/rpc-types`, `@symbion/daemon`
+  all `tsc` clean; `@symbion/web`'s `next build` compiled successfully, typechecked, and generated
+  all static pages with no errors.
+
+### Next step
+
+`/ship` (per the fast-track — commit/PR gated on this BUILD section rather than REVIEW+QA, per the
+user's explicit `/simplify-implementation` routing decision noted in the task brief).
+
+## 21. SHIP — deploy notes (2026-07-18)
+
+Shipped via `/simplify-implementation` fast-track (plan → build → ship). Independent `/review`
+(code-reviewer + architect) and `/qa` (live browser) were **intentionally skipped**, per the user's
+explicit routing decision, confirmed directly before starting (see the AskUserQuestion exchange
+that preceded §19's `/plan` invocation) — not a default or silent omission.
+
+**Why this qualifies for the fast-track**: root cause was fully investigated and confirmed via
+`/investigate` (§18) before any code was written — not a guess-and-patch. The fix is small (2 files,
+~15 net lines of logic change) and backward-compatible (`boundingBox()`'s new parameter defaults to
+`[]`, every pre-existing call site unaffected). It touches zero daemon RPC/filesystem-write/secret
+surface — confirmed, this is 100% `apps/web`. 681/681 tests pass fresh, clean `npm run build`.
+
+**Explicitly named residual risk (not silently dropped, per the fast-track's own required note)**:
+1. **No independent Checker reviewed this diff.** Given `GraphCanvas.tsx` — the exact file this fix
+   touches — already had one real defect (§12's SVG-namespace bug) that passed the Maker's own
+   build-time verification and was only caught by independent review, this is a real, named risk
+   category for this specific file, not a generic disclaimer.
+2. **The negative-direction-drag edge case (STATE §19 edge case #2, testplan J27) remains
+   unverified in a live browser** — jsdom cannot simulate real SVG viewport clipping/origin
+   behavior, so the new unit test (T-5.11) confirms the ghost path's computed coordinates are
+   correct but cannot confirm actual rendered/clipped behavior when the drag cursor moves left of
+   or above the existing node bounding box.
+3. **This adds to, not resets, the standing "no live browser verification of this feature" gap**
+   already recorded at ship time (§16) and already once independently confirmed to matter in
+   practice (§18's bug was a direct, concrete instance of that exact predicted risk category).
+
+**Recommendation**: when a browser becomes available, verify this specific fix (drag the ghost line
+in all four directions, especially up/left past the existing content) alongside the already-pending
+J1–J27 full manual journey — this fix is not a reason to deprioritize that broader verification, if
+anything the file's defect history argues for treating it as higher-priority within that backlog.
+
+## 22. Done — connect-drag SVG clipping fix
+
+**Shipped 2026-07-18.** Root cause (SVG edge layer's fixed bounding-box sizing never accounted for
+the live drag cursor) confirmed via `/investigate`, fixed by folding the cursor position into the
+same `boundingBox()` computation already used for the SVG/container/fitView sizing — a single
+source of truth, not three independent fixes. 681/681 tests pass, clean build. Shipped via fast-track
+with review/QA explicitly skipped and the residual risk named (§21), consistent with this feature's
+established pattern of honest, explicit risk disclosure rather than silent gaps.

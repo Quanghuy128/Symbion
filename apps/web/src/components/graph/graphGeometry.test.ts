@@ -40,6 +40,33 @@ describe("graphGeometry", () => {
     expect(sourceAnchor(missing).x).not.toBe(sourceAnchor(regular).x);
   });
 
+  it("T-2.6: boundingBox(nodes, [extraPoint]) expands maxX/maxY to include a point past the node bounds", () => {
+    const nodes = [node("a", 0, 0, 160, 40), node("b", 300, 100, 160, 40)]; // spans x:0-460, y:0-140
+    const box = boundingBox(nodes, [{ x: 900, y: 500 }]);
+    expect(box.maxX).toBe(900);
+    expect(box.maxY).toBe(500);
+  });
+
+  it("T-2.7: boundingBox(nodes, [extraPoint]) expands minX/minY in the negative direction too", () => {
+    const nodes = [node("a", 0, 0, 160, 40), node("b", 300, 100, 160, 40)]; // minX/minY currently 0
+    const box = boundingBox(nodes, [{ x: -200, y: -100 }]);
+    expect(box.minX).toBe(-200);
+    expect(box.minY).toBe(-100);
+  });
+
+  it("T-2.8: boundingBox(nodes, []) (default/omitted second arg) is identical to the pre-fix single-arg call", () => {
+    const nodes = [node("a", 0, 0, 160, 40), node("b", 200, -50, 160, 40), node("c", 400, 100, 200, 40)];
+    expect(boundingBox(nodes, [])).toEqual(boundingBox(nodes));
+  });
+
+  it("T-2.9: boundingBox([], [extraPoint]) — zero nodes, one extra point returns a box containing that point, not the hardcoded zero-default", () => {
+    const box = boundingBox([], [{ x: 50, y: 50 }]);
+    expect(box.minX).toBe(50);
+    expect(box.maxX).toBe(50);
+    expect(box.minY).toBe(50);
+    expect(box.maxY).toBe(50);
+  });
+
   it("nodeRect returns the full rect for the connect-drag hit-testing registry", () => {
     const n = node("cmd-1", 10, 20, 160, 40);
     expect(nodeRect(n)).toEqual({ x: 10, y: 20, width: 160, height: 40 });

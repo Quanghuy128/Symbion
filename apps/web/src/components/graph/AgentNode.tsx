@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { NodeHandle } from "./NodeHandle";
 import { NodeMenu } from "./NodeMenu";
 import { NodeTokenBadge, type NodeTokenBadgeProps } from "./NodeTokenBadge";
 
@@ -29,13 +29,17 @@ export interface AgentNodeData {
   /** P2: bumped by DependencyGraph on a timeline feed-row click for this
    *  agent's actor — re-keying replays the one-shot pulse once. */
   runPulseKey?: number;
-  /** @xyflow/react v12's `NodeProps<Node<T>>` requires `data` to satisfy
-   *  `Record<string, unknown>` — an index signature, no shape change. */
+  /** plain data-bag index signature (unchanged shape from the xyflow-era
+   *  `NodeProps<Node<T>>` requirement). */
   [key: string]: unknown;
 }
 
+export interface AgentNodeProps {
+  data: AgentNodeData;
+}
+
 /** AgentNode — agent node (design §3.2: violet #a78bfa). Dumb, same contract as CommandNode. */
-export function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
+export function AgentNode({ data }: AgentNodeProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const connectable = data.connectable ?? false;
@@ -94,10 +98,9 @@ export function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        isConnectable={connectable}
+      <NodeHandle
+        role="target"
+        connectable={connectable}
         className={connectable ? "!bg-agent" : "!bg-transparent !border !border-white/40"}
       />
 

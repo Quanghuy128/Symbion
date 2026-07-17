@@ -2,17 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ReactFlow,
-  Background,
-  BackgroundVariant,
-  ReactFlowProvider,
-  useReactFlow,
-  type Connection,
-  type Edge,
-  type Node,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import {
   ADAPTERS,
   extractAgentMentions,
   parseAgentBlock,
@@ -24,7 +13,7 @@ import {
 import { CommandNode } from "./graph/CommandNode";
 import { AgentNode } from "./graph/AgentNode";
 import { MissingAgentNode } from "./graph/MissingAgentNode";
-import { AnimatedEdge } from "./graph/AnimatedEdge";
+import { GraphCanvas, type GraphCanvasEdge, type GraphCanvasHandle, type GraphCanvasNode } from "./graph/GraphCanvas";
 import { computeLayout } from "./graph/computeLayout";
 import { GraphStatusChips } from "./graph/GraphStatusChips";
 import { GraphToolbar } from "./graph/GraphToolbar";
@@ -97,10 +86,6 @@ const nodeTypes = {
   missingAgent: MissingAgentNode,
 };
 
-const edgeTypes = {
-  animated: AnimatedEdge,
-};
-
 interface ModalTarget {
   commandId: string;
   agentName: string;
@@ -108,14 +93,46 @@ interface ModalTarget {
 }
 
 /**
- * S6 — dependency graph (React Flow). Interactive authoring surface
- * (interactive-graph feature): drag command→agent to link (`@name`), `+` edge
- * modal for count/goal, edge delete, add/edit/delete nodes, missing-agent →
- * create. Nodes/edges stay DERIVED from `artifacts` (E10 — never mirrored into
- * useNodesState/useEdgesState); only ephemeral UI + the pending-ghost edge are
- * component-local. Layout stays auto (nodesDraggable=false, D1 deferred).
+ * Plain node/edge data-bag shapes (self-coded-graph-migration PLAN §9.2) —
+ * structurally identical to the pre-migration xyflow `Node`/`Edge` types
+ * minus xyflow-specific fields (`sourcePosition`/`targetPosition`, which are
+ * now computed at render time by `graphGeometry.ts`'s anchor helpers instead
+ * of being data-bag fields). `data` stays an untyped `Record<string, unknown>`
+ * here — each node/edge's concrete data shape is still enforced by
+ * `CommandNodeData`/`AgentNodeData`/`MissingAgentNodeData`/`AnimatedEdgeData`
+ * at the leaf-component boundary, unchanged.
  */
-function DependencyGraphInner({
+interface InternalNode {
+  id: string;
+  type: "command" | "agent" | "missingAgent";
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+}
+
+/** Phase (c)-merged node — adds the fixed-estimate `width`/`height` GraphCanvas needs. */
+interface LaidOutNode extends InternalNode {
+  width: number;
+  height: number;
+}
+
+interface InternalEdge {
+  id: string;
+  source: string;
+  target: string;
+  data?: Record<string, unknown>;
+}
+
+/**
+ * S6 — dependency graph (self-coded `GraphCanvas`, migrated off
+ * `@xyflow/react` — self-coded-graph-migration). Interactive authoring
+ * surface (interactive-graph feature): drag command→agent to link (`@name`),
+ * `+` edge modal for count/goal, edge delete, add/edit/delete nodes,
+ * missing-agent → create. Nodes/edges stay DERIVED from `artifacts` (E10 —
+ * never mirrored into local state); only ephemeral UI + the pending-ghost
+ * edge are component-local. Layout stays auto (nodes never draggable, D1
+ * deferred; `computeLayout.ts`/dagre unchanged by this migration).
+ */
+export function DependencyGraph({
   artifacts,
   onEditArtifact,
   projectId,
@@ -123,7 +140,8 @@ function DependencyGraphInner({
   onPublish,
   publishDialogClosedSignal,
 }: DependencyGraphProps) {
-  const { fitView } = useReactFlow();
+  const canvasRef = useRef<GraphCanvasHandle>(null);
+  const fitView = useCallback(() => canvasRef.current?.fitView(), []);
   const saveArtifact = useArtifactStore((s) => s.saveArtifact);
   const deleteArtifact = useArtifactStore((s) => s.deleteArtifact);
   const daemonConnected = useArtifactStore((s) => s.daemonConnected);
@@ -326,10 +344,9 @@ function DependencyGraphInner({
   // ---------------------------------------------------------------------------
 
   const onConnect = useCallback(
-    async (conn: Connection) => {
-      if (!conn.source || !conn.target) return;
-      const command = commandById.get(conn.source);
-      const target = artifactById.get(conn.target);
+    async (sourceId: string, targetId: string) => {
+      const command = commandById.get(sourceId);
+      const target = artifactById.get(targetId);
       // Backstop guard (E1) — isValidConnection is the live feedback.
       if (!command || command.kind !== "command" || !target || target.kind !== "agent") {
         showToast("Only /command → agent can be linked.", "error");
@@ -357,14 +374,11 @@ function DependencyGraphInner({
     [commandById, artifactById, saveArtifact, showToast, showHint]
   );
 
-  // @xyflow/react v12 widened isValidConnection's param type to `Edge | Connection`
-  // (previously `Connection` only) — both shapes carry `.source`/`.target` as the
-  // fields this callback actually reads, so the check logic itself is unchanged.
   const isValidConnection = useCallback(
-    (conn: Edge | Connection) => {
-      if (!conn.source || !conn.target || conn.source === conn.target) return false;
-      const src = artifactById.get(conn.source);
-      const tgt = artifactById.get(conn.target);
+    (sourceId: string, targetId: string) => {
+      if (!sourceId || !targetId || sourceId === targetId) return false;
+      const src = artifactById.get(sourceId);
+      const tgt = artifactById.get(targetId);
       return src?.kind === "command" && tgt?.kind === "agent";
     },
     [artifactById]
@@ -472,7 +486,7 @@ function DependencyGraphInner({
     // Phase (a) BUILD SHAPE — same data-bag construction as before; `position`
     // is a placeholder here and gets overwritten in Phase (c) MERGE below
     // (PLAN §3). Every other field is untouched.
-    const nodes: Node[] = [
+    const nodes: InternalNode[] = [
       ...commands.map((c) => {
         // Unlinked heuristic (design §5 O, taste-call §9.14, conservative):
         // 0 @name mentions AND a backtick token matching an existing agent name.
@@ -537,7 +551,7 @@ function DependencyGraphInner({
             badge,
             runPulseKey: pulseNodeId === "main" ? pulseKey : undefined,
           },
-        } satisfies Node;
+        } satisfies InternalNode;
       }),
       ...agents.map((a) => {
         const runParticipant = missionLike ? runParticipantAgentNames.has(a.name) : true;
@@ -583,12 +597,12 @@ function DependencyGraphInner({
             badge,
             runPulseKey: pulseNodeId === a.name ? pulseKey : undefined,
           },
-        } satisfies Node;
+        } satisfies InternalNode;
       }),
     ];
 
-    const edges: Edge[] = [];
-    const missingNodes = new Map<string, Node>();
+    const edges: InternalEdge[] = [];
+    const missingNodes = new Map<string, InternalNode>();
     const missingMentions = new Set<string>();
     let drawIndex = 0;
     for (const command of commands) {
@@ -618,8 +632,6 @@ function DependencyGraphInner({
           id: `${command.id}->${mention}`,
           source: command.id,
           target: targetAgent?.id ?? missingId,
-          type: "animated",
-          animated: !targetAgent,
           data: {
             drawIndex: drawIndex++,
             missing: !targetAgent,
@@ -649,11 +661,17 @@ function DependencyGraphInner({
     const edgePairs = edges.map((e) => ({ source: e.source, target: e.target }));
     const positions = computeLayout(dimensions, edgePairs);
 
-    // Phase (c) MERGE — only `position` is replaced; every other field
-    // (the whole `data` bag) is preserved exactly as built in Phase (a).
+    // Phase (c) MERGE — `position` is replaced and `width`/`height` are
+    // attached (the self-coded `GraphCanvas`/`graphGeometry.ts` need these on
+    // the node object itself for anchor/hit-testing math — PLAN §9.1.2 —
+    // whereas xyflow derived them internally from `nodeTypes`' rendered DOM).
+    // Every other field (the whole `data` bag) is preserved exactly as built
+    // in Phase (a).
     const laidOutNodes = allNodes.map((n) => ({
       ...n,
       position: positions.get(n.id) ?? n.position,
+      width: n.type === "missingAgent" ? MISSING_AGENT_NODE_WIDTH : NODE_WIDTH,
+      height: NODE_HEIGHT,
     }));
 
     return {
@@ -758,7 +776,6 @@ function DependencyGraphInner({
         id: `pending-${pendingConnection.source}->${pendingConnection.target}`,
         source: pendingConnection.source,
         target: pendingConnection.target,
-        type: "animated",
         data: { pending: true },
       });
     }
@@ -854,7 +871,7 @@ function DependencyGraphInner({
         <div className="relative flex-1">
           <GraphToolbar
             onAdd={handleAdd}
-            onFitView={() => fitView({ duration: 250 })}
+            onFitView={fitView}
             onToggleLegend={() => setLegendOpen((o) => !o)}
             disabled={!daemonConnected || authoringSuspended}
             fitDisabled={artifacts.length === 0}
@@ -882,29 +899,33 @@ function DependencyGraphInner({
           )}
           <GraphLegend open={legendOpen} onOpenChange={setLegendOpen} />
 
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
+          <GraphCanvas
+            ref={canvasRef}
+            nodes={nodes as GraphCanvasNode[]}
+            edges={edges as GraphCanvasEdge[]}
             nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            nodesDraggable={false}
-            nodesConnectable={daemonConnected && !authoringSuspended}
+            disabled={authoringSuspended}
+            daemonConnected={daemonConnected}
             isValidConnection={authoringSuspended ? () => false : isValidConnection}
-            onConnect={authoringSuspended ? undefined : onConnect}
-            fitView
-            onNodeMouseEnter={authoringSuspended ? undefined : (_, node) => setHoveredId(node.id)}
-            onNodeMouseLeave={authoringSuspended ? undefined : () => setHoveredId(null)}
-            onEdgeClick={authoringSuspended ? undefined : (_, edge) => setSelectedEdgeId(edge.id)}
+            onConnectAttempt={authoringSuspended ? () => {} : (sourceId, targetId) => void onConnect(sourceId, targetId)}
+            onNodeHover={(id) => {
+              if (authoringSuspended) return;
+              setHoveredId(id);
+            }}
+            onEdgeClick={(id) => {
+              if (authoringSuspended) return;
+              setSelectedEdgeId(id);
+            }}
             onNodeClick={
               missionLike
-                ? (_, node) => {
+                ? (id) => {
                     // P2/P3 (design §3.4): node click filters the Feed/History
                     // panel to that actor. Command node maps to the "main"
                     // actor key; agent nodes filter by their own name (the
                     // rollup key) — sources from effectiveActiveArtifactId so
                     // this works identically while browsing history.
-                    const isCommandNode = node.id === effectiveActiveArtifactId;
-                    const agentMatch = agents.find((a) => a.id === node.id);
+                    const isCommandNode = id === effectiveActiveArtifactId;
+                    const agentMatch = agents.find((a) => a.id === id);
                     const key = isCommandNode ? "main" : (agentMatch?.name ?? null);
                     if (!key) return;
                     setPanelFilterId((prev) => (prev === key ? null : key));
@@ -915,15 +936,11 @@ function DependencyGraphInner({
               setContextMenu(null);
               setSelectedEdgeId(null);
             }}
-            onPaneContextMenu={(e) => {
-              e.preventDefault();
+            onPaneContextMenu={(x, y) => {
               if (authoringSuspended) return;
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              setContextMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+              setContextMenu({ x, y });
             }}
-          >
-            <Background variant={BackgroundVariant.Dots} />
-          </ReactFlow>
+          />
 
           {contextMenu && !authoringSuspended && (
             <GraphCanvasMenu
@@ -931,7 +948,7 @@ function DependencyGraphInner({
               y={contextMenu.y}
               onClose={() => setContextMenu(null)}
               onAdd={handleAdd}
-              onFitView={() => fitView({ duration: 250 })}
+              onFitView={fitView}
               disabled={!daemonConnected}
             />
           )}
@@ -1026,13 +1043,5 @@ function DependencyGraphInner({
         />
       )}
     </div>
-  );
-}
-
-export function DependencyGraph(props: DependencyGraphProps) {
-  return (
-    <ReactFlowProvider>
-      <DependencyGraphInner {...props} />
-    </ReactFlowProvider>
   );
 }

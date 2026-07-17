@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { NodeHandle } from "./NodeHandle";
 import { NodeMenu } from "./NodeMenu";
 import { Tooltip } from "@/components/ui/tooltip";
 import { NodeTokenBadge, type NodeTokenBadgeProps } from "./NodeTokenBadge";
@@ -42,9 +42,14 @@ export interface CommandNodeData {
    *  "feed row click pulses the node"). */
   runPulseKey?: number;
 
-  /** @xyflow/react v12's `NodeProps<Node<T>>` requires `data` to satisfy
-   *  `Record<string, unknown>` — an index signature, no shape change. */
+  /** plain data-bag index signature (unchanged shape from the xyflow-era
+   *  `NodeProps<Node<T>>` requirement — no longer required by the self-coded
+   *  `GraphNode`/`GraphCanvas` contract, kept for shape stability). */
   [key: string]: unknown;
+}
+
+export interface CommandNodeProps {
+  data: CommandNodeData;
 }
 
 /**
@@ -52,11 +57,11 @@ export interface CommandNodeData {
  * derived state (highlighted/dimmed/unlinked/justAdded/connectable) is computed
  * in DependencyGraph. Local state is ONLY ephemeral UI (menu open, handle hover).
  */
-export function CommandNode({ data }: NodeProps<Node<CommandNodeData>>) {
+export function CommandNode({ data }: CommandNodeProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  // one-shot pulse: re-key the handle each time hover begins so the .9s animation replays once.
-  const [pulseKey, setPulseKey] = useState(0);
+  // one-shot pulse-on-hover is now owned internally by NodeHandle (self-coded
+  // remount-to-replay trick), replacing the xyflow-era local pulseKey state.
   const connectable = data.connectable ?? false;
   // Run engine v1: runParticipant defaults true (no active run — zero visual
   // change to the existing authoring graph). Active glow takes priority over
@@ -124,12 +129,9 @@ export function CommandNode({ data }: NodeProps<Node<CommandNodeData>>) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <Handle
-        key={pulseKey}
-        type="source"
-        position={Position.Right}
-        isConnectable={connectable}
-        onMouseEnter={() => connectable && setPulseKey((k) => k + 1)}
+      <NodeHandle
+        role="source"
+        connectable={connectable}
         className={connectable ? "!bg-command animate-pulse" : "!bg-transparent !border !border-white/40"}
       />
 

@@ -450,8 +450,11 @@ export class RunManager {
     this.active.delete(ar.projectId);
 
     // Retention: prune oldest at terminal (best-effort, never throws the run).
+    // Pass liveRunIds() defensively (STATE §20 review fix) even though this
+    // project's own slot was just cleared above — mirrors listRuns' call and
+    // protects any other in-flight run's dir from ever being miscounted.
     try {
-      prune(ar.projectRoot);
+      prune(ar.projectRoot, undefined, this.liveRunIds());
     } catch {
       // ignore prune failures — they never affect the run outcome.
     }

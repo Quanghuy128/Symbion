@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { RunSummary } from "@symbion/core";
 import { Button } from "@/components/ui/button";
 import { TokenBreakdownCard } from "./TokenBreakdownCard";
@@ -10,6 +11,11 @@ export interface RunSummarySectionProps {
   onRerun: () => void;
   onViewFeed: () => void;
   onClose: () => void;
+  /** P3 (F7, STATE §18.1): the project this run belongs to — destination for
+   *  the [Adjust ceilings] link (`/settings?project=<id>#execution`). Absent
+   *  in any context that predates F7's wiring keeps the link inert (never a
+   *  broken navigation to an empty query param). */
+  projectId?: string;
 }
 
 function fmtTok(n: number): string {
@@ -32,7 +38,8 @@ function fmtDuration(ms: number | null): string {
  * table, FILES CHANGED via git, FINAL MESSAGE, STDERR tail (failed only),
  * [Adjust ceilings]/[change] links rendered INERT (F7 — P3 wires them).
  */
-export function RunSummarySection({ summary, onRerun, onViewFeed, onClose }: RunSummarySectionProps) {
+export function RunSummarySection({ summary, onRerun, onViewFeed, onClose, projectId }: RunSummarySectionProps) {
+  const router = useRouter();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [finalExpanded, setFinalExpanded] = useState(false);
   const [stderrExpanded, setStderrExpanded] = useState(false);
@@ -165,8 +172,16 @@ export function RunSummarySection({ summary, onRerun, onViewFeed, onClose }: Run
 
       {summary.stopReason && (
         <p className="mt-2 text-warning">
-          {/* F7: inert link — P3 wires the Settings→Execution editor. */}
-          <button type="button" className="cursor-default underline decoration-dotted opacity-70" disabled>
+          {/* F7 (P3): wired to the Settings→Execution section for this project
+           *  (STATE §18.1 — previously inert). */}
+          <button
+            type="button"
+            className="underline decoration-dotted hover:text-warning/80 disabled:cursor-default disabled:opacity-70"
+            disabled={!projectId}
+            onClick={() => {
+              if (projectId) router.push(`/settings?project=${encodeURIComponent(projectId)}#execution`);
+            }}
+          >
             [Adjust ceilings]
           </button>
         </p>

@@ -28,6 +28,7 @@ import {
 import type {
   GetRunEventsParams,
   GetRunEventsResult,
+  ListRunsResult,
   PersistedRunEvent,
   RunInfo,
   RunPreflightResult,
@@ -99,13 +100,49 @@ interface RunStoreState {
   degraded: boolean;
   degradedReason: "parse-error" | "reconcile-mismatch" | null;
 
+  // ── P3: history (STATE §18.1) — a SEPARATE state slice, never shared with
+  // the live foldState/nodeRunData above (EDGE-3). openHistoryRun replays a
+  // full historical run via getRunEvents{afterSeq} loops (existing RPC, no
+  // new wire protocol) and folds it through the SAME core.fold/rollup/derive
+  // functions live runs use — there is no second "history aggregation" impl.
+  /** the runId currently being viewed read-only, or null (not browsing history). */
+  historyRunId: string | null;
+  historyLoading: boolean;
+  historyRun: RunInfo | null;
+  historyNodeRunData: Map<string, NodeRunData>;
+  historyTimeline: TimelineRow[];
+  historySummary?: RunSummary;
+  /** ER-10 (§18.3 item 1): a danger toast + partial-summary offer when
+   *  reconciliation marks the previously-tracked run failed(daemon-restarted)
+   *  while this browser session was away. Consumers (DependencyGraph) render
+   *  the toast once and then call `dismissReconciledNotice()`. */
+  reconciledNotice: { runId: string; commandName: string } | null;
+
+  /** P3 (F8, RunCommandPalette): when the palette's "Execute /<name>…" row is
+   *  selected on a DIFFERENT tab/route than the project's Graph view, this
+   *  records which artifact to open RunDialog for once the Graph view mounts
+   *  (design §5's "auto-switches to the Graph tab" keyboard note). Consumed
+   *  (cleared) by DependencyGraph/ProjectView the moment it acts on it —
+   *  never left dangling across an unrelated later navigation. */
+  pendingExecuteArtifactId: string | null;
+  requestExecute: (artifactId: string) => void;
+  consumePendingExecute: () => string | null;
+  /** Same idea as pendingExecuteArtifactId, for F8's "Run history" palette
+   *  row: request the history popover open on whichever project's Graph view
+   *  mounts next. */
+  pendingOpenHistory: boolean;
+  requestOpenHistory: () => void;
+  consumePendingOpenHistory: () => boolean;
+
   // actions
   preflight: (projectId: string, artifactId: string) => Promise<RunPreflightResult>;
   startRun: (params: StartRunParams, agentSubagentNames?: Set<string>) => Promise<StartRunResult>;
   cancelRun: () => Promise<void>;
   /** attach to a run (SSE backfill-then-live). F5-reattach owner. */
   attach: (projectId: string, runId: string, afterSeq?: number, agentSubagentNames?: Set<string>) => void;
-  /** on mount: listRuns → auto-attach if a run is active. */
+  /** on mount: listRuns → auto-attach if a run is active; ALSO checks (ER-10,
+   *  §18.3) whether the run this browser last tracked (localStorage) is now
+   *  reconciled failed(daemon-restarted) while nobody was watching. */
   attachIfActive: (projectId: string, agentSubagentNames?: Set<string>) => Promise<void>;
   /** update the agent-name set AFTER attach (F5 cold-load path: the executing
    *  artifact/its @mentions aren't known until the reattached run.json
@@ -113,6 +150,18 @@ interface RunStoreState {
    *  late-arriving agent set doesn't require re-folding any events. */
   setAgentSubagentNames: (names: Set<string>) => void;
   detach: () => void;
+
+  /** P3: replay a past run read-only (history popover row click / ER-10's
+   *  [View summary]). Loops getRunEvents{afterSeq} until done:true, folds the
+   *  FULL replayed list through core.fold ONCE (not incrementally) into the
+   *  SEPARATE history* slice — never touches live foldState/nodeRunData. */
+  openHistoryRun: (projectId: string, runId: string, agentSubagentNames?: Set<string>) => Promise<void>;
+  exitHistory: () => void;
+  dismissReconciledNotice: () => void;
+  /** RunHistoryPopover's lazy `listRuns` on open — thin wrapper so the RPC
+   *  call stays centralized in the store (existing `listRuns` RPC, no new
+   *  method — STATE §18.2). */
+  listRunsForHistory: (projectId: string) => Promise<ListRunsResult>;
 }
 
 let eventSource: EventSource | null = null;
@@ -150,6 +199,44 @@ function stopPolling(): void {
 }
 
 const TERMINAL = new Set(["completed", "failed", "cancelled", "timedOut"]);
+
+/**
+ * ER-10 (§18.3/§18.4 A24) — the ONE new client-side persistence P3
+ * introduces: a browser-local marker of the last run this tab attached to, so
+ * `attachIfActive` can proactively detect "the run I was tracking turned out
+ * reconciled-failed while I was gone" and fire a danger toast, rather than
+ * silently staying idle. NOT a Symbion-managed file, not part of `.symbion/`
+ * — pure browser convenience, lost across browsers/incognito (acceptable:
+ * `listRuns`'s `status` field always independently recovers the same info,
+ * just without the proactive toast in that edge case).
+ */
+function lastTrackedRunKey(projectId: string): string {
+  return `symbion:lastTrackedRun:${projectId}`;
+}
+
+function rememberTrackedRun(projectId: string, runId: string): void {
+  try {
+    window.localStorage.setItem(lastTrackedRunKey(projectId), runId);
+  } catch {
+    /* localStorage unavailable (privacy mode etc.) — the toast is best-effort. */
+  }
+}
+
+function readTrackedRun(projectId: string): string | null {
+  try {
+    return window.localStorage.getItem(lastTrackedRunKey(projectId));
+  } catch {
+    return null;
+  }
+}
+
+function clearTrackedRun(projectId: string): void {
+  try {
+    window.localStorage.removeItem(lastTrackedRunKey(projectId));
+  } catch {
+    /* ignore */
+  }
+}
 
 function eventToTail(ev: PersistedRunEvent): RawTailLine {
   let text: string;
@@ -199,6 +286,36 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
   degraded: false,
   degradedReason: null,
 
+  historyRunId: null,
+  historyLoading: false,
+  historyRun: null,
+  historyNodeRunData: new Map(),
+  historyTimeline: [],
+  historySummary: undefined,
+  reconciledNotice: null,
+  pendingExecuteArtifactId: null,
+  pendingOpenHistory: false,
+
+  requestExecute(artifactId) {
+    set({ pendingExecuteArtifactId: artifactId });
+  },
+
+  consumePendingExecute() {
+    const id = get().pendingExecuteArtifactId;
+    if (id) set({ pendingExecuteArtifactId: null });
+    return id;
+  },
+
+  requestOpenHistory() {
+    set({ pendingOpenHistory: true });
+  },
+
+  consumePendingOpenHistory() {
+    const pending = get().pendingOpenHistory;
+    if (pending) set({ pendingOpenHistory: false });
+    return pending;
+  },
+
   async preflight(projectId, artifactId) {
     return callRpc<{ projectId: string; artifactId: string }, RunPreflightResult>("runPreflight", {
       projectId,
@@ -238,6 +355,10 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
   attach(projectId, runId, afterSeq = 0, agentSubagentNames) {
     stopEventSource();
     stopPolling();
+    // ER-10 marker: remember this runId as the one this tab is tracking, so a
+    // later attachIfActive (e.g. after a daemon crash + F5) can proactively
+    // detect it turned out reconciled-failed while the tab was away.
+    rememberTrackedRun(projectId, runId);
     // afterSeq > 0 => resuming an already-attached run (e.g. an SSE error
     // handler re-arming the same attach) — keep the existing foldState so a
     // reconnect never re-folds from scratch; afterSeq === 0 is a FRESH attach
@@ -283,6 +404,10 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
           stopElapsed();
           set({ connection: "idle" });
           computeTerminalSummary(set, get, info);
+          // Run reached a terminal state while THIS tab was watching (a
+          // normal completion, not an ER-10 daemon-restart discovered on a
+          // later attachIfActive) — the tracked-run marker's job is done.
+          clearTrackedRun(projectId);
         }
       } catch {
         /* ignore */
@@ -299,16 +424,42 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
   },
 
   async attachIfActive(projectId, agentSubagentNames) {
-    const { runs, activeRunId } = await callRpc<{ projectId: string }, { runs: unknown[]; activeRunId?: string }>(
-      "listRuns",
-      { projectId }
-    );
-    void runs;
+    const { runs, activeRunId } = await callRpc<{ projectId: string }, ListRunsResult>("listRuns", { projectId });
     if (activeRunId) {
       // Pull run.json + attach from seq 0 (backfill fast-forwards).
       set({ projectId, activeArtifactId: null });
       get().attach(projectId, activeRunId, 0, agentSubagentNames);
       startElapsed(set, get);
+      return;
+    }
+
+    // ER-10 (§18.3 item 1): no active run — check whether the run THIS
+    // browser tab was last tracking (localStorage marker) has since been
+    // reconciled failed(daemon-restarted) while nobody was watching. Fires a
+    // danger toast + computes a partial summary via the SAME replay path
+    // history uses (a reconciled run IS effectively a completed historical
+    // run the moment it's reconciled — reuses openHistoryRun, not a third
+    // code path).
+    const trackedRunId = readTrackedRun(projectId);
+    if (!trackedRunId) return;
+    const trackedRow = runs.find((r) => r.runId === trackedRunId);
+    if (trackedRow && trackedRow.status === "failed") {
+      // Only surface the proactive toast for the daemon-restarted flavor of
+      // failure (ER-10) — a run that failed normally (e.g. non-zero exit)
+      // while the tab WAS watching already cleared its own marker via the
+      // terminal "state"/poll-loop handlers above, so reaching this branch
+      // with a plain `failed` (not daemon-restarted) status would only
+      // happen if the tab genuinely never saw the terminal transition
+      // itself (e.g. closed mid-run) — still a legitimate "you missed this"
+      // case, so the toast fires either way; the run.json's errorMessage
+      // distinguishes the reason inside the partial summary itself.
+      clearTrackedRun(projectId);
+      const row = runs.find((r) => r.runId === trackedRunId);
+      set({ reconciledNotice: { runId: trackedRunId, commandName: row?.commandName ?? "run" } });
+    } else if (trackedRow) {
+      // Reached a normal terminal state (completed/cancelled/timedOut) while
+      // away — not an ER-10 case; just clear the stale marker silently.
+      clearTrackedRun(projectId);
     }
   },
 
@@ -352,6 +503,90 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       degraded: false,
       degradedReason: null,
     });
+  },
+
+  async openHistoryRun(projectId, runId, agentSubagentNames) {
+    set({ historyRunId: runId, historyLoading: true, historyRun: null, historyNodeRunData: new Map(), historyTimeline: [], historySummary: undefined });
+    const names = agentSubagentNames ?? get().agentSubagentNames;
+    let allEvents: PersistedRunEvent[] = [];
+    let latestRun: RunInfo | null = null;
+    let afterSeq = 0;
+    // Loop getRunEvents{afterSeq} until done:true (existing RPC, existing
+    // daemon code, A18 — no new RPC/wire protocol for bulk historical replay).
+    for (;;) {
+      const result = await callRpc<GetRunEventsParams, GetRunEventsResult>("getRunEvents", {
+        projectId,
+        runId,
+        afterSeq,
+      });
+      allEvents = allEvents.concat(result.events);
+      latestRun = result.run;
+      if (result.events.length > 0) {
+        afterSeq = result.events[result.events.length - 1]!.seq;
+      }
+      if (result.done) break;
+      // Defensive: if the daemon ever returns done:false with zero new events
+      // (shouldn't happen per its own contract), avoid an infinite loop.
+      if (result.events.length === 0) break;
+    }
+    if (!latestRun) {
+      // Run not found / no events at all — leave history state cleared.
+      set({ historyLoading: false });
+      return;
+    }
+    // Fold ALL replayed events through core.fold ONCE (a full recompute, not
+    // an incremental diff — same posture as the live store's derive calls,
+    // A12) into the SEPARATE history* slice (EDGE-3: never touches the live
+    // foldState/nodeRunData a concurrently-running live run might be using).
+    let foldState = initRunState();
+    for (const ev of allEvents) {
+      foldState = fold(foldState, ev);
+    }
+    const rolled = rollup(foldState, names);
+    const historyNodeRunData = new Map<string, NodeRunData>();
+    historyNodeRunData.set("main", {
+      ownFresh: rolled.command.ownFresh,
+      totalFresh: rolled.command.totalFresh,
+      breakdown: mainBreakdown(foldState, rolled),
+    });
+    for (const [name, bucket] of rolled.byAgent) {
+      historyNodeRunData.set(name, {
+        ownFresh: bucket.ownFresh,
+        totalFresh: bucket.totalFresh,
+        breakdown: agentBreakdown(foldState, name),
+      });
+    }
+    const historyTimeline = coreTimelineRows(allEvents, foldState);
+    const filesChanged = latestRun.filesChanged ?? "unavailable";
+    const historySummary = coreRunSummary(foldState, { run: latestRun, agentSubagentNames: names, events: allEvents }, filesChanged);
+    set({
+      projectId,
+      historyRunId: runId,
+      historyLoading: false,
+      historyRun: latestRun,
+      historyNodeRunData,
+      historyTimeline,
+      historySummary,
+    });
+  },
+
+  exitHistory() {
+    set({
+      historyRunId: null,
+      historyLoading: false,
+      historyRun: null,
+      historyNodeRunData: new Map(),
+      historyTimeline: [],
+      historySummary: undefined,
+    });
+  },
+
+  dismissReconciledNotice() {
+    set({ reconciledNotice: null });
+  },
+
+  async listRunsForHistory(projectId) {
+    return callRpc<{ projectId: string }, ListRunsResult>("listRuns", { projectId });
   },
 }));
 
@@ -406,6 +641,7 @@ function startPollLoop(
         stopElapsed();
         set({ connection: "idle" });
         computeTerminalSummary(set, get, result.run);
+        clearTrackedRun(projectId);
         return;
       }
     } catch {

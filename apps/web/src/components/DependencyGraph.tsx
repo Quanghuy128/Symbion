@@ -38,6 +38,8 @@ import { CopyRunCommandDialog } from "./CopyRunCommandDialog";
 import { RunDialog } from "./run/RunDialog";
 import { MissionStatusStrip } from "./run/MissionStatusStrip";
 import { RunTimelinePanel, type TimelineMode } from "./run/RunTimelinePanel";
+import { RunHistoryPopover } from "./run/RunHistoryPopover";
+import { PastRunBanner } from "./run/PastRunBanner";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { useRunStore } from "@/lib/run/useRunStore";
 import { newArtifact } from "@/lib/newArtifact";
@@ -58,6 +60,27 @@ export interface DependencyGraphProps {
 }
 
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "timedOut"]);
+
+/**
+ * P3 (STATE §18.1): maps a REPLAYED historical run's terminal RunStatus to
+ * CommandNode's static ring variant. History mode never renders "active"/
+ * "starting" (nothing is live) — only the frozen final state.
+ */
+function historyTerminalStatusToRingStatus(
+  status: string
+): "done" | "error" | "cancelled" | undefined {
+  switch (status) {
+    case "completed":
+      return "done";
+    case "failed":
+    case "timedOut":
+      return "error";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return undefined;
+  }
+}
 
 // Fixed-estimate node dimensions fed into dagre's layout (PLAN §4.1 decision
 // (a)): all three node components are auto-sizing divs with no fixed
@@ -128,6 +151,23 @@ function DependencyGraphInner({
   const [pulseNodeId, setPulseNodeId] = useState<string | null>(null);
   const [pulseKey, setPulseKey] = useState(0);
 
+  // --- P3: history (STATE §18.1) — 🕘 popover + read-only past-run overlay ---
+  const historyRunId = useRunStore((s) => s.historyRunId);
+  const historyLoading = useRunStore((s) => s.historyLoading);
+  const historyRun = useRunStore((s) => s.historyRun);
+  const historyNodeRunData = useRunStore((s) => s.historyNodeRunData);
+  const historyTimeline = useRunStore((s) => s.historyTimeline);
+  const historySummary = useRunStore((s) => s.historySummary);
+  const openHistoryRun = useRunStore((s) => s.openHistoryRun);
+  const exitHistory = useRunStore((s) => s.exitHistory);
+  const reconciledNotice = useRunStore((s) => s.reconciledNotice);
+  const dismissReconciledNotice = useRunStore((s) => s.dismissReconciledNotice);
+  const consumePendingExecute = useRunStore((s) => s.consumePendingExecute);
+  const consumePendingOpenHistory = useRunStore((s) => s.consumePendingOpenHistory);
+  const [historyPopoverOpen, setHistoryPopoverOpen] = useState(false);
+  const [runCount, setRunCount] = useState(0);
+  const viewingHistory = historyRunId !== null;
+
   // F5-reattach: on mount, check for an already-active run in this project and
   // attach (bar + mission overlay resume) — the store owns the SSE lifecycle.
   // agentSubagentNames is resolved lazily by a SEPARATE effect below (once
@@ -138,9 +178,41 @@ function DependencyGraphInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
   const missionActive = run !== null && !TERMINAL_RUN_STATUSES.has(run.status);
-  // Authoring suspends for the whole graph while a run is active (design §0/§5) —
-  // resumes immediately once the run leaves the non-terminal set.
-  const authoringSuspended = missionActive;
+  // Authoring suspends for the whole graph while a run is active OR while
+  // browsing history read-only (design §0/§5, STATE §18.1) — resumes
+  // immediately once the run leaves the non-terminal set / history is exited.
+  const authoringSuspended = missionActive || viewingHistory;
+
+  // EDGE-2/A21 (STATE §18.1/§18.5): "live always wins" — if a NEW live run
+  // starts while browsing history, the live overlay takes over automatically,
+  // a toast explains why, and history is exited. Checked on every render via
+  // an effect keyed on missionActive so it fires exactly once per transition.
+  useEffect(() => {
+    if (missionActive && viewingHistory) {
+      exitHistory();
+      showToast("A new run started — exited run history", "warning");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missionActive, viewingHistory]);
+
+  // Refresh the 🕘 history count whenever the panel isn't already open and a
+  // run just went terminal (design's "hidden at 0 runs" empty-state rule —
+  // the count only needs to be roughly current, not live-ticking).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await useRunStore.getState().listRunsForHistory(projectId);
+        if (!cancelled) setRunCount(result.runs.length);
+      } catch {
+        /* best-effort — toolbar simply keeps its last known count. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, missionActive]);
 
   // Auto-morph the panel to Summary on terminal transition, unless the user is
   // mid-scroll (approximated here by "already looking at Feed/Raw" — a full
@@ -182,6 +254,21 @@ function DependencyGraphInner({
   const agentNames = useMemo(() => new Set(agents.map((a) => a.name)), [agents]);
   const commandById = useMemo(() => new Map(commands.map((c) => [c.id, c])), [commands]);
   const artifactById = useMemo(() => new Map(artifacts.map((a) => [a.id, a])), [artifacts]);
+
+  // F8 (RunCommandPalette): consume a pending Execute/history request left by
+  // the palette (possibly from a different route) the moment this project's
+  // Graph view mounts (STATE §18.1's "auto-switches to the Graph tab").
+  useEffect(() => {
+    const pendingArtifactId = consumePendingExecute();
+    if (pendingArtifactId) {
+      const cmd = commandById.get(pendingArtifactId);
+      if (cmd) setRunDialogFor(cmd);
+    }
+    if (consumePendingOpenHistory()) {
+      setHistoryPopoverOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandById]);
 
   // F5-reattach's agentSubagentNames follow-up (P2): startRun's caller
   // (RunDialog) already passes agentSubagentNames at run-start time — this
@@ -357,14 +444,29 @@ function DependencyGraphInner({
   // Derivation (E10): nodes/edges are a pure function of artifacts + callbacks.
   // ---------------------------------------------------------------------------
 
+  // P3 (STATE §18.1): while viewing a past run read-only, the node/edge memo
+  // sources from `historyNodeRunData`/`historyRun` INSTEAD OF the live
+  // `nodeRunData`/`activeArtifactId` — a selector-level branch over the SAME
+  // memo below, not a duplicated derivation. `viewingHistory` and
+  // `missionActive` are mutually exclusive by construction (EDGE-2/A21: "live
+  // always wins" exits history the instant a live mission starts).
+  const effectiveActiveArtifactId = viewingHistory ? historyRun?.artifactId ?? null : activeArtifactId;
+  const effectiveNodeRunData = viewingHistory ? historyNodeRunData : nodeRunData;
+  const effectiveDegraded = viewingHistory ? false : degraded;
+  // "Participating" is true for BOTH an active live mission and a viewed
+  // historical run (both need the dim/non-dim split); pulse/flow animation is
+  // gated separately below by `missionActive` alone (history rings are always
+  // final/static, never pulsing — design's "no pulse/flow" contract).
+  const missionLike = missionActive || viewingHistory;
+
   // Run-engine participant set (design §3.4/§4): the executing command + its
   // reachable agents (by @mention) glow/stay full-opacity; everything else
   // dims to 35%. Empty when no run is active — additive, zero-cost otherwise.
   const runParticipantAgentNames = useMemo(() => {
-    if (!missionActive || !activeArtifactId) return new Set<string>();
-    const activeCommand = commands.find((c) => c.id === activeArtifactId);
+    if (!missionLike || !effectiveActiveArtifactId) return new Set<string>();
+    const activeCommand = commands.find((c) => c.id === effectiveActiveArtifactId);
     return activeCommand ? new Set(extractAgentMentions(activeCommand.body)) : new Set<string>();
-  }, [missionActive, activeArtifactId, commands]);
+  }, [missionLike, effectiveActiveArtifactId, commands]);
 
   const { baseNodes, baseEdges, missingAgentMentions } = useMemo(() => {
     // Phase (a) BUILD SHAPE — same data-bag construction as before; `position`
@@ -380,25 +482,37 @@ function DependencyGraphInner({
 
         // Run engine v1 (P1) — additive data-bag only (design §4's CommandNodeData
         // diff): runStatus/runParticipant/onExecute/executeDisabledReason.
-        const isRunning = c.id === activeArtifactId;
-        const runStatus = missionActive ? (isRunning ? "active" : undefined) : undefined;
-        const runParticipant = missionActive ? isRunning : true;
+        // P3 (STATE §18.1): while viewing history, `isRunning` sources from
+        // the REPLAYED run's artifactId — final "done"/"error"/"cancelled"
+        // rings only, never "active" (no pulse — EDGE-2's "no pulse/flow").
+        const isRunning = c.id === effectiveActiveArtifactId;
+        const runStatus = missionActive
+          ? isRunning
+            ? "active"
+            : undefined
+          : viewingHistory && isRunning && historyRun
+            ? historyTerminalStatusToRingStatus(historyRun.status)
+            : undefined;
+        const runParticipant = missionLike ? isRunning : true;
+        // EDGE-2/A21: Execute stays reachable while browsing history (only a
+        // LIVE active run disables it — browsing history is explicitly NOT
+        // "a run is active"); the palette/⋯ menu path is identical either way.
         const executeDisabledReason = !daemonConnected
           ? "Daemon offline"
           : missionActive
             ? "A run is already active — view the running command"
             : undefined;
 
-        // P2: the command's roll-up badge (own + Σ agents) — nodeRunData's
-        // "main" bucket. Only present while this command is the executing one.
-        const mainData = isRunning ? nodeRunData.get("main") : undefined;
+        // P2/P3: the command's roll-up badge (own + Σ agents) — sourced from
+        // `effectiveNodeRunData`'s "main" bucket (live OR replayed history).
+        const mainData = isRunning ? effectiveNodeRunData.get("main") : undefined;
         const badge = mainData
           ? {
               fresh: mainData.totalFresh,
               costUsd: mainData.costUsd,
               breakdown: mainData.breakdown,
               live: missionActive,
-              degraded,
+              degraded: effectiveDegraded,
             }
           : undefined;
 
@@ -426,14 +540,15 @@ function DependencyGraphInner({
         } satisfies Node;
       }),
       ...agents.map((a) => {
-        const runParticipant = missionActive ? runParticipantAgentNames.has(a.name) : true;
-        const dispatched = missionActive && runParticipant;
-        const agentData = dispatched ? nodeRunData.get(a.name) : undefined;
+        const runParticipant = missionLike ? runParticipantAgentNames.has(a.name) : true;
+        const dispatched = missionLike && runParticipant;
+        const agentData = dispatched ? effectiveNodeRunData.get(a.name) : undefined;
         // "working" while the run is active and this agent has been dispatched
         // (its bucket exists in nodeRunData with >0 own tokens, or the run is
         // still streaming — before any tokens arrive the badge simply shows
         // "—" per NodeTokenBadge's own pre-first-event contract); "settled"
-        // once the mission ends (terminal) for a participant that DID run.
+        // once the mission ends (terminal) for a participant that DID run —
+        // history mode ALWAYS renders "settled" (final state only, no "working").
         const agentRunStatus: "idle" | "working" | "settled" | "error" | undefined = !dispatched
           ? undefined
           : missionActive
@@ -449,7 +564,7 @@ function DependencyGraphInner({
               costUsd: agentData.costUsd,
               breakdown: agentData.breakdown,
               live: missionActive,
-              degraded,
+              degraded: effectiveDegraded,
             }
           : undefined;
         return {
@@ -558,10 +673,13 @@ function DependencyGraphInner({
     handleEdgeDelete,
     authoringSuspended,
     missionActive,
-    activeArtifactId,
+    missionLike,
+    viewingHistory,
+    historyRun,
+    effectiveActiveArtifactId,
     runParticipantAgentNames,
-    nodeRunData,
-    degraded,
+    effectiveNodeRunData,
+    effectiveDegraded,
     pulseNodeId,
     pulseKey,
   ]);
@@ -572,7 +690,7 @@ function DependencyGraphInner({
   const nodes = useMemo(
     () =>
       baseNodes.map((n) => {
-        if (missionActive) {
+        if (missionLike) {
           const participant = (n.data as { runParticipant?: boolean }).runParticipant ?? true;
           return { ...n, data: { ...n.data, highlighted: false, dimmed: !participant } };
         }
@@ -584,7 +702,7 @@ function DependencyGraphInner({
           );
         return { ...n, data: { ...n.data, highlighted: n.id === hoveredId, dimmed: !connected } };
       }),
-    [baseNodes, baseEdges, hoveredId, missionActive]
+    [baseNodes, baseEdges, hoveredId, missionLike]
   );
 
   const edges = useMemo(() => {
@@ -614,12 +732,17 @@ function DependencyGraphInner({
         };
       }
       // Just-ended mission (run terminal, still showing the final tableau
-      // until Close): tint edges that participated as "settled" rather than
-      // snapping back to the plain authoring dim (design §3.5's "flow stops,
-      // stroke stays tinted 60% until run end").
-      if (run && TERMINAL_RUN_STATUSES.has(run.status) && activeArtifactId) {
+      // until Close) OR a viewed historical run (P3, ALWAYS a static final
+      // tableau — no pulse/flow, design's explicit "no pulse/flow" contract):
+      // tint edges that participated as "settled" rather than snapping back
+      // to the plain authoring dim (design §3.5's "flow stops, stroke stays
+      // tinted 60% until run end").
+      if (
+        ((run && TERMINAL_RUN_STATUSES.has(run.status) && activeArtifactId) || viewingHistory) &&
+        effectiveActiveArtifactId
+      ) {
         const targetAgentName = agents.find((a) => a.id === e.target)?.name ?? "";
-        const wasParticipant = e.source === activeArtifactId && runParticipantAgentNames.has(targetAgentName);
+        const wasParticipant = e.source === effectiveActiveArtifactId && runParticipantAgentNames.has(targetAgentName);
         if (wasParticipant) {
           return { ...e, data: { ...e.data, highlighted: false, dimmed: false, interactive: false, runFlow: "settled" as const } };
         }
@@ -647,6 +770,8 @@ function DependencyGraphInner({
     selectedEdgeId,
     missionActive,
     activeArtifactId,
+    effectiveActiveArtifactId,
+    viewingHistory,
     runParticipantAgentNames,
     agents,
     authoringSuspended,
@@ -665,6 +790,53 @@ function DependencyGraphInner({
 
       {!daemonConnected && <DaemonRibbon onRetry={handleRetry} />}
       {showHint && daemonConnected && <GraphHintBar onDismiss={dismissHint} />}
+
+      {/* ER-10 (§18.3 item 1): a run this tab was tracking was reconciled
+       *  failed(daemon-restarted) while the tab was away — danger toast with
+       *  a [View summary] action that opens the SAME read-only replay path
+       *  history uses (a reconciled run IS a completed historical run). */}
+      {reconciledNotice && (
+        <div className="mb-2 flex items-center justify-between rounded-panel border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+          <span>
+            Run /{reconciledNotice.commandName} marked failed — daemon restarted.
+          </span>
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              className="underline decoration-dotted hover:text-danger/80"
+              onClick={() => {
+                void openHistoryRun(projectId, reconciledNotice.runId);
+                dismissReconciledNotice();
+              }}
+            >
+              [View summary]
+            </button>
+            <button type="button" className="text-danger/70 hover:text-danger" onClick={dismissReconciledNotice}>
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
+
+      {viewingHistory && historyLoading && !historyRun && (
+        <div className="border-b border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+          🕘 loading past run…
+        </div>
+      )}
+
+      {viewingHistory && historyRun && (
+        <PastRunBanner
+          run={historyRun}
+          onExit={exitHistory}
+          onRerun={() => {
+            const cmd = historyRun.artifactId ? commandById.get(historyRun.artifactId) : undefined;
+            if (cmd) {
+              exitHistory();
+              setRunDialogFor(cmd);
+            }
+          }}
+        />
+      )}
 
       {missionActive && run && (
         <MissionStatusStrip
@@ -687,6 +859,27 @@ function DependencyGraphInner({
             disabled={!daemonConnected || authoringSuspended}
             fitDisabled={artifacts.length === 0}
           />
+          {/* 🕘 history (design §3.10 R6, STATE §18.1) — hidden at 0 runs (the
+           *  empty-state rule: absence is the cleanest empty state). */}
+          {runCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setHistoryPopoverOpen((o) => !o)}
+              className="absolute left-3 top-12 z-10 flex h-7 items-center gap-1 rounded-pill border border-border-menu bg-bg-menu px-2.5 text-[12.5px] font-medium text-text-body shadow-dropdown hover:bg-white/[.06]"
+            >
+              🕘 runs {runCount}
+            </button>
+          )}
+          {historyPopoverOpen && (
+            <RunHistoryPopover
+              projectId={projectId}
+              onSelect={(runId) => {
+                setHistoryPopoverOpen(false);
+                void openHistoryRun(projectId, runId);
+              }}
+              onClose={() => setHistoryPopoverOpen(false)}
+            />
+          )}
           <GraphLegend open={legendOpen} onOpenChange={setLegendOpen} />
 
           <ReactFlow
@@ -703,12 +896,14 @@ function DependencyGraphInner({
             onNodeMouseLeave={authoringSuspended ? undefined : () => setHoveredId(null)}
             onEdgeClick={authoringSuspended ? undefined : (_, edge) => setSelectedEdgeId(edge.id)}
             onNodeClick={
-              missionActive
+              missionLike
                 ? (_, node) => {
-                    // P2 (design §3.4): node click filters the Feed panel to
-                    // that actor. Command node maps to the "main" actor key;
-                    // agent nodes filter by their own name (the rollup key).
-                    const isCommandNode = node.id === activeArtifactId;
+                    // P2/P3 (design §3.4): node click filters the Feed/History
+                    // panel to that actor. Command node maps to the "main"
+                    // actor key; agent nodes filter by their own name (the
+                    // rollup key) — sources from effectiveActiveArtifactId so
+                    // this works identically while browsing history.
+                    const isCommandNode = node.id === effectiveActiveArtifactId;
                     const agentMatch = agents.find((a) => a.id === node.id);
                     const key = isCommandNode ? "main" : (agentMatch?.name ?? null);
                     if (!key) return;
@@ -759,20 +954,29 @@ function DependencyGraphInner({
         </div>
 
         {/* Timeline panel (P2: Feed/Raw/Summary tabs — design §3.4/§4/§5;
-            RunLogTail's content lives on unchanged as the Raw tab's body). */}
-        {(missionActive || (run && TERMINAL_RUN_STATUSES.has(run.status) && summary)) && (
+            RunLogTail's content lives on unchanged as the Raw tab's body).
+            P3: while viewing history, sources from historyTimeline/
+            historySummary instead — same panel, different input map. */}
+        {(missionActive || (run && TERMINAL_RUN_STATUSES.has(run.status) && summary) || viewingHistory) && (
           <div className="w-[320px] shrink-0 border-l border-border-hairline">
             <RunTimelinePanel
-              rows={timeline}
+              rows={viewingHistory ? historyTimeline : timeline}
               rawLines={rawTail}
-              mode={panelMode}
+              mode={viewingHistory ? (panelMode === "feed" ? "history" : panelMode) : panelMode}
               onModeChange={setPanelMode}
-              summary={summary}
-              waiting={rawTail.length === 0}
-              degraded={degraded}
-              degradedReason={degradedReason}
+              summary={viewingHistory ? historySummary : summary}
+              waiting={!viewingHistory && rawTail.length === 0}
+              degraded={viewingHistory ? false : degraded}
+              degradedReason={viewingHistory ? null : degradedReason}
+              projectId={projectId}
+              historyMode={viewingHistory}
               filterOptions={[
-                { id: "main", label: activeArtifactId ? `/${commandById.get(activeArtifactId)?.name ?? "command"}` : "command" },
+                {
+                  id: "main",
+                  label: effectiveActiveArtifactId
+                    ? `/${commandById.get(effectiveActiveArtifactId)?.name ?? "command"}`
+                    : "command",
+                },
                 ...[...runParticipantAgentNames].map((name) => ({ id: name, label: name })),
               ]}
               filterNodeId={panelFilterId}
@@ -784,10 +988,13 @@ function DependencyGraphInner({
                 setPulseKey((k) => k + 1);
               }}
               onRerun={() => {
-                const cmd = activeArtifactId ? commandById.get(activeArtifactId) : undefined;
-                if (cmd) setRunDialogFor(cmd);
+                const cmd = effectiveActiveArtifactId ? commandById.get(effectiveActiveArtifactId) : undefined;
+                if (cmd) {
+                  if (viewingHistory) exitHistory();
+                  setRunDialogFor(cmd);
+                }
               }}
-              onClose={() => setPanelMode("feed")}
+              onClose={() => setPanelMode(viewingHistory ? "history" : "feed")}
             />
           </div>
         )}

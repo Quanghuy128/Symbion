@@ -63,7 +63,7 @@ import { runManager } from "../run/runManager.js";
 import { runPreflight as computePreflight } from "../run/preflight.js";
 import { buildArgv, resolveClaudeBin } from "../run/cliDriver.js";
 import { nonceStore } from "../run/nonces.js";
-import { resolveRunConfig, configHash, ackSettingsHash } from "../run/runConfig.js";
+import { resolveRunConfig, configHash, ackSettingsHash, validateRunConfig } from "../run/runConfig.js";
 import { getRunCliVersion } from "../run/cliVersion.js";
 import { listRuns as storeListRuns, readEvents, readRunJson, reconcile, prune } from "../run/runStore.js";
 import type * as contract from "./contract.js";
@@ -452,9 +452,19 @@ export const handlers = {
 
   updateSettings(params: contract.UpdateSettingsParams): contract.UpdateSettingsResult {
     if (params.projectId && params.settings) {
+      // Server-side validation of the run-engine settings (STATE §20 review
+      // fix — 🟡 medium): the RunSettingsSection.tsx client clamps are UX-only
+      // and do not protect the daemon RPC boundary. Reject out-of-contract
+      // values rather than silently persisting them.
+      let validatedRun;
+      try {
+        validatedRun = validateRunConfig(params.settings.run);
+      } catch (err) {
+        throw new RpcError("invalid-params", err instanceof Error ? err.message : "Invalid run settings.");
+      }
       const path = findProjectPath(params.projectId);
       const store = loadProjectStore(path);
-      store.settings = params.settings;
+      store.settings = { ...params.settings, run: validatedRun ?? undefined };
       saveProjectStore(path, store);
       return { project: store };
     }
@@ -1151,7 +1161,7 @@ export const handlers = {
     }
     const path = findProjectPath(p.projectId);
     reconcile(path, runManager.liveRunIds());
-    prune(path);
+    prune(path, undefined, runManager.liveRunIds());
     const runs = storeListRuns(path);
     const activeRunId = runManager.activeRunIdForProject(p.projectId);
     return activeRunId ? { runs, activeRunId } : { runs };

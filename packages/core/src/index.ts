@@ -35,6 +35,7 @@ export * from "./run/parseStreamJson.js";
 export * from "./run/pricing.js";
 export * from "./run/aggregate.js";
 export * from "./run/derive.js";
+export * from "./run/retention.js";
 
 export * from "./generate/description.js";
 export * from "./generate/bodyPrompt.js";

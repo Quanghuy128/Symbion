@@ -7,7 +7,7 @@ import { RunLogTail } from "./RunLogTail";
 import { RunSummarySection } from "./RunSummarySection";
 import { DegradedTelemetryChip, type DegradedReason } from "./DegradedTelemetryChip";
 
-export type TimelineMode = "feed" | "raw" | "summary";
+export type TimelineMode = "feed" | "raw" | "summary" | "history";
 
 export interface RunTimelinePanelProps {
   rows: TimelineRow[];
@@ -25,6 +25,15 @@ export interface RunTimelinePanelProps {
   onRowClick?: (actor: string | undefined) => void;
   onRerun: () => void;
   onClose: () => void;
+  /** F7 (P3) — the project id, threaded to RunSummarySection's [Adjust
+   *  ceilings] link destination. */
+  projectId?: string;
+  /** P3 (STATE §18.1): true while viewing a read-only historical run —
+   *  `mode:"history"` behaves exactly like a terminal run's Feed tab MINUS
+   *  the live follow/pause toggle (nothing is streaming). Feed/Raw/Summary
+   *  tabs remain switchable; the tab bar's active-tab label reads "History"
+   *  instead of "Feed" while `mode==="history"`. */
+  historyMode?: boolean;
 }
 
 function fmtAtMs(ms: number): string {
@@ -54,10 +63,19 @@ export function RunTimelinePanel({
   onRowClick,
   onRerun,
   onClose,
+  projectId,
+  historyMode = false,
 }: RunTimelinePanelProps) {
-  const [following, setFollowing] = useState(true);
+  // History mode: nothing is streaming, so there is no "follow/pause" state
+  // at all — `following` stays permanently false and the footer that
+  // exposes it is hidden entirely (design's "no follow/pause toggle present").
+  const [following, setFollowing] = useState(!historyMode);
   const [expandedSeq, setExpandedSeq] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // `mode==="history"` renders the SAME row list as `"feed"` — history is
+  // exactly like a terminal run's Feed tab, minus follow/pause (STATE §18.1).
+  const showingRows = mode === "feed" || mode === "history";
 
   const filteredRows = useMemo(
     () => (filterNodeId ? rows.filter((r) => r.actor === filterNodeId) : rows),
@@ -65,12 +83,13 @@ export function RunTimelinePanel({
   );
 
   useEffect(() => {
-    if (!following) return;
+    if (!following || historyMode) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [filteredRows.length, following]);
+  }, [filteredRows.length, following, historyMode]);
 
   function onScroll() {
+    if (historyMode) return;
     const el = scrollRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
@@ -83,10 +102,10 @@ export function RunTimelinePanel({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className={mode === "feed" ? "font-semibold text-text-body" : "hover:text-text-body"}
-            onClick={() => onModeChange("feed")}
+            className={mode === "feed" || mode === "history" ? "font-semibold text-text-body" : "hover:text-text-body"}
+            onClick={() => onModeChange(historyMode ? "history" : "feed")}
           >
-            Feed
+            {mode === "history" ? "History" : "Feed"}
           </button>
           <button
             type="button"
@@ -108,7 +127,7 @@ export function RunTimelinePanel({
         {degraded && degradedReason && <DegradedTelemetryChip reason={degradedReason} />}
       </div>
 
-      {mode === "feed" && (
+      {showingRows && (
         <>
           {filterOptions.length > 0 && (
             <div className="flex flex-wrap gap-1 border-b border-border-hairline px-2 py-1">
@@ -133,7 +152,7 @@ export function RunTimelinePanel({
           )}
 
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
-            {waiting && filteredRows.length === 0 && (
+            {!historyMode && waiting && filteredRows.length === 0 && (
               <div className="animate-pulse text-text-muted">waiting for the CLI to start streaming…</div>
             )}
             {filteredRows.map((row) => (
@@ -166,30 +185,40 @@ export function RunTimelinePanel({
             ))}
           </div>
 
-          <div className="flex items-center justify-between border-t border-border-hairline px-2 py-1 text-[10px] text-text-muted">
-            {following ? (
-              <span>▼ following</span>
-            ) : (
-              <button
-                type="button"
-                className="text-text-body"
-                onClick={() => {
-                  setFollowing(true);
-                  const el = scrollRef.current;
-                  if (el) el.scrollTop = el.scrollHeight;
-                }}
-              >
-                ⏸ paused — click to resume
-              </button>
-            )}
-          </div>
+          {/* History mode: nothing is streaming — no follow/pause toggle
+              (design's explicit "no follow/pause toggle present" contract). */}
+          {!historyMode && (
+            <div className="flex items-center justify-between border-t border-border-hairline px-2 py-1 text-[10px] text-text-muted">
+              {following ? (
+                <span>▼ following</span>
+              ) : (
+                <button
+                  type="button"
+                  className="text-text-body"
+                  onClick={() => {
+                    setFollowing(true);
+                    const el = scrollRef.current;
+                    if (el) el.scrollTop = el.scrollHeight;
+                  }}
+                >
+                  ⏸ paused — click to resume
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
 
       {mode === "raw" && <RunLogTail lines={rawLines} waiting={waiting} />}
 
       {mode === "summary" && summary && (
-        <RunSummarySection summary={summary} onRerun={onRerun} onViewFeed={() => onModeChange("feed")} onClose={onClose} />
+        <RunSummarySection
+          summary={summary}
+          onRerun={onRerun}
+          onViewFeed={() => onModeChange(historyMode ? "history" : "feed")}
+          onClose={onClose}
+          projectId={projectId}
+        />
       )}
     </div>
   );

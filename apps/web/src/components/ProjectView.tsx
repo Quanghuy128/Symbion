@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CanonicalArtifact, ProjectStore } from "@symbion/core";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { DependencyGraph } from "./DependencyGraph";
 import { PublishDialog } from "./publish/PublishDialog";
 import { CopyRunCommandDialog } from "./CopyRunCommandDialog";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
+import { useRunStore } from "@/lib/run/useRunStore";
 import { newArtifact } from "@/lib/newArtifact";
 
 export interface ProjectViewProps {
@@ -19,6 +20,22 @@ export interface ProjectViewProps {
 /** S5 — Project view: Danh sách (list) + Sơ đồ (graph) tabs, publish entry point. */
 export function ProjectView({ project }: ProjectViewProps) {
   const [tab, setTab] = useState<"list" | "graph">("list");
+  // F8 (RunCommandPalette, STATE §18/§19.2 assumption #3): a palette Execute/
+  // history selection targets THIS project but the user may currently be on
+  // the List tab — auto-switch to Graph so the mission overlay/history
+  // popover DependencyGraph is about to fire is actually visible (design §5's
+  // "auto-switches to the Graph tab"). Peeks at the pending flags WITHOUT
+  // consuming them — DependencyGraph (mounted only once `tab==="graph"`) is
+  // still the sole consumer/clearer of both flags.
+  const pendingExecuteArtifactId = useRunStore((s) => s.pendingExecuteArtifactId);
+  const pendingOpenHistory = useRunStore((s) => s.pendingOpenHistory);
+  useEffect(() => {
+    if (tab === "graph") return;
+    const targetsThisProject =
+      (pendingExecuteArtifactId !== null && project.artifacts.some((a) => a.id === pendingExecuteArtifactId)) ||
+      pendingOpenHistory;
+    if (targetsThisProject) setTab("graph");
+  }, [pendingExecuteArtifactId, pendingOpenHistory, project.artifacts, tab]);
   const [editing, setEditing] = useState<CanonicalArtifact | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [runCommandFor, setRunCommandFor] = useState<CanonicalArtifact | null>(null);

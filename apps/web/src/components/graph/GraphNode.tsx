@@ -10,6 +10,11 @@ export interface GraphNodeProps {
   onMouseLeave?: () => void;
   onClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** free-node-dragging: true while THIS node is the one being live-dragged
+   *  (ephemeral cursor-following overlay, same pattern `dragConnect.cursor`
+   *  already uses for the ghost connect-edge) — disables the position
+   *  transition so the drag feels 1:1 with the cursor, not eased. */
+  isBeingDragged?: boolean;
   children: ReactNode;
 }
 
@@ -30,6 +35,7 @@ export function GraphNode({
   onMouseLeave,
   onClick,
   onContextMenu,
+  isBeingDragged,
   children,
 }: GraphNodeProps) {
   return (
@@ -40,6 +46,8 @@ export function GraphNode({
         left: position.x,
         top: position.y,
         width,
+        cursor: isBeingDragged ? "grabbing" : undefined,
+        zIndex: isBeingDragged ? 10 : undefined,
       }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}

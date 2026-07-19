@@ -8,9 +8,9 @@ function TestNode({ data }: { data: { label: string } }) {
 }
 
 // Variant that renders a source handle marker (`data-handle-role="source"`)
-// so tests can simulate `NodeConnectBoundary`'s mousedown-capture drag-start
-// path (STATE §19 addendum, T-5.9/T-5.10/T-5.11) without pulling in the real
-// `NodeHandle`/`CommandNode` components.
+// so tests can simulate `NodeInteractionBoundary`'s mousedown-capture
+// drag-start path (STATE §19 addendum, T-5.9/T-5.10/T-5.11) without pulling
+// in the real `NodeHandle`/`CommandNode` components.
 function TestNodeWithHandle({ data }: { data: { label: string } }) {
   return (
     <div data-testid={`node-${data.label}`}>
@@ -20,8 +20,28 @@ function TestNodeWithHandle({ data }: { data: { label: string } }) {
   );
 }
 
+// free-node-dragging (testplan §3, T-4.6/T-4.7/T-4.8): a variant with BOTH a
+// connect handle AND a data-no-node-drag-marked leaf control, so a single
+// test node can exercise all three mousedown-origin branches.
+function TestNodeWithHandleAndNoDragButton({ data }: { data: { label: string } }) {
+  return (
+    <div data-testid={`node-${data.label}`}>
+      {data.label}
+      <div role="presentation" data-handle-role="source" data-testid="handle" />
+      <button type="button" data-no-node-drag data-testid="no-drag-btn">
+        ⋯
+      </button>
+    </div>
+  );
+}
+
 const nodeTypes = { command: TestNode, agent: TestNode, missingAgent: TestNode };
 const nodeTypesWithHandle = { command: TestNodeWithHandle, agent: TestNode, missingAgent: TestNode };
+const nodeTypesWithHandleAndNoDrag = {
+  command: TestNodeWithHandleAndNoDragButton,
+  agent: TestNode,
+  missingAgent: TestNode,
+};
 
 function baseNodes(): GraphCanvasNode[] {
   return [
@@ -278,5 +298,79 @@ describe("GraphCanvas", () => {
     );
     expect(screen.getByTestId("node-cmd-1-RENAMED")).toBeInTheDocument();
     expect(screen.queryByTestId("node-cmd-1")).not.toBeInTheDocument();
+  });
+
+  // free-node-dragging (testplan §3, PLAN §6) — NodeInteractionBoundary
+  // dispatch-boundary tests.
+  it("T-4.6: mousedown on a connect-handle element fires connect-drag start, NOT node-drag (AC-5)", () => {
+    const onNodeDragCommit = vi.fn();
+    const { container } = renderCanvas({ nodes: [{ ...baseNodes()[0]!, position: { x: 0, y: 0 } }], edges: [], nodeTypes: nodeTypesWithHandle, onNodeDragCommit });
+    const handle = container.querySelector('[data-handle-role="source"]') as HTMLElement;
+    fireEvent.mouseDown(handle, { clientX: 10, clientY: 10 });
+
+    // Connect-drag started: mousemove renders a ghost <path> (proof
+    // useConnectDrag's dragConnect state entered) — node-drag never entered
+    // (the node stays at its original position; no drag overlay z-index).
+    fireEvent(window, new MouseEvent("mousemove", { clientX: 50, clientY: 50 }));
+    const svgs = container.querySelectorAll("svg");
+    const svg = svgs[svgs.length - 1] as SVGSVGElement;
+    const ghost = Array.from(svg.querySelectorAll("path")).find((p) => p.getAttribute("stroke-dasharray"));
+    expect(ghost).toBeDefined();
+
+    fireEvent(window, new MouseEvent("mouseup", { clientX: 50, clientY: 50 }));
+    // node-drag's commit callback must never have fired for a connect-handle mousedown.
+    expect(onNodeDragCommit).not.toHaveBeenCalled();
+  });
+
+  it("T-4.7: mousedown on the plain node body (no data-handle-role, no data-no-node-drag) fires node-drag start, NOT connect-drag", () => {
+    const onConnectAttemptSpy = vi.fn();
+    const nodes = [{ ...baseNodes()[0]!, position: { x: 0, y: 0 } }];
+    const { container } = renderCanvas({
+      nodes,
+      edges: [],
+      nodeTypes: nodeTypesWithHandle,
+      onConnectAttempt: onConnectAttemptSpy,
+    });
+    const nodeBody = screen.getByTestId("node-cmd-1");
+    fireEvent.mouseDown(nodeBody, { clientX: 10, clientY: 10 });
+
+    // Move past the drag threshold; the node's wrapper should now render at
+    // an offset position (proof node-drag's ephemeral overlay is active).
+    fireEvent(window, new MouseEvent("mousemove", { clientX: 60, clientY: 60 }));
+    const wrapper = nodeBody.closest("[data-node-id]") as HTMLElement;
+    expect(wrapper.style.left).toBe("50px");
+    expect(wrapper.style.top).toBe("50px");
+
+    fireEvent(window, new MouseEvent("mouseup", { clientX: 60, clientY: 60 }));
+    // No connect-attempt should ever have been triggered by a node-body mousedown.
+    expect(onConnectAttemptSpy).not.toHaveBeenCalled();
+  });
+
+  it("T-4.8: mousedown on a data-no-node-drag control fires NEITHER gesture (companion-change regression guard)", () => {
+    const onNodeDragCommit = vi.fn();
+    const nodes = [{ ...baseNodes()[0]!, position: { x: 0, y: 0 } }];
+    const { container } = renderCanvas({
+      nodes,
+      edges: [],
+      nodeTypes: nodeTypesWithHandleAndNoDrag,
+      onNodeDragCommit,
+    });
+    const noDragBtn = screen.getByTestId("no-drag-btn");
+    fireEvent.mouseDown(noDragBtn, { clientX: 10, clientY: 10 });
+
+    fireEvent(window, new MouseEvent("mousemove", { clientX: 60, clientY: 60 }));
+    // Node must NOT have moved (node-drag never started).
+    const wrapper = screen.getByTestId("node-cmd-1").closest("[data-node-id]") as HTMLElement;
+    expect(wrapper.style.left).toBe("0px");
+    expect(wrapper.style.top).toBe("0px");
+
+    // Also confirm no ghost connect-drag path was rendered.
+    const svgs = container.querySelectorAll("svg");
+    const svg = svgs[svgs.length - 1] as SVGSVGElement;
+    const ghost = Array.from(svg.querySelectorAll("path")).find((p) => p.getAttribute("stroke-dasharray"));
+    expect(ghost).toBeUndefined();
+
+    fireEvent(window, new MouseEvent("mouseup", { clientX: 60, clientY: 60 }));
+    expect(onNodeDragCommit).not.toHaveBeenCalled();
   });
 });

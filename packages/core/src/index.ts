@@ -40,4 +40,6 @@ export * from "./run/retention.js";
 export * from "./generate/description.js";
 export * from "./generate/bodyPrompt.js";
 
+export * from "./graph/layoutOverride.js";
+
 export { sha256Hex } from "./util/sha256.js";

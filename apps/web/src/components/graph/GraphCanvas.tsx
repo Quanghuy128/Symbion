@@ -15,6 +15,7 @@ import { GraphEdgePath, type AnimatedEdgeData } from "./GraphEdgePath";
 import { GraphEdgeLabel } from "./GraphEdgeLabel";
 import { GraphNode } from "./GraphNode";
 import { useConnectDrag } from "./useConnectDrag";
+import { useNodeDrag } from "./useNodeDrag";
 import { useEdgeInteraction } from "./useEdgeInteraction";
 import { boundingBox, nodeRect, sourceAnchor, targetAnchor, type GeometryNode } from "./graphGeometry";
 
@@ -63,6 +64,14 @@ export interface GraphCanvasProps {
   /** authoringSuspended passthrough — hard-hides hover/connect/context-menu (design §1C step 2). */
   disabled: boolean;
   daemonConnected: boolean;
+  /** free-node-dragging (PLAN §4 step 3): fired once a node-body-drag settles
+   *  past the click threshold AND the daemon is connected — caller persists
+   *  via `setNodeLayout` + updates local override state (optimistic). */
+  onNodeDragCommit?: (nodeId: string, position: { x: number; y: number }) => void;
+  /** fired instead of `onNodeDragCommit` when the drag settles but the daemon
+   *  is disconnected at mouseup — caller may still apply the local position
+   *  (UI-only) + show a toast, without firing an RPC that would only fail. */
+  onNodeDragDaemonDisconnected?: (nodeId: string, position: { x: number; y: number }) => void;
 }
 
 /**
@@ -96,6 +105,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
     onPaneContextMenu,
     disabled,
     daemonConnected,
+    onNodeDragCommit,
+    onNodeDragDaemonDisconnected,
   },
   ref
 ) {
@@ -130,13 +141,31 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
     containerRef,
   });
 
+  // free-node-dragging: node-body-drag-to-reposition, disambiguated from the
+  // connect-drag gesture above at the mousedown-origin level (see
+  // NodeInteractionBoundary below) — the two gestures can never both start
+  // from the same mousedown event (AC-5).
+  const { dragState: nodeDragState, startDrag: startNodeDrag } = useNodeDrag({
+    disabled,
+    daemonConnected,
+    containerRef,
+    onCommitPosition: (nodeId, position) => onNodeDragCommit?.(nodeId, position),
+    onDaemonDisconnectedCommit: (nodeId, position) => onNodeDragDaemonDisconnected?.(nodeId, position),
+  });
+
   // STATE §19 (connect-drag SVG clipping fix): fold the live drag cursor into
   // the bounding box so the SVG edge layer's width/height, the container's
   // minHeight, and fitView()'s scroll target all expand to keep the ghost
   // connect-drag line in view, not clipped at the pre-drag node bounds.
+  // free-node-dragging: also folds in the live node-drag position so a node
+  // dragged past the current bounding box doesn't get visually clipped.
   const content = useMemo(
-    () => boundingBox(nodes, dragConnect ? [dragConnect.cursor] : []),
-    [nodes, dragConnect]
+    () =>
+      boundingBox(nodes, [
+        ...(dragConnect ? [dragConnect.cursor] : []),
+        ...(nodeDragState ? [nodeDragState.position] : []),
+      ]),
+    [nodes, dragConnect, nodeDragState]
   );
 
   useImperativeHandle(
@@ -246,21 +275,30 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
         {nodes.map((n) => {
           const Component = nodeTypes[n.type];
           if (!Component) return null;
+          // free-node-dragging: while THIS node is being live-dragged, render
+          // it at the ephemeral drag position instead of its derived `n.position`
+          // (same overlay technique `dragConnect.cursor` already uses for the
+          // ghost connect-edge) — NOT written back into `nodes`/local override
+          // state until mouseup commits (E10-compliant: no mirrored state).
+          const isBeingDragged = nodeDragState?.nodeId === n.id;
+          const position = isBeingDragged ? nodeDragState.position : n.position;
           return (
             <GraphNode
               key={n.id}
               id={n.id}
-              position={n.position}
+              position={position}
               width={n.width}
+              isBeingDragged={isBeingDragged}
               onMouseEnter={disabled ? undefined : () => onNodeHover(n.id)}
               onMouseLeave={disabled ? undefined : () => onNodeHover(null)}
               onClick={onNodeClick ? () => onNodeClick(n.id) : undefined}
             >
-              <NodeConnectBoundary
-                onStartDrag={(clientX, clientY) => startDrag(n.id, clientX, clientY)}
+              <NodeInteractionBoundary
+                onStartConnect={(clientX, clientY) => startDrag(n.id, clientX, clientY)}
+                onStartNodeDrag={(clientX, clientY) => startNodeDrag(n.id, n.position, clientX, clientY)}
               >
                 <Component data={n.data} />
-              </NodeConnectBoundary>
+              </NodeInteractionBoundary>
             </GraphNode>
           );
         })}
@@ -342,20 +380,32 @@ function GraphEdge({
 }
 
 /**
- * NodeConnectBoundary — intercepts mousedown on a source `NodeHandle` inside
- * the rendered leaf component and forwards the CURRENT client coordinates to
- * `useConnectDrag.startDrag` (the leaf `NodeHandle` itself only calls
- * `onDragStart()` with no args, per its existing `Handle`-derived contract —
- * this boundary supplies the missing client-coordinate context via a native
- * `onMouseDownCapture`, avoiding a prop-drilled coordinate argument through
- * `CommandNode`/`AgentNode`, which the migration plan requires stay
- * otherwise untouched beyond the `Handle` -> `NodeHandle` import swap).
+ * NodeInteractionBoundary — intercepts every mousedown inside the rendered
+ * leaf component and dispatches to exactly ONE of two gestures, never both
+ * (free-node-dragging PLAN §6 / AC-5):
+ *
+ *  1. mousedown on a source `NodeHandle` (`[data-handle-role="source"]`) —
+ *     forwards to `useConnectDrag.startDrag` (unchanged from the pre-existing
+ *     `NodeConnectBoundary` this replaces).
+ *  2. mousedown on a `[data-no-node-drag]`-marked interactive leaf control
+ *     (the ⋯ menu trigger, Execute button, delete-confirm buttons, etc.) —
+ *     neither gesture starts; the control's own native click/menu-open
+ *     behavior proceeds unobstructed (PLAN §9 item 4's companion-change
+ *     regression guard).
+ *  3. anywhere else inside the node body — starts a node-body-drag via
+ *     `useNodeDrag.startDrag`.
+ *
+ * Mutual exclusion is STRUCTURAL, not timing-based: the connect-handle check
+ * runs first and returns early, so a single mousedown event can never
+ * satisfy more than one branch above.
  */
-function NodeConnectBoundary({
-  onStartDrag,
+function NodeInteractionBoundary({
+  onStartConnect,
+  onStartNodeDrag,
   children,
 }: {
-  onStartDrag: (clientX: number, clientY: number) => void;
+  onStartConnect: (clientX: number, clientY: number) => void;
+  onStartNodeDrag: (clientX: number, clientY: number) => void;
   children: ReactNode;
 }) {
   return (
@@ -363,8 +413,12 @@ function NodeConnectBoundary({
       onMouseDownCapture={(e) => {
         const target = e.target as HTMLElement;
         if (target.closest('[data-handle-role="source"]')) {
-          onStartDrag(e.clientX, e.clientY);
+          onStartConnect(e.clientX, e.clientY);
+          return;
         }
+        if (target.closest("[data-handle-role]")) return;
+        if (target.closest("[data-no-node-drag]")) return;
+        onStartNodeDrag(e.clientX, e.clientY);
       }}
     >
       {children}

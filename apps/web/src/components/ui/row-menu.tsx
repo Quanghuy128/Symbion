@@ -44,7 +44,14 @@ export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }:
   }, [open, onOpenChange]);
 
   return (
-    <div ref={containerRef} className="relative">
+    // data-no-node-drag: free-node-dragging's NodeInteractionBoundary uses
+    // this marker to exclude interactive leaf controls (the ⋯ menu trigger +
+    // its popup items) from starting a node-body-drag when this component is
+    // rendered inside a graph node — a harmless no-op attribute for RowMenu's
+    // other, non-graph call sites (this component has no graph-specific
+    // dependency; the attribute is only ever READ by GraphCanvas's mousedown
+    // capture boundary, never by RowMenu itself).
+    <div ref={containerRef} className="relative" data-no-node-drag>
       <button
         type="button"
         aria-label={triggerLabel}

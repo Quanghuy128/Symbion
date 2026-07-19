@@ -144,6 +144,7 @@ export function CommandNode({ data }: CommandNodeProps) {
         <Tooltip content="This command references an agent with backticks — use @name or drag an edge to show the link.">
           <button
             type="button"
+            data-no-node-drag
             onClick={(e) => {
               e.stopPropagation();
               data.onEditBody?.();

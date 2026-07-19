@@ -42,6 +42,7 @@ export function MissingAgentNode({ data }: MissingAgentNodeProps) {
       {hovered && (
         <button
           type="button"
+          data-no-node-drag
           disabled={!data.daemonConnected}
           onClick={(e) => {
             e.stopPropagation();

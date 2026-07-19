@@ -10,11 +10,19 @@ import {
   type AgentRef,
   type CanonicalArtifact,
 } from "@symbion/core";
+import { mergeLayoutPositions, type LayoutOverrideEntry } from "@symbion/core";
 import { CommandNode } from "./graph/CommandNode";
 import { AgentNode } from "./graph/AgentNode";
 import { MissingAgentNode } from "./graph/MissingAgentNode";
 import { GraphCanvas, type GraphCanvasEdge, type GraphCanvasHandle, type GraphCanvasNode } from "./graph/GraphCanvas";
 import { computeLayout } from "./graph/computeLayout";
+import { callRpc } from "@/lib/rpc/client";
+import type {
+  GetNodeLayoutParams,
+  GetNodeLayoutResult,
+  SetNodeLayoutParams,
+  SetNodeLayoutResult,
+} from "@symbion/rpc-types";
 import { GraphStatusChips } from "./graph/GraphStatusChips";
 import { GraphToolbar } from "./graph/GraphToolbar";
 import { GraphCanvasMenu } from "./graph/GraphCanvasMenu";
@@ -69,6 +77,45 @@ function historyTerminalStatusToRingStatus(
     default:
       return undefined;
   }
+}
+
+/**
+ * setNodeLayout retry enhancement (STATE "PLAN — setNodeLayout retry",
+ * 2026-07-19): a small, bounded, fixed-backoff retry wrapper around a single
+ * `setNodeLayout` RPC call. No new file/package/dependency — inline helper
+ * proportionate to this narrow client-side resilience patch (this codebase
+ * has no existing retry utility). Aborts early if `isStillConnected()`
+ * reports the daemon as disconnected before a retry attempt, rather than
+ * burning remaining attempts against a known-disconnected daemon.
+ */
+async function retrySetNodeLayout<T>(
+  fn: () => Promise<T>,
+  attempts: number,
+  delaysMs: number[],
+  isStillConnected: () => boolean
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    // Checked immediately before EVERY attempt (not just right after a
+    // failure) — the daemon can transition from connected to disconnected
+    // during the backoff delay between attempts, and a stale connectivity
+    // read taken only right after the previous failure would miss that
+    // transition, wasting an attempt (and delaying the failure toast) on a
+    // daemon that's already known to be down by the time this attempt
+    // would fire.
+    if (i > 0 && !isStillConnected()) {
+      throw lastErr;
+    }
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const isLastAttempt = i === attempts - 1;
+      if (isLastAttempt) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delaysMs[i] ?? delaysMs.at(-1) ?? 500));
+    }
+  }
+  throw lastErr;
 }
 
 // Fixed-estimate node dimensions fed into dagre's layout (PLAN §4.1 decision
@@ -264,6 +311,114 @@ export function DependencyGraph({
   // Node delete-confirm machine (mirrors ProjectView).
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // free-node-dragging (PLAN §4): the layout-override map is a CACHE of
+  // server state (`.symbion/<project>/layout.json`, fetched via
+  // `getNodeLayout` on mount/projectId-change, reconciled after every
+  // successful `setNodeLayout`) — not client-invented state, exactly like
+  // `nodeRunData`/`timeline` already cache server-derived run state
+  // (PLAN §4's E10-compliance note). Keyed by the same id string a
+  // `GraphCanvasNode.id` carries (real artifact uuid or synthetic
+  // `missing-<name>`).
+  const [layoutOverrides, setLayoutOverrides] = useState<Record<string, LayoutOverrideEntry>>({});
+
+  // setNodeLayout retry enhancement (STATE "PLAN — setNodeLayout retry",
+  // 2026-07-19): per-nodeId generation token, gates whether an async retry
+  // chain's eventual outcome (success reconcile or failure toast) is still
+  // allowed to affect visible state. A newer drag commit for the same
+  // nodeId bumps the token, silently superseding any still-in-flight
+  // retry chain from an older commit for that same node.
+  const dragCommitTokenRef = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await callRpc<GetNodeLayoutParams, GetNodeLayoutResult>("getNodeLayout", { projectId });
+        if (!cancelled) setLayoutOverrides(result.positions);
+      } catch {
+        // AC-4 proxy at the component level: a thrown/rejected getNodeLayout
+        // (e.g. daemon offline at mount) falls back to treating overrides as
+        // empty — full dagre auto-layout for every node, no crash.
+        if (!cancelled) setLayoutOverrides({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  const handleNodeDragCommit = useCallback(
+    (nodeId: string, position: { x: number; y: number }) => {
+      // (a) optimistic: apply locally immediately — no visible snap-back
+      // waiting on the RPC round-trip (PLAN §4 step 3a).
+      setLayoutOverrides((prev) => ({ ...prev, [nodeId]: position }));
+
+      // Bump this node's generation token — this commit is now the latest
+      // for `nodeId`; any still-in-flight retry chain from a PRIOR commit
+      // for this same nodeId becomes stale and must not affect state.
+      const myToken = (dragCommitTokenRef.current.get(nodeId) ?? 0) + 1;
+      dragCommitTokenRef.current.set(nodeId, myToken);
+
+      // (b) fire-and-forget-but-tracked persist, wrapped in a small bounded
+      // retry (setNodeLayout retry enhancement, 2026-07-19): 3 total
+      // attempts, fixed short backoff, aborted early if the daemon is known
+      // disconnected. Silent throughout — only the terminal outcome
+      // (silent reconcile, or the existing failure toast) is user-visible,
+      // and only for the LATEST commit for this nodeId (supersession guard).
+      void (async () => {
+        try {
+          const result = await retrySetNodeLayout(
+            () =>
+              callRpc<SetNodeLayoutParams, SetNodeLayoutResult>("setNodeLayout", {
+                projectId,
+                nodeId,
+                position,
+              }),
+            3,
+            [250, 750],
+            // Read the LIVE store value, not the `daemonConnected` closed
+            // over at commit-time — the daemon can transition from
+            // connected to disconnected mid-retry-sequence (up to ~1s
+            // later), and this check must observe that transition, not a
+            // stale snapshot from when the drag was first committed.
+            () => useArtifactStore.getState().daemonConnected
+          );
+          // Reconcile with the server's full returned map (defends against a
+          // rare read-modify-write race from a second tab, last-write-wins).
+          // Only if this is still the latest commit for this nodeId —
+          // otherwise a stale/superseded success is silently dropped.
+          if (dragCommitTokenRef.current.get(nodeId) === myToken) {
+            setLayoutOverrides(result.positions);
+          }
+        } catch {
+          // Only show the toast for the latest commit for this nodeId — a
+          // superseded (stale) failure is silently dropped, since the newer
+          // drag's own outcome is authoritative and a toast about an old,
+          // already-moved-away-from position would be confusing.
+          if (dragCommitTokenRef.current.get(nodeId) === myToken) {
+            showToast("Position not saved — try again.", "error");
+          }
+          // Deliberate simplicity choice (PLAN §4/§9 item 5): the local
+          // optimistic position is LEFT AS-IS for this session — no retry
+          // queue, no local-storage fallback. It simply won't survive a
+          // reload, which the toast communicates.
+        }
+      })();
+    },
+    [projectId, showToast]
+  );
+
+  const handleNodeDragDaemonDisconnected = useCallback(
+    (nodeId: string, position: { x: number; y: number }) => {
+      // Daemon disconnect mid-drag (PLAN §7 edge case #7): apply the local
+      // optimistic position (harmless UI-only) but skip the RPC entirely —
+      // no point firing a call that will fail.
+      setLayoutOverrides((prev) => ({ ...prev, [nodeId]: position }));
+      showToast("Daemon offline — position won't be saved until reconnected.", "warning");
+    },
+    [showToast]
+  );
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const agents = useMemo(() => artifacts.filter((a) => a.kind === "agent"), [artifacts]);
@@ -648,25 +803,42 @@ export function DependencyGraph({
     }
 
     const allNodes = [...nodes, ...missingNodes.values()];
+    const dimensionById = new Map(
+      allNodes.map((n) => [
+        n.id,
+        { width: n.type === "missingAgent" ? MISSING_AGENT_NODE_WIDTH : NODE_WIDTH, height: NODE_HEIGHT },
+      ])
+    );
 
-    // Phase (b) LAYOUT — synchronous dagre call over fixed-estimate node
-    // dimensions (PLAN §4.1: real components auto-size, so a conservative
-    // constant estimate feeds dagre without a second measure-then-relayout
-    // pass, which would break the E10 pure-derivation invariant).
-    const dimensions = allNodes.map((n) => ({
-      id: n.id,
-      width: n.type === "missingAgent" ? MISSING_AGENT_NODE_WIDTH : NODE_WIDTH,
-      height: NODE_HEIGHT,
-    }));
-    const edgePairs = edges.map((e) => ({ source: e.source, target: e.target }));
-    const positions = computeLayout(dimensions, edgePairs);
+    // Phase (b)/(c) LAYOUT+MERGE (free-node-dragging PLAN §5): dagre only
+    // ever lays out the UNPINNED subset (ids with no saved override) — a
+    // manually-dragged node's position is never recomputed. Edges passed
+    // into the unpinned-subset dagre call are ALSO filtered to only those
+    // whose source AND target are both unpinned (an edge touching a pinned
+    // node is omitted — dagre never needs to know it exists, since it isn't
+    // positioning that endpoint). `computeLayout.ts`/dagre itself is
+    // UNCHANGED — this filtering + the pin/merge split live entirely in
+    // `packages/core`'s pure `mergeLayoutPositions`.
+    const allNodeIds = allNodes.map((n) => n.id);
+    const positions = mergeLayoutPositions({
+      nodeIds: allNodeIds,
+      overrides: layoutOverrides,
+      computeDagre: (unpinnedIds) => {
+        const unpinnedSet = new Set(unpinnedIds);
+        const dimensions = unpinnedIds.map((id) => ({ id, ...(dimensionById.get(id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }) }));
+        const edgePairs = edges
+          .filter((e) => unpinnedSet.has(e.source) && unpinnedSet.has(e.target))
+          .map((e) => ({ source: e.source, target: e.target }));
+        return computeLayout(dimensions, edgePairs);
+      },
+    });
 
-    // Phase (c) MERGE — `position` is replaced and `width`/`height` are
-    // attached (the self-coded `GraphCanvas`/`graphGeometry.ts` need these on
-    // the node object itself for anchor/hit-testing math — PLAN §9.1.2 —
-    // whereas xyflow derived them internally from `nodeTypes`' rendered DOM).
-    // Every other field (the whole `data` bag) is preserved exactly as built
-    // in Phase (a).
+    // `position` is replaced and `width`/`height` are attached (the
+    // self-coded `GraphCanvas`/`graphGeometry.ts` need these on the node
+    // object itself for anchor/hit-testing math — PLAN §9.1.2 — whereas
+    // xyflow derived them internally from `nodeTypes`' rendered DOM). Every
+    // other field (the whole `data` bag) is preserved exactly as built in
+    // Phase (a).
     const laidOutNodes = allNodes.map((n) => ({
       ...n,
       position: positions.get(n.id) ?? n.position,
@@ -687,6 +859,7 @@ export function DependencyGraph({
     agentNames,
     daemonConnected,
     justAddedId,
+    layoutOverrides,
     onEditArtifact,
     handleEdgeDelete,
     authoringSuspended,
@@ -908,6 +1081,8 @@ export function DependencyGraph({
             daemonConnected={daemonConnected}
             isValidConnection={authoringSuspended ? () => false : isValidConnection}
             onConnectAttempt={authoringSuspended ? () => {} : (sourceId, targetId) => void onConnect(sourceId, targetId)}
+            onNodeDragCommit={authoringSuspended ? undefined : handleNodeDragCommit}
+            onNodeDragDaemonDisconnected={authoringSuspended ? undefined : handleNodeDragDaemonDisconnected}
             onNodeHover={(id) => {
               if (authoringSuspended) return;
               setHoveredId(id);

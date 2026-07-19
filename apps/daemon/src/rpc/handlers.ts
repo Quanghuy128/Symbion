@@ -66,6 +66,7 @@ import { nonceStore } from "../run/nonces.js";
 import { resolveRunConfig, configHash, ackSettingsHash, validateRunConfig } from "../run/runConfig.js";
 import { getRunCliVersion } from "../run/cliVersion.js";
 import { listRuns as storeListRuns, readEvents, readRunJson, reconcile, prune } from "../run/runStore.js";
+import { readLayout, writeLayoutEntry } from "../store/layoutStore.js";
 import type * as contract from "./contract.js";
 
 export { RpcError };
@@ -1186,6 +1187,56 @@ export const handlers = {
     const lastReturned = events.length > 0 ? events[events.length - 1]!.seq : afterSeq;
     const done = terminal && lastReturned >= run.lastSeq;
     return { events, run, done };
+  },
+
+  // ───────────────────────────────────────────────────────────────────────
+  // free-node-dragging (docs/loops/free-node-dragging-STATE.md PLAN §3). New,
+  // separate RPC surface for the manual-drag layout-override file — never
+  // touches the canonical IR / artifact CRUD shapes above.
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * getNodeLayout — read-only. Missing/corrupt `layout.json` (or a file
+   * whose contents fail `parseLayoutOverrideFile`) returns `{ positions: {} }`
+   * — never throws for that case (AC-4). A genuine path-confinement
+   * violation still throws (defense-in-depth, same posture as every other
+   * per-project handler).
+   */
+  getNodeLayout(params: contract.GetNodeLayoutParams): contract.GetNodeLayoutResult {
+    const p = params ?? ({} as contract.GetNodeLayoutParams);
+    if (typeof p.projectId !== "string") {
+      throw new RpcError("invalid-params", "getNodeLayout requires projectId.");
+    }
+    const path = findProjectPath(p.projectId);
+    return { positions: readLayout(path) };
+  },
+
+  /**
+   * setNodeLayout — single-node upsert (read-modify-write over the whole
+   * file), not a bulk replace. `nodeId` is NOT validated against the current
+   * artifact list server-side — a stale/orphaned id is the accepted edge
+   * case #1, and validating it would require loading+parsing the whole
+   * project store on every drag-persist for no correctness benefit given the
+   * graceful-degradation contract already covers orphaned entries on read.
+   */
+  setNodeLayout(params: contract.SetNodeLayoutParams): contract.SetNodeLayoutResult {
+    const p = params ?? ({} as contract.SetNodeLayoutParams);
+    if (typeof p.projectId !== "string" || typeof p.nodeId !== "string" || p.nodeId.length === 0) {
+      throw new RpcError("invalid-params", "setNodeLayout requires projectId and a non-empty nodeId.");
+    }
+    const position = p.position;
+    if (
+      !position ||
+      typeof position.x !== "number" ||
+      !Number.isFinite(position.x) ||
+      typeof position.y !== "number" ||
+      !Number.isFinite(position.y)
+    ) {
+      throw new RpcError("invalid-params", "setNodeLayout requires a finite {x,y} position.");
+    }
+    const path = findProjectPath(p.projectId);
+    const positions = writeLayoutEntry(path, p.nodeId, { x: position.x, y: position.y });
+    return { positions };
   },
 };
 

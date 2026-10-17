@@ -713,6 +713,6 @@ Maker output, not self-reviewed. Fix for the "not on graph" tag and dead node cl
   - NOT verified live: J1, J6b, J6c, J6d, `prefers-reduced-motion`, hover halo visuals.
   - Some design polish was not built: "↓ 1 new agent" chip, the settle flash, the reverse slide on back.
 - **Follow-ups:**
-  - CLAUDE.md still says "Run engine deferred to v2" (stale), so run `/document-release`.
+  - ~~CLAUDE.md still says "Run engine deferred to v2"~~ — DONE: README.md + CLAUDE.md updated by /document-release (2026-10-17).
   - Record a real-CLI fixture.
   - Pre-existing: List tab after F5, `00:00` elapsed on a reattached finished run.

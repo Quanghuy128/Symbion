@@ -12,14 +12,15 @@ A **local-daemon + web UI** tool that lets a developer author "autoworkflows" �
 | Monorepo | `packages/core` (pure) · `apps/daemon` (Node) · `apps/web` (Next.js) |
 | Web UI | Next.js App Router + Tailwind + shadcn/ui |
 | Editors | **CodeMirror 6** (NOT Monaco) — YAML frontmatter + markdown + `@`-mention |
-| Graph | **React Flow** (read-only dependency map — NOT a free drag-drop executor) |
+| Graph | **Self-coded renderer** in `apps/web/src/components/graph/` (React Flow was removed) — dagre auto-layout, connect-by-drag authoring, run overlay. NOT a free drag-drop executor |
 | Daemon | Node HTTP/WS on `127.0.0.1` — filesystem, git, folder-pick, the terminal boot menu |
 | Persistence | Local files only: per-repo `.symbion/` + a user-level config dir. **No cloud DB, no Supabase.** |
 | Test | Vitest (core unit + daemon integration) + chrome-devtools for web journey |
 | Package manager | npm |
 
 - **There is NO Supabase, Realtime, Presence, map, mobile UI.** Data flow = **web UI ↔ local daemon (typed localhost RPC) ↔ filesystem + git**.
-- **Run engine deferred to v2.** v1 = "Copy run command" (render a structured prompt to clipboard, no execution).
+- **Run engine shipped** (`apps/daemon/src/run/` + `packages/core/src/run/`): executes ONE published command at a time via the local `claude` CLI (`-p --output-format stream-json`), 1 active run per project, nonce-bound consent, per-project permission/ceilings, history in `.symbion/runs/`. The only process that spawns the CLI is the daemon. Pipelines/chaining, per-subagent stop and a Codex driver are NOT built.
+- **Agents panel** (`apps/web/src/components/run/agents/`) is a pure projection of persisted run events: core `parseStreamJson` → `agentTree` (incremental fold) → panel. CLI-derived text is untrusted — render it as plain text only. Hermetic QA/dev without tokens: start the daemon with `SYMBION_CLAUDE_BIN=apps/daemon/test/fixtures/fake-claude.mjs` and `FAKE_CLAUDE_FIXTURE=<ndjson>` (+ `FAKE_CLAUDE_DELAY_MS`).
 - Providers v1: **Claude** (`.claude/agents/<name>.md` + `.claude/commands/<name>.md`) + **Codex** (`AGENTS.md`). IR is vendor-agnostic so Copilot/Gemini are added later as adapters with no IR change.
 
 ## Architecture rules

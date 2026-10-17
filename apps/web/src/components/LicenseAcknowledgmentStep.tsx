@@ -30,17 +30,17 @@ export function LicenseAcknowledgmentStep({
   return (
     <>
       <div className="space-y-3">
-        <p className="text-sm font-medium text-amber-700">⚠ Content by another author</p>
-        <p className="text-sm">
+        <p className="text-ui font-medium text-warning">⚠ Content by another author</p>
+        <p className="text-ui">
           This template belongs to {authorDisplayName} ({authorRepo}) — you are responsible for reusing
           this content.
         </p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-ink-muted">
           Symbion only displays this content directly from GitHub and does not store or own the author's content{" "}
           {authorDisplayName}.
         </p>
 
-        <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <label className="flex cursor-pointer items-start gap-2 text-ui">
           <Checkbox
             checked={acknowledged}
             onChange={(e) => onAcknowledgedChange(e.target.checked)}
@@ -53,7 +53,7 @@ export function LicenseAcknowledgmentStep({
           href={`https://github.com/${authorRepo}`}
           target="_blank"
           rel="noreferrer"
-          className="inline-block text-xs text-muted-foreground underline hover:text-foreground"
+          className="inline-block text-caption text-ink-muted underline hover:text-ink"
         >
           View source repo: github.com/{authorRepo} ↗
         </a>

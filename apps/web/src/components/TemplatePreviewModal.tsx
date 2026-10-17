@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { TemplateMarkdownViewer } from "./TemplateMarkdownViewer";
 import { ProjectPickerStep } from "./ProjectPickerStep";
 import { LicenseAcknowledgmentStep } from "./LicenseAcknowledgmentStep";
@@ -152,13 +153,11 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
             <div>
               <div className="flex items-center gap-2">
                 <DialogTitle>{template.kind === "command" ? `/${template.name}` : template.name}</DialogTitle>
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  {KIND_LABEL[template.kind]}
-                </span>
+                <Badge variant="plain">{KIND_LABEL[template.kind]}</Badge>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
+              <p className="mt-1 text-caption text-ink-muted">{template.description}</p>
               {isThirdPartyAuthor && (
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-caption text-ink-muted">
                   Source: {template.authorDisplayName}
                   {template.authorRepoLabel ? ` (${template.authorRepoLabel})` : ""}{" "}
                   {template.authorRepoLabel && (
@@ -166,7 +165,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
                       href={`https://github.com/${template.authorRepoLabel}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="underline hover:text-foreground"
+                      className="underline hover:text-ink"
                     >
                       ↗
                     </a>
@@ -180,18 +179,18 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
             <TemplateMarkdownViewer content={template.raw} selectAllRef={selectAllRef} />
 
             {template.kind === "skill" && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-ink-muted">
                 ℹ Skills don't support Apply yet — coming soon. You can still copy the markdown and paste it manually into
                 .claude/skills/.
               </p>
             )}
 
             {clipboardBlocked && (
-              <p className="text-xs text-amber-600">
+              <p className="text-caption text-warning">
                 ⚠ Cannot access the clipboard — the text above is pre-selected, use Ctrl+C / ⌘C to copy manually.
               </p>
             )}
-            {copied && <p className="text-xs text-green-600">Copied to clipboard.</p>}
+            {copied && <p className="text-caption text-success">Copied to clipboard.</p>}
           </DialogBody>
 
           <DialogFooter>
@@ -240,7 +239,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
             onCreateProjectRequested={handleCreateProjectRequested}
           />
 
-          {applyError && <p className="mt-2 text-xs text-destructive">{applyError}</p>}
+          {applyError && <p className="mt-2 text-caption text-danger-text">{applyError}</p>}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setStep(isThirdPartyAuthor ? "license" : "preview")}>

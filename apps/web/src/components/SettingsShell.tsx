@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { ProjectRunConfig, ProjectStore } from "@symbion/core";
 import { callRpc, initDaemonSession } from "@/lib/rpc/client";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
-import { AppRail } from "./AppRail";
+import { Sidebar } from "./shell/Sidebar";
 import { Toaster } from "./ui/toast";
+import { Select } from "./ui/input";
+import { SettingRow } from "./SettingRow";
 import { ProvidersPanel } from "./ProvidersPanel";
 import { RunSettingsSection } from "./run/RunSettingsSection";
 
@@ -90,22 +92,23 @@ export function SettingsShell() {
   }
 
   return (
-    <div className="flex h-screen bg-bg-app text-text-body">
-      <AppRail
+    <div className="flex h-screen bg-app text-ink">
+      <Sidebar
         onCreateProject={() => router.push("/?createProject=1")}
         onSelectProject={(id) => router.push(`/?openProject=${encodeURIComponent(id)}`)}
       />
-      <main className="flex-1 overflow-auto p-6">
-        <h1 className="mb-4 text-lg font-semibold text-text-strong">AI providers</h1>
+      <main className="flex-1 overflow-auto bg-app px-10 py-10">
+        <div className="mx-auto max-w-content">
+        <h1 className="mb-8 font-display text-page-title text-ink">Settings</h1>
+        <h2 className="mb-4 text-title text-ink">AI providers</h2>
         <ProvidersPanel />
 
-        <div className="mt-8">
-          <h1 className="mb-3 text-lg font-semibold text-text-strong">Project settings</h1>
+        <div className="mt-10">
+          <h2 className="mb-3 text-title text-ink">Project settings</h2>
 
-          <div className="mb-3">
-            <label className="mb-1 block text-xs text-text-muted">Project</label>
-            <select
-              className="h-9 w-full max-w-xs rounded-sm border border-border-input bg-bg-input px-2 text-sm text-text-body"
+          <SettingRow label="Project" description="Execution settings below apply to the selected project.">
+            <Select
+              className="w-64"
               value={projectId ?? ""}
               onChange={(e) => {
                 const id = e.target.value;
@@ -118,14 +121,17 @@ export function SettingsShell() {
                   {p.name}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </SettingRow>
 
-          {loadError && <p className="text-xs text-danger">{loadError}</p>}
+          {loadError && <p className="mt-3 text-caption text-danger-text">{loadError}</p>}
 
           {project && (
+            <div className="mt-4">
             <RunSettingsSection config={project.settings.run} onSave={handleSaveRunConfig} />
+            </div>
           )}
+        </div>
         </div>
       </main>
       <Toaster />

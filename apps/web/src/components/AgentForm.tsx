@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import type { CanonicalArtifact, CustomField } from "@symbion/core";
-import { Input } from "@/components/ui/input";
+import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
+import { Input, Textarea } from "@/components/ui/input";
+import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import { GenerateBodyButton } from "@/components/GenerateBodyButton";
 import { ModelPicker } from "@/components/ModelPicker";
@@ -48,12 +50,12 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
   return (
     <div className="space-y-3">
       <div>
-        <label className="mb-1 block text-sm font-medium text-text-body">name *</label>
+        <label className="mb-1.5 block text-label text-ink-2">name *</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="code-reviewer" />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-text-body">description *</label>
+        <label className="mb-1.5 block text-label text-ink-2">description *</label>
         <Input
           value={artifact.description}
           onChange={(e) => update("description", e.target.value)}
@@ -62,18 +64,18 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-text-body">tools</label>
+        <label className="mb-1.5 block text-label text-ink-2">tools</label>
         <div className="flex flex-wrap gap-2">
           {KNOWN_TOOLS.map((tool) => (
             <button
               key={tool}
               type="button"
               onClick={() => toggleTool(tool)}
-              className={`rounded-pill border px-2 py-1 text-xs ${
-                (artifact.tools ?? []).includes(tool)
-                  ? "border-brand-accent bg-brand-accent-soft text-accent-text-hi"
-                  : "border-border-input text-text-dim"
-              }`}
+              className={`h-control-sm rounded-pill border px-3 text-label transition-colors ${
+ (artifact.tools ?? []).includes(tool)
+ ? "border-mint bg-mint-soft text-mint-text"
+ : "border-line-strong text-ink-muted hover:text-ink"
+ }`}
             >
               {tool}
             </button>
@@ -83,7 +85,7 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium text-text-body">Content</label>
+          <label className="text-label text-ink-2">Content</label>
           <div className="flex items-center gap-2">
             <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
@@ -97,8 +99,8 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
             />
           </div>
         </div>
-        <textarea
-          className="h-40 w-full rounded-sm border border-border-input bg-bg-input p-2 text-sm text-text-body"
+        <Textarea
+          className="h-40 py-2 font-mono text-code"
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
@@ -108,10 +110,12 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
       <div>
         <button
           type="button"
-          className="text-sm font-medium text-text-dim"
+          className="inline-flex items-center gap-1 text-label text-ink-muted hover:text-ink"
+          aria-expanded={advancedOpen}
           onClick={() => setAdvancedOpen((v) => !v)}
         >
-          {advancedOpen ? "▾" : "▸"} Advanced
+          {advancedOpen ? <ChevronDown size={16} strokeWidth={1.6} aria-hidden /> : <ChevronRight size={16} strokeWidth={1.6} aria-hidden />}
+          Advanced
         </button>
         {advancedOpen && (
           <div className="mt-2 space-y-2">
@@ -129,13 +133,11 @@ export function AgentForm({ artifact, onChange }: AgentFormProps) {
                   value={cf.value}
                   onChange={(e) => updateCustomField(idx, { value: e.target.value })}
                 />
-                <Button variant="ghost" size="sm" onClick={() => removeCustomField(idx)}>
-                  ✕
-                </Button>
+                <IconButton aria-label="Remove field" icon={X} size="sm" onClick={() => removeCustomField(idx)} />
               </div>
             ))}
-            <Button variant="outline" size="sm" onClick={addCustomField}>
-              + Add field
+            <Button variant="outline" size="sm" icon={Plus} onClick={addCustomField}>
+              Add field
             </Button>
           </div>
         )}

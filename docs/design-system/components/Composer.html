@@ -1,0 +1,20 @@
+<!-- @dsCard group="Patterns" height=210 subtitle="home input" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Composer</title></head>
+<body>
+<div style="padding:var(--space-5)">
+  <div class="sy-composer">
+    <label class="sy-sr" for="cmp">Describe the workflow</label>
+    <textarea id="cmp" rows="2" placeholder="Describe a workflow, e.g. review every PR for security issues, then post a summary"></textarea>
+    <div class="sy-composer__bar">
+      <button class="sy-iconbtn sy-iconbtn--sm" aria-label="Attach template"><svg class="sy-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+      <div class="sy-seg" role="radiogroup" aria-label="Create"><button role="radio" aria-checked="true"><svg class="sy-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5L6 13.5"/></svg>Workflow</button><button role="radio" aria-checked="false"><svg class="sy-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="5" width="10" height="8" rx="2"/><path d="M8 2.5V5M6 9h.01M10 9h.01"/></svg>Agent</button></div>
+      <span class="sy-spacer"></span>
+      <span style="font-size:12px;color:var(--ink-muted)">qwen2.5-coder:7b</span>
+      <button class="sy-iconbtn sy-iconbtn--send" aria-label="Create"><svg class="sy-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

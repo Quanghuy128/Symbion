@@ -1,6 +1,7 @@
 "use client";
 
 import type { AgentStatus, BackgroundStatus, RowStatus } from "@symbion/core";
+import { cn } from "@/lib/utils";
 
 export type GlyphStatus = AgentStatus | RowStatus | BackgroundStatus | "thinking";
 
@@ -14,16 +15,16 @@ interface GlyphSpec {
 
 /** Single source of glyph + colour for every run status (design §3 legend). */
 export const GLYPHS: Record<GlyphStatus, GlyphSpec> = {
-  starting: { glyph: "◌", className: "text-run-active", label: "starting", pulses: true },
-  running: { glyph: "◉", className: "text-run-active", label: "running", pulses: true },
+  starting: { glyph: "◌", className: "text-running", label: "starting", pulses: true },
+  running: { glyph: "◉", className: "text-running", label: "running", pulses: true },
   done: { glyph: "✓", className: "text-success", label: "done" },
   ok: { glyph: "✓", className: "text-success", label: "ok" },
   error: { glyph: "✗", className: "text-danger", label: "error" },
-  interrupted: { glyph: "◼", className: "text-text-faint", label: "interrupted" },
-  pending: { glyph: "○", className: "text-text-muted", label: "pending" },
-  thinking: { glyph: "·", className: "text-text-faint", label: "thinking" },
-  neutral: { glyph: "?", className: "text-text-faint", label: "unrecognized" },
-  unknown: { glyph: "?", className: "text-text-faint", label: "unknown" },
+  interrupted: { glyph: "◼", className: "text-ink-faint", label: "interrupted" },
+  pending: { glyph: "○", className: "text-ink-muted", label: "pending" },
+  thinking: { glyph: "·", className: "text-ink-faint", label: "thinking" },
+  neutral: { glyph: "?", className: "text-ink-faint", label: "unrecognized" },
+  unknown: { glyph: "?", className: "text-ink-faint", label: "unknown" },
 };
 
 export interface StatusGlyphProps {
@@ -45,9 +46,13 @@ export function StatusGlyph({ status, live = false, size = "sm", glyphOverride, 
       aria-label={spec.label}
       data-status={status}
       data-pulse={pulse ? "true" : undefined}
-      className={`inline-flex w-3 shrink-0 justify-center leading-none ${size === "md" ? "text-[13px]" : "text-[11px]"} ${spec.className} ${
-        pulse ? "rounded-full motion-safe:animate-glowPulse" : ""
-      } ${className ?? ""}`}
+      className={cn(
+        "inline-flex w-3.5 shrink-0 justify-center leading-none",
+        size === "md" ? "text-code" : "text-code-sm",
+        spec.className,
+        pulse && "motion-safe:animate-livePulse",
+        className,
+      )}
     >
       {glyphOverride ?? spec.glyph}
     </span>

@@ -97,14 +97,14 @@ export function RunHistoryPopover({ projectId, onSelect, onClose }: RunHistoryPo
       ref={ref}
       role="dialog"
       aria-label="Run history"
-      className="absolute left-3 top-12 z-30 w-[360px] animate-popIn rounded-panel border border-border-menu bg-bg-menu p-2 shadow-dropdown"
+      className="absolute left-3 top-12 z-30 w-[360px] animate-popIn rounded-lg border border-line-soft bg-surface p-2 shadow-menu"
     >
-      <p className="mb-1 px-1 text-[11px] font-semibold text-text-muted">RUNS (last 50)</p>
+      <p className="mb-1 px-1 text-caption font-semibold text-ink-muted">RUNS (last 50)</p>
 
-      {runs === "loading" && <p className="px-1 py-2 text-xs text-text-muted">Loading…</p>}
+      {runs === "loading" && <p className="px-1 py-2 text-caption text-ink-muted">Loading…</p>}
 
       {runs !== "loading" && runs.length === 0 && (
-        <p className="px-1 py-2 text-xs text-text-faint">No runs yet — hit ▶ Execute on a command node.</p>
+        <p className="px-1 py-2 text-caption text-ink-muted">No runs yet — hit ▶ Execute on a command node.</p>
       )}
 
       {runs !== "loading" && runs.length > 0 && (
@@ -114,23 +114,23 @@ export function RunHistoryPopover({ projectId, onSelect, onClose }: RunHistoryPo
               <button
                 type="button"
                 onClick={() => onSelect(r.runId)}
-                className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-[11.5px] hover:bg-white/[.06]"
+                className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-caption hover:bg-surface-hover"
               >
-                <span className={r.runId === activeRunId ? "text-run-active" : r.status === "failed" ? "text-danger" : "text-text-muted"}>
+                <span className={r.runId === activeRunId ? "text-running" : r.status === "failed" ? "text-danger-text" : "text-ink-muted"}>
                   {STATUS_GLYPH[r.status] ?? "◉"}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-text-body">/{r.commandName}</span>
-                <span className="shrink-0 tabular-nums text-text-muted">{fmtDuration(r.durationMs)}</span>
-                <span className="shrink-0 tabular-nums text-text-muted">{fmtTok(r.freshTokens)}</span>
-                <span className="shrink-0 tabular-nums text-text-muted">{fmtCost(r.costUsd)}</span>
-                <span className="shrink-0 text-text-faint">{fmtRelative(r.startedAt)}</span>
+                <span className="min-w-0 flex-1 truncate text-ink">/{r.commandName}</span>
+                <span className="shrink-0 tabular-nums text-ink-muted">{fmtDuration(r.durationMs)}</span>
+                <span className="shrink-0 tabular-nums text-ink-muted">{fmtTok(r.freshTokens)}</span>
+                <span className="shrink-0 tabular-nums text-ink-muted">{fmtCost(r.costUsd)}</span>
+                <span className="shrink-0 text-ink-muted">{fmtRelative(r.startedAt)}</span>
               </button>
             </li>
           ))}
         </ul>
       )}
 
-      <p className="mt-1 border-t border-border-hairline px-1 pt-1 text-[10px] text-text-faint">
+      <p className="mt-1 border-t border-line px-1 pt-1 text-overline text-ink-muted">
         Runs live in .symbion/runs/ (gitignored).
       </p>
     </div>

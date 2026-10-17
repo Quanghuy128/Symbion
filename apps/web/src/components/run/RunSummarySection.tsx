@@ -1,5 +1,6 @@
 "use client";
 
+import { Play } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RunSummary } from "@symbion/core";
@@ -59,22 +60,22 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
             : summary.status;
 
   const headerColor =
-    summary.status === "failed" ? "text-danger" : summary.status === "timedOut" ? "text-warning" : "text-text-body";
+    summary.status === "failed" ? "text-danger-text" : summary.status === "timedOut" ? "text-warning" : "text-ink";
 
   return (
-    <div className="flex h-full flex-col overflow-auto p-3 text-[11px]">
+    <div className="flex h-full flex-col overflow-auto p-3 text-caption">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <button type="button" className="shrink-0 text-text-muted hover:text-text-body" onClick={onBack}>
+        <button type="button" className="shrink-0 text-ink-muted hover:text-ink" onClick={onBack}>
           ← Agents
         </button>
         <span className={`truncate font-semibold ${headerColor}`}>Summary — {headerLabel}</span>
       </div>
 
-      <p className="mb-1 text-text-body">{fmtDuration(summary.durationMs)} · started {new Date(summary.startedAt).toLocaleTimeString()}</p>
+      <p className="mb-1 text-ink">{fmtDuration(summary.durationMs)} · started {new Date(summary.startedAt).toLocaleTimeString()}</p>
 
-      <div className="my-2 border-t border-border-hairline" />
+      <div className="my-2 border-t border-line" />
 
-      <p className="mb-1 font-semibold text-text-muted">COST BY NODE</p>
+      <p className="mb-1 font-semibold text-ink-muted">COST BY NODE</p>
       <div className="space-y-1">
         {summary.perNode.map((row) => {
           const key = row.label;
@@ -82,14 +83,14 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
             <div key={key} className="relative">
               <button
                 type="button"
-                className={`flex w-full items-center justify-between rounded-sm px-1 py-0.5 hover:bg-bg-panel ${row.unrecognized ? "text-warning" : "text-text-body"}`}
+                className={`flex w-full items-center justify-between rounded-sm px-1 py-0.5 hover:bg-app ${row.unrecognized ? "text-warning" : "text-ink"}`}
                 onMouseEnter={() => setExpandedRow(key)}
                 onMouseLeave={() => setExpandedRow((k) => (k === key ? null : k))}
                 onClick={onOpenAgent && !row.unrecognized ? () => onOpenAgent(row.label) : undefined}
               >
                 <span>
                   {row.unrecognized ? "⚠ unrecognized subagent" : row.label}
-                  {onOpenAgent && !row.unrecognized && <span className="text-text-faint"> ›</span>}
+                  {onOpenAgent && !row.unrecognized && <span className="text-ink-muted"> ›</span>}
                 </span>
                 <span className="tabular-nums">
                   {fmtTok(row.ownFresh)} / {fmtTok(row.totalFresh)} · {fmtCost(row.costUsd)}
@@ -108,7 +109,7 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
             </div>
           );
         })}
-        <div className="flex items-center justify-between border-t border-border-hairline pt-1 font-semibold text-text-strong">
+        <div className="flex items-center justify-between border-t border-line pt-1 font-semibold text-ink">
           <span>total</span>
           <span className="tabular-nums">
             {fmtTok(summary.totals.fresh)} tok · {fmtCost(summary.totals.costUsd)}
@@ -116,22 +117,22 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
         </div>
       </div>
 
-      <div className="my-2 border-t border-border-hairline" />
+      <div className="my-2 border-t border-line" />
 
-      <p className="mb-1 font-semibold text-text-muted">FILES CHANGED (git)</p>
+      <p className="mb-1 font-semibold text-ink-muted">FILES CHANGED (git)</p>
       {summary.filesChanged === "unavailable" ? (
-        <p className="text-text-faint">unavailable</p>
+        <p className="text-ink-muted">unavailable</p>
       ) : summary.filesChanged.length === 0 ? (
-        <p className="text-text-faint">no files changed</p>
+        <p className="text-ink-muted">no files changed</p>
       ) : (
         <div className="space-y-0.5">
           {summary.filesChanged.map((f) => (
-            <div key={f.path} className="flex items-center justify-between text-text-body">
+            <div key={f.path} className="flex items-center justify-between text-ink">
               <span>
                 {f.status} {f.path}
               </span>
               {(f.plus !== undefined || f.minus !== undefined) && (
-                <span className="tabular-nums text-text-muted">
+                <span className="tabular-nums text-ink-muted">
                   +{f.plus ?? 0} −{f.minus ?? 0}
                 </span>
               )}
@@ -148,16 +149,16 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
 
       {summary.status === "failed" && summary.stderrTail && (
         <>
-          <div className="my-2 border-t border-border-hairline" />
+          <div className="my-2 border-t border-line" />
           <button
             type="button"
-            className="mb-1 font-semibold text-danger"
+            className="mb-1 font-semibold text-danger-text"
             onClick={() => setStderrExpanded((v) => !v)}
           >
             STDERR (last 20 lines) {stderrExpanded ? "▾" : "▸"}
           </button>
           {stderrExpanded && (
-            <pre className="whitespace-pre-wrap break-all rounded-panel bg-bg-code p-2 text-[10px] text-danger">
+            <pre className="whitespace-pre-wrap break-all rounded-lg bg-deep p-2 font-mono text-code-sm text-danger-text">
               {summary.stderrTail}
             </pre>
           )}
@@ -166,14 +167,14 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
 
       {summary.finalMessage && (
         <>
-          <div className="my-2 border-t border-border-hairline" />
+          <div className="my-2 border-t border-line" />
           <div className="flex items-center justify-between">
-            <p className="font-semibold text-text-muted">FINAL MESSAGE</p>
-            <button type="button" className="text-text-muted hover:text-text-body" onClick={() => setFinalExpanded((v) => !v)}>
+            <p className="font-semibold text-ink-muted">FINAL MESSAGE</p>
+            <button type="button" className="text-ink-muted hover:text-ink" onClick={() => setFinalExpanded((v) => !v)}>
               [{finalExpanded ? "collapse" : "expand"} ▾]
             </button>
           </div>
-          <p className={`text-text-body ${finalExpanded ? "" : "truncate"}`}>{summary.finalMessage}</p>
+          <p className={`text-ink ${finalExpanded ? "" : "truncate"}`}>{summary.finalMessage}</p>
         </>
       )}
 
@@ -183,7 +184,7 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
            *  (STATE §18.1 — previously inert). */}
           <button
             type="button"
-            className="underline decoration-dotted hover:text-warning/80 disabled:cursor-default disabled:opacity-70"
+            className="underline decoration-dotted hover:text-warning disabled:cursor-default disabled:opacity-70"
             disabled={!projectId}
             onClick={() => {
               if (projectId) router.push(`/settings?project=${encodeURIComponent(projectId)}#execution`);
@@ -194,9 +195,9 @@ export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId
         </p>
       )}
 
-      <div className="mt-3 flex items-center justify-between border-t border-border-hairline pt-2">
-        <Button variant="outline" onClick={onRerun}>
-          ▶ Run again
+      <div className="mt-3 flex items-center justify-between border-t border-line pt-2">
+        <Button variant="outline" icon={Play} onClick={onRerun}>
+          Run again
         </Button>
         <Button variant="outline" onClick={onClose}>
           Close

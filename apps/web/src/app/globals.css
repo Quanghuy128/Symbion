@@ -3,43 +3,149 @@
 @tailwind utilities;
 
 /*
- * Symbion dark left-rail redesign — token set ported verbatim from DESIGN.md
- * (docs/loops/symbion-dark-redesign-design.md §7). Dark-only: darkMode:"class"
- * is declared in tailwind.config.ts but never applied anywhere in the app
- * (Q7 resolution, docs/loops/symbion-dark-redesign-STATE.md §6.2) — the light
- * `:root` variable pair that used to live here has been deleted entirely
- * rather than kept as dead code.
+ * Symbion design system — token layer.
+ * Source of truth: docs/design-system/tokens.json. Every colour and shadow
+ * token is a CSS variable holding a full colour value (no channel triplets),
+ * so Tailwind opacity modifiers (`bg-x/10`) must NOT be used on token
+ * colours — use the matching `-soft` token instead.
+ *
+ * Dark is the only exposed theme. Light values are defined under
+ * `[data-theme="light"]` for completeness; nothing sets that attribute yet.
  */
-:root {
-  --background: 10 11 14; /* bg-app #0a0b0e, RGB triplet for hsl()-free usage */
-  --foreground: 243 244 246; /* text-strong #f3f4f6 */
-  --muted: 27 30 37; /* bg-menu #1b1e25 */
-  --muted-foreground: 154 160 171; /* text-muted #9aa0ab */
-  --border: 255 255 255; /* combined with alpha below for hairline */
-  --primary: 99 102 241; /* accent #6366f1 */
-  --primary-foreground: 255 255 255;
-  --destructive: 248 113 113; /* danger #f87171 */
-  --accent: 27 30 37; /* bg-menu, generic muted-bg surface (unrelated to brand accent below) */
-  --radius: 8px;
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    --bg-app: #15171c;
+    --bg-sidebar: #101216;
+    --bg-deep: #0b0c10;
+    --surface: #1c1f26;
+    --surface-hover: #242833;
+    --surface-active: #2a2e38;
+    --line: #242833;
+    --line-soft: #2a2e38;
+    --line-strong: #353a46;
+    --ink: #eceef3;
+    --ink-2: #d3d7e0;
+    --ink-3: #b4b9c6;
+    --ink-muted: #8a90a0;
+    --ink-faint: #5e6473;
+    --mint: #3ddc97;
+    --mint-text: #5be3a8;
+    --mint-hover: #8ff0c4;
+    --mint-strong: #66e5ad;
+    --mint-soft: rgba(61, 220, 151, 0.12);
+    --on-mint: #07130d;
+    --focus-ring: #3ddc97;
+    --workflow: #e9b44c;
+    --workflow-soft: rgba(233, 180, 76, 0.14);
+    --agent: #7aa7ff;
+    --agent-soft: rgba(122, 167, 255, 0.14);
+    --skill: #c3a6ff;
+    --skill-soft: rgba(195, 166, 255, 0.14);
+    --running: #67d4f0;
+    --running-soft: rgba(103, 212, 240, 0.16);
+    --success: #7ee8b5;
+    --success-soft: #133024;
+    --warning: #ffb067;
+    --warning-soft: #33240f;
+    --danger: #ff7a7a;
+    --danger-text: #ffa3a3;
+    --danger-soft: #3a1f24;
+    --on-danger: #1a0a0c;
+    --diff-add: rgba(61, 220, 151, 0.12);
+    --diff-del: rgba(255, 122, 122, 0.12);
+    --overlay: rgba(5, 6, 9, 0.62);
+    --graph-dot: #2a2e38;
+
+    --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.55);
+    --shadow-toast: 0 10px 30px rgba(0, 0, 0, 0.5);
+    --shadow-composer: 0 1px 0 rgba(255, 255, 255, 0.03), 0 12px 32px rgba(0, 0, 0, 0.28);
+  }
+
+  [data-theme="light"] {
+    color-scheme: light;
+
+    --bg-app: #f6f7f9;
+    --bg-sidebar: #edeff3;
+    --bg-deep: #e4e7ec;
+    --surface: #ffffff;
+    --surface-hover: #e6e9ef;
+    --surface-active: #dce0e8;
+    --line: #e1e4ea;
+    --line-soft: #e6e9ef;
+    --line-strong: #c9ced8;
+    --ink: #14161b;
+    --ink-2: #2b2f38;
+    --ink-3: #4a5060;
+    --ink-muted: #5e6473;
+    --ink-faint: #8a90a0;
+    --mint: #2bc484;
+    --mint-text: #0b7a4b;
+    --mint-hover: #085c39;
+    --mint-strong: #22ad73;
+    --mint-soft: rgba(15, 138, 90, 0.1);
+    --on-mint: #07130d;
+    --focus-ring: #0b7a4b;
+    --workflow: #8a5f08;
+    --workflow-soft: rgba(138, 95, 8, 0.1);
+    --agent: #2f5fd0;
+    --agent-soft: rgba(47, 95, 208, 0.1);
+    --skill: #6b46c1;
+    --skill-soft: rgba(107, 70, 193, 0.1);
+    --running: #0a7290;
+    --running-soft: rgba(10, 114, 144, 0.1);
+    --success: #0b7a4b;
+    --success-soft: #e3f6ec;
+    --warning: #9a4f00;
+    --warning-soft: #fdf0e1;
+    --danger: #c42b2b;
+    --danger-text: #b42323;
+    --danger-soft: #fce8e8;
+    --on-danger: #ffffff;
+    --diff-add: rgba(15, 138, 90, 0.1);
+    --diff-del: rgba(196, 43, 43, 0.08);
+    --overlay: rgba(20, 22, 27, 0.32);
+    --graph-dot: #c9ced8;
+
+    --shadow-menu: 0 8px 24px rgba(20, 22, 27, 0.12), 0 0 0 1px rgba(20, 22, 27, 0.06);
+    --shadow-dialog: 0 24px 64px rgba(20, 22, 27, 0.18);
+    --shadow-toast: 0 10px 30px rgba(20, 22, 27, 0.14);
+    --shadow-composer: 0 1px 2px rgba(20, 22, 27, 0.06), 0 12px 32px rgba(20, 22, 27, 0.06);
+  }
+
+  body {
+    background: var(--bg-app);
+    color: var(--ink);
+    font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code,
+  pre,
+  kbd,
+  .font-mono {
+    font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* Focus: 2px solid focus-ring with a 2px offset on every interactive element. */
+  :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--mint-soft);
+  }
 }
 
-body {
-  background-color: rgb(var(--background));
-  color: rgb(var(--foreground));
-  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-}
-
-code,
-pre,
-kbd,
-.font-mono {
-  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
-}
-
-/* Custom scrollbar (per DESIGN.md's "scrollbar" token family) — thin, dark, subtle. */
+/* Thin, dark, subtle scrollbars. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  scrollbar-color: var(--line-strong) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
@@ -49,7 +155,7 @@ kbd,
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.14);
+  background-color: var(--line-strong);
   border-radius: 8px;
 }
 

@@ -1,36 +1,8 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
-import { StatusGlyph, GLYPHS, type GlyphStatus } from "./StatusGlyph";
 import { LiveDuration } from "./LiveDuration";
 import { useNow } from "@/lib/run/useNow";
 
-describe("StatusGlyph (W-1)", () => {
-  const legend: Array<[GlyphStatus, string, string]> = [
-    ["starting", "◌", "text-run-active"],
-    ["running", "◉", "text-run-active"],
-    ["done", "✓", "text-success"],
-    ["ok", "✓", "text-success"],
-    ["error", "✗", "text-danger"],
-    ["interrupted", "◼", "text-text-faint"],
-    ["pending", "○", "text-text-muted"],
-    ["thinking", "·", "text-text-faint"],
-    ["neutral", "?", "text-text-faint"],
-    ["unknown", "?", "text-text-faint"],
-  ];
-  for (const [status, glyph, cls] of legend) {
-    for (const live of [true, false]) {
-      it(`${status} live=${live}`, () => {
-        render(<StatusGlyph status={status} live={live} />);
-        const el = screen.getByRole("img", { name: GLYPHS[status].label });
-        expect(el.textContent).toBe(glyph);
-        expect(el.className).toContain(cls);
-        const shouldPulse = live && (status === "running" || status === "starting");
-        expect(el.getAttribute("data-pulse")).toBe(shouldPulse ? "true" : null);
-        expect(el.className.includes("animate-glowPulse")).toBe(shouldPulse);
-      });
-    }
-  }
-});
 
 function Clock({ enabled, start }: { enabled: boolean; start: number }) {
   const now = useNow(1_000, enabled);

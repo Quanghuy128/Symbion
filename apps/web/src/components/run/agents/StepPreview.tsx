@@ -12,7 +12,7 @@ export function CopyButton({ text, label = "Copy" }: { text: string; label?: str
       type="button"
       aria-label={label}
       title={label}
-      className="text-text-faint hover:text-text-body"
+      className="text-ink-muted hover:text-ink"
       onClick={(e) => {
         e.stopPropagation();
         try {
@@ -32,19 +32,19 @@ export function CopyButton({ text, label = "Copy" }: { text: string; label?: str
 function PreviewBlock({ title, text, error }: { title: string; text: string; error?: boolean }) {
   const truncated = isTruncatedPreview(text);
   return (
-    <div className={`overflow-hidden rounded-sm border border-border-hairline ${error ? "bg-danger/10" : "bg-bg-code"}`}>
-      <div className="flex items-center justify-between border-b border-border-hairline px-2 py-0.5 text-[10px] uppercase tracking-[.05em] text-text-faint">
+    <div className={`overflow-hidden rounded-sm border border-line ${error ? "bg-danger-soft" : "bg-sidebar"}`}>
+      <div className="flex items-center justify-between border-b border-line px-2 py-0.5 text-overline uppercase text-ink-muted">
         <span>
           {title}
-          {error && <span className="text-danger"> · error</span>}
+          {error && <span className="text-danger-text"> · error</span>}
         </span>
         <CopyButton text={text} label={`Copy ${title.toLowerCase()}`} />
       </div>
       {/* Plain text only — CLI output is untrusted (no markdown / HTML). */}
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-2 py-1 font-mono text-[10.5px] leading-snug text-text-body">
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-2 py-1 font-mono text-code-sm leading-snug text-ink">
         {stripTruncationMarker(text)}
       </pre>
-      {truncated && <p className="px-2 pb-1 text-[10px] text-warning">{TRUNCATION_NOTE}</p>}
+      {truncated && <p className="px-2 pb-1 text-overline text-warning">{TRUNCATION_NOTE}</p>}
     </div>
   );
 }
@@ -69,11 +69,11 @@ export function StepPreview({ preview, pending, interrupted, legacyTruncated, ki
       {preview?.output !== undefined && preview.output.length > 0 && (
         <PreviewBlock title={outputTitle} text={preview.output} error={preview.isError} />
       )}
-      {legacyTruncated && <p className="text-[10px] text-text-muted">result not recoverable (pre-upgrade run)</p>}
-      {pending && !interrupted && <p className="text-[10px] text-text-muted">waiting for result…</p>}
-      {interrupted && <p className="text-[10px] text-text-faint">◼ interrupted — no result recorded</p>}
+      {legacyTruncated && <p className="text-overline text-ink-muted">result not recoverable (pre-upgrade run)</p>}
+      {pending && !interrupted && <p className="text-overline text-ink-muted">waiting for result…</p>}
+      {interrupted && <p className="text-overline text-ink-muted">◼ interrupted — no result recorded</p>}
       {preview?.stepTokens && (kind === "tool" || kind === "spawn" || kind === "text") && (
-        <p className="font-mono text-[10px] tabular-nums text-text-faint">
+        <p className="font-mono text-code-sm tabular-nums text-ink-muted">
           step tokens  in {preview.stepTokens.input.toLocaleString("en-US")} · out {preview.stepTokens.output.toLocaleString("en-US")}
         </p>
       )}

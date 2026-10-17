@@ -31,17 +31,17 @@ export function RunLogTail({ lines, waiting }: RunLogTailProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border-hairline px-2 py-1 text-[11px] text-text-muted">
+      <div className="flex items-center justify-between border-b border-line px-2 py-1 text-caption text-ink-muted">
         <span>TIMELINE</span>
         <span>≡ Raw</span>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
+      <div ref={scrollRef} className="flex-1 overflow-auto p-2 font-mono text-code-sm leading-relaxed">
         {waiting && lines.length === 0 && (
-          <div className="animate-pulse text-text-muted">waiting for the CLI to start streaming…</div>
+          <div className="animate-pulse text-ink-muted">waiting for the CLI to start streaming…</div>
         )}
         {lines.map((l) => (
-          <div key={l.seq} className="flex gap-2 text-text-body">
-            <span className="shrink-0 tabular-nums text-text-muted">{fmtTs(l.ts, first)}</span>
+          <div key={l.seq} className="flex gap-2 text-ink">
+            <span className="shrink-0 tabular-nums text-ink-muted">{fmtTs(l.ts, first)}</span>
             <span className="break-all">{l.text}</span>
           </div>
         ))}

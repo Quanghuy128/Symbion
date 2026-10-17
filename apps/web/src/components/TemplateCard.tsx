@@ -1,6 +1,8 @@
 "use client";
 
 import type { TemplateListItem } from "@/data/templates/manifest";
+import { Badge } from "@/components/ui/badge";
+import { Kind } from "@/components/ui/kind";
 
 export interface TemplateCardProps {
   item: TemplateListItem;
@@ -19,17 +21,18 @@ export function TemplateCard({ item, onClick }: TemplateCardProps) {
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-start gap-1 rounded-md border border-border p-3 text-left hover:bg-muted"
+      className="flex flex-col items-start gap-2 rounded-lg border border-line-soft bg-surface p-4 text-left transition-colors hover:bg-surface-hover"
     >
       <div className="flex w-full items-center justify-between gap-2">
-        <span className="truncate text-sm font-medium">
-          {item.kind === "command" ? `/${item.name}` : item.name}
+        <span className="flex min-w-0 items-center gap-2">
+          <Kind kind={item.kind === "command" ? "workflow" : item.kind} />
+          <span className={item.kind === "command" ? "truncate font-mono text-code text-ink" : "truncate text-ui font-medium text-ink"}>
+            {item.kind === "command" ? `/${item.name}` : item.name}
+          </span>
         </span>
-        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-          {KIND_LABEL[item.kind]}
-        </span>
+        <Badge variant="plain">{KIND_LABEL[item.kind]}</Badge>
       </div>
-      <p className="line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+      <p className="line-clamp-2 text-caption text-ink-muted">{item.description}</p>
     </button>
   );
 }

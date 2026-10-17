@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { DiffFile } from "@symbion/core";
 import { Button } from "@/components/ui/button";
+import { Banner } from "@/components/ui/banner";
 
 export interface ConflictResolverProps {
   file: DiffFile;
@@ -27,30 +28,32 @@ export function ConflictResolver({ file, resolution, onResolve }: ConflictResolv
   }, []);
 
   return (
-    <div
-      className={`rounded-panel border border-danger/40 bg-danger/5 p-2 text-xs ${
-        shouldAnimate ? "animate-popIn" : ""
-      }`}
+    <Banner
+      tone="danger"
+      icon={null}
+      title={`CONFLICT — ${file.relPath}`}
+      className={shouldAnimate ? "animate-popIn" : undefined}
     >
-      <p className="mb-1 font-medium text-danger">! CONFLICT — {file.relPath}</p>
-      <p className="mb-2 text-text-muted">The file was hand-edited after the last publish.</p>
+      <p className="mb-2 text-ink-3">The file was hand-edited after the last publish.</p>
       <div className="flex gap-2">
         <Button
           size="sm"
-          variant={resolution !== "overwrite" ? "default" : "outline"}
+          variant="outline"
+          aria-pressed={resolution !== "overwrite"}
+          className={resolution !== "overwrite" ? "bg-surface-active" : undefined}
           onClick={() => onResolve("keep")}
         >
           Keep the on-disk version
         </Button>
         <Button
           size="sm"
-          variant={resolution === "overwrite" ? "default" : "outline"}
-          className={resolution === "overwrite" ? "bg-overwrite-btn hover:opacity-90" : undefined}
+          variant={resolution === "overwrite" ? "danger" : "danger-outline"}
+          aria-pressed={resolution === "overwrite"}
           onClick={() => onResolve("overwrite")}
         >
           Overwrite
         </Button>
       </div>
-    </div>
+    </Banner>
   );
 }

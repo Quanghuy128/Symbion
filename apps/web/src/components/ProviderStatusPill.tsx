@@ -67,7 +67,7 @@ export function ProviderStatusPill({ providerId }: ProviderStatusPillProps) {
   return (
     <Link
       href="/settings"
-      className="flex items-center gap-1 text-xs text-muted-foreground hover:underline"
+      className="flex items-center gap-1 text-caption text-ink-muted hover:underline"
       title="View AI provider connection status in Settings"
     >
       <StatusDot status={status} />
@@ -83,6 +83,6 @@ export function ProviderStatusPill({ providerId }: ProviderStatusPillProps) {
 
 function StatusDot({ status }: { status: Status }) {
   if (status === "checking") return <span aria-hidden>◐</span>;
-  if (status === "connected") return <span aria-hidden className="text-green-600">●</span>;
-  return <span aria-hidden className="text-amber-500">●</span>;
+  if (status === "connected") return <span aria-hidden className="text-success">●</span>;
+  return <span aria-hidden className="text-warning">●</span>;
 }

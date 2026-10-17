@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
 import type {
@@ -63,20 +64,20 @@ export function ProvidersPanel() {
 
   if (!daemonConnected) {
     return (
-      <p className="flex items-center gap-2 text-sm text-destructive">
-        <span aria-hidden>⚠</span>
+      <p className="flex items-center gap-2 text-ui text-danger-text">
+        <AlertTriangle size={16} strokeWidth={1.6} aria-hidden />
         Disconnected from the Symbion daemon — cannot manage AI providers right now.
       </p>
     );
   }
 
   if (loadError) {
-    return <p className="text-sm text-destructive">{loadError}</p>;
+    return <p className="text-ui text-danger-text">{loadError}</p>;
   }
 
   if (!providers) {
     return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+      <p className="flex items-center gap-2 text-ui text-ink-muted">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading…
       </p>
     );
@@ -98,9 +99,9 @@ export function ProvidersPanel() {
 function CardShell({ children, active }: { children: React.ReactNode; active: boolean }) {
   return (
     <div
-      className={`space-y-3 rounded-lg border p-4 text-sm ${
-        active ? "border-primary" : "border-border"
-      }`}
+      className={`space-y-3 rounded-lg border bg-surface p-4 text-ui ${
+ active ? "border-mint" : "border-line-soft"
+ }`}
     >
       {children}
     </div>
@@ -115,14 +116,8 @@ function StatusBadge({ state, errorCode }: { state: CheckState; errorCode?: stri
       : state === "connected"
         ? "Connected"
         : (errorCode && ERROR_CODE_LABELS[errorCode]) || "Not connected";
-  const dotClass =
-    state === "checking" ? "" : state === "connected" ? "text-green-600" : "text-amber-500";
-  return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-      {state === "checking" ? <span aria-hidden>◐</span> : <span aria-hidden className={dotClass}>●</span>}
-      {label}
-    </span>
-  );
+  const variant = state === "checking" ? "running" : state === "connected" ? "success" : "warning";
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
 /** Ollama's guide-only setup copy + install-command block, moved (not duplicated) from
@@ -175,18 +170,18 @@ function OllamaCard({ provider, onChanged }: { provider: ProviderDescriptor; onC
   return (
     <CardShell active={provider.active}>
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">Ollama (local)</h3>
+        <h3 className="text-label text-ink">Ollama (local)</h3>
         <StatusBadge state={state} errorCode={errorCode} />
       </div>
 
-      <p className="text-muted-foreground">
+      <p className="text-ink-muted">
         Ollama is software that runs AI models right on your machine — Symbion uses it to generate suggested content (Generate
         content). No API key needed.
       </p>
 
       {install && (
         <div>
-          <p className="mb-1 text-xs text-muted-foreground">
+          <p className="mb-1 text-caption text-ink-muted">
             Install &amp; run on your machine
             {install.confident
               ? ` (detected: ${install.env.label})`
@@ -195,9 +190,9 @@ function OllamaCard({ provider, onChanged }: { provider: ProviderDescriptor; onC
           <div className="space-y-2">
             {install.variants.map((variant) => (
               <div key={variant.label} className="space-y-1">
-                {!install.confident && <p className="text-xs font-medium">{variant.label}</p>}
+                {!install.confident && <p className="text-caption font-medium">{variant.label}</p>}
                 <div className="flex items-start gap-2">
-                  <pre className="flex-1 overflow-x-auto rounded-md border border-border bg-muted p-2 text-xs">
+                  <pre className="flex-1 overflow-x-auto rounded-md border border-line bg-sidebar p-2 font-mono text-code-sm">
                     <code>{variant.command}</code>
                   </pre>
                   <Button
@@ -231,7 +226,7 @@ function OllamaCard({ provider, onChanged }: { provider: ProviderDescriptor; onC
         </Button>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-ink-muted">
         Symbion only checks Ollama when you click &quot;Test connection&quot; — it does not check periodically.
       </p>
     </CardShell>
@@ -312,17 +307,17 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
   return (
     <CardShell active={provider.active}>
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">{provider.label}</h3>
+        <h3 className="text-label text-ink">{provider.label}</h3>
         <StatusBadge state={state} errorCode={errorCode} />
       </div>
 
       {provider.configured ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-ink-muted">
           API key: <code>{provider.maskedKey}</code>
           {provider.model ? ` · model: ${provider.model}` : ""}
         </p>
       ) : (
-        <p className="text-xs text-muted-foreground">No API key configured.</p>
+        <p className="text-caption text-ink-muted">No API key configured.</p>
       )}
 
       <div className="flex gap-2">
@@ -338,7 +333,7 @@ function ApiKeyProviderCard({ provider, onChanged }: { provider: ProviderDescrip
         </Button>
       </div>
 
-      {actionError && <p className="text-xs text-destructive">{actionError}</p>}
+      {actionError && <p className="text-caption text-danger-text">{actionError}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button

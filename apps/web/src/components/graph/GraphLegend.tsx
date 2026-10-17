@@ -39,28 +39,28 @@ export function GraphLegend({ open, onOpenChange }: GraphLegendProps) {
       ref={ref}
       role="dialog"
       aria-label="Graph legend"
-      className="absolute left-3 top-14 z-30 w-[300px] animate-popIn rounded-panel border border-border-menu bg-bg-menu p-4 text-[12.5px] shadow-dropdown"
+      className="absolute left-3 top-14 z-30 w-[300px] animate-popIn rounded-lg border border-line-soft bg-surface p-4 text-label shadow-menu"
     >
-      <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[.06em] text-text-faint">Legend</h3>
-      <ul className="space-y-2 text-text-body">
+      <h3 className="mb-2 text-caption font-semibold uppercase text-ink-muted">Legend</h3>
+      <ul className="space-y-2 text-ink">
         <li className="flex items-start gap-2">
-          <span className="mt-0.5 font-mono text-command">●──▶</span>
+          <span className="mt-0.5 font-mono text-workflow">●──▶</span>
           <span>/command linked to an agent.</span>
         </li>
         <li className="flex items-start gap-2">
-          <span className="mt-0.5 font-mono text-danger">●╌╌▶</span>
+          <span className="mt-0.5 font-mono text-danger-text">●╌╌▶</span>
           <span>agent does not exist (missing) — drag/create an agent to fix.</span>
         </li>
         <li className="flex items-start gap-2">
-          <span className="mt-0.5 inline-block h-2.5 w-2.5 rounded-full bg-command" />
+          <span className="mt-0.5 inline-block h-2.5 w-2.5 rounded-full bg-workflow" />
           <span>Dot ● on the right of a /command — drag to an agent to link.</span>
         </li>
         <li className="flex items-start gap-2">
-          <span className="mt-0.5 font-mono text-text-faint">⋯</span>
+          <span className="mt-0.5 font-mono text-ink-muted">⋯</span>
           <span>Node menu: Edit · Delete · Copy run.</span>
         </li>
         <li className="flex items-start gap-2">
-          <span className="mt-0.5 rounded-pill bg-warning/15 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-[.05em] text-warning">
+          <span className="mt-0.5 rounded-pill bg-warning-soft px-1.5 py-0.5 text-overline font-semibold uppercase text-warning">
             not linked
           </span>
           <span>Command references an agent with backticks — use @name to show the link.</span>

@@ -299,18 +299,18 @@ export function AgentsPanel({
   if (loading) {
     body = (
       <div className="space-y-2 p-3" data-testid="agents-skeleton">
-        <div className="h-3 w-4/5 rounded-sm bg-white/[.06]" />
-        <div className="ml-3 h-3 w-3/5 rounded-sm bg-white/[.06]" />
-        <div className="ml-3 h-3 w-2/3 rounded-sm bg-white/[.06]" />
-        <p className="pt-1 text-[10.5px] text-text-faint">rebuilding agents… {view.eventCount.toLocaleString("en-US")} ev</p>
+        <div className="h-3 w-4/5 rounded-sm bg-surface-hover" />
+        <div className="ml-3 h-3 w-3/5 rounded-sm bg-surface-hover" />
+        <div className="ml-3 h-3 w-2/3 rounded-sm bg-surface-hover" />
+        <p className="pt-1 text-overline text-ink-muted">rebuilding agents… {view.eventCount.toLocaleString("en-US")} ev</p>
       </div>
     );
   } else if (transcriptUnavailable) {
     body = (
-      <div className="p-3 text-[11.5px] text-text-muted">
+      <div className="p-3 text-caption text-ink-muted">
         <p>Transcript unavailable for this run.</p>
         {runInfo?.totals && viewSummary && (
-          <button type="button" className="mt-2 rounded-sm border border-border-menu px-2 py-0.5 text-[11px] text-text-body" onClick={viewSummary}>
+          <button type="button" className="mt-2 rounded-sm border border-line-soft px-2 py-0.5 text-caption text-ink" onClick={viewSummary}>
             View summary
           </button>
         )}
@@ -376,7 +376,7 @@ export function AgentsPanel({
           />
         )}
         {degradedReason && (
-          <p className="mx-2 mb-1 rounded-sm bg-warning/10 px-2 py-1 text-[10.5px] text-warning" data-testid="degraded-note">
+          <p className="mx-2 mb-1 rounded-sm bg-warning-soft px-2 py-1 text-overline text-warning" data-testid="degraded-note">
             Subagent attribution unavailable — all activity is in the root transcript.
           </p>
         )}
@@ -399,7 +399,7 @@ export function AgentsPanel({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col outline-none"
+      className="flex h-full min-h-0 flex-col focus-visible:outline-0"
       tabIndex={-1}
       onKeyDown={onKeyDown}
       data-testid="agents-panel"
@@ -407,7 +407,7 @@ export function AgentsPanel({
       role="region"
     >
       {(top.kind === "tree" || loading || transcriptUnavailable) && (
-        <div className="flex items-center justify-between border-b border-border-hairline px-2 py-1 text-[11px] font-semibold uppercase tracking-[.05em] text-text-muted">
+        <div className="flex items-center justify-between border-b border-line px-2 py-1 text-caption font-semibold uppercase text-ink-muted">
           <span>
             Agents{view.agentCount > 0 ? ` · ${view.agentCount}` : ""}
           </span>
@@ -416,7 +416,7 @@ export function AgentsPanel({
       )}
       {body}
       {top.kind === "tree" && live && !loading && (
-        <div className="border-t border-border-hairline px-2 py-0.5 text-[10px] text-text-faint">↑↓ select · ↵ open</div>
+        <div className="border-t border-line px-2 py-0.5 text-overline text-ink-muted">↑↓ select · ↵ open</div>
       )}
     </div>
   );

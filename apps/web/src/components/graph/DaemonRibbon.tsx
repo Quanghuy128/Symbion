@@ -1,5 +1,8 @@
 "use client";
 
+import { Banner } from "@/components/ui/banner";
+import { Button } from "@/components/ui/button";
+
 export interface DaemonRibbonProps {
   onRetry: () => void;
 }
@@ -11,15 +14,16 @@ export interface DaemonRibbonProps {
  */
 export function DaemonRibbon({ onRetry }: DaemonRibbonProps) {
   return (
-    <div className="relative z-10 mb-2 flex items-center justify-between gap-3 rounded-panel border border-warning/30 bg-warning/10 px-4 py-2.5 text-[12.5px] text-warning">
-      <span>⦿ Daemon disconnected — the graph is read-only.</span>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="shrink-0 rounded-sm border border-warning/40 px-2.5 py-1 text-[12px] font-medium text-warning hover:bg-warning/10"
-      >
-        Retry
-      </button>
-    </div>
+    <Banner
+      tone="danger"
+      className="relative z-10 mb-2"
+      action={
+        <Button type="button" variant="danger-outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      }
+    >
+      Daemon disconnected — the graph is read-only.
+    </Banner>
   );
 }

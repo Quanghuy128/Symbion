@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Bot, Maximize2, Slash } from "lucide-react";
+import { MenuDivider, MenuItem, menuSurfaceClass } from "@/components/ui/row-menu";
+import { cn } from "@/lib/utils";
 
 export interface GraphCanvasMenuProps {
   x: number;
@@ -38,47 +41,36 @@ export function GraphCanvasMenu({ x, y, onClose, onAdd, onFitView, disabled }: G
     <div
       ref={ref}
       role="menu"
-      className="absolute z-30 w-44 animate-popIn rounded-panel border border-border-menu bg-bg-menu py-1 shadow-dropdown"
+      className={cn("absolute w-44 animate-popIn", menuSurfaceClass)}
       style={{ left: x, top: y }}
     >
-      <button
-        type="button"
-        role="menuitem"
+      <MenuItem
+        label="Add workflow"
+        icon={Slash}
         disabled={disabled}
-        onClick={() => {
+        onSelect={() => {
           onClose();
           onAdd("command");
         }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#818cf8" }} />
-        Add workflow
-      </button>
-      <button
-        type="button"
-        role="menuitem"
+      />
+      <MenuItem
+        label="Add agent"
+        icon={Bot}
         disabled={disabled}
-        onClick={() => {
+        onSelect={() => {
           onClose();
           onAdd("agent");
         }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#a78bfa" }} />
-        Add agent
-      </button>
-      <div className="my-1 border-t border-border-hairline" />
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
+      />
+      <MenuDivider />
+      <MenuItem
+        label="Fit to view"
+        icon={Maximize2}
+        onSelect={() => {
           onClose();
           onFitView();
         }}
-        className="block w-full px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06]"
-      >
-        ⤢ Fit to view
-      </button>
+      />
     </div>
   );
 }

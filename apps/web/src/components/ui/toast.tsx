@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
+import { AlertTriangle, Check, Info, X, type LucideIcon } from "lucide-react";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 
-/** Auto-dismiss hold, per DESIGN.md's Toast token (`auto-dismiss-ms: 2200`). */
+/** Auto-dismiss hold (kept for every variant; the store has no close affordance). */
 const AUTO_DISMISS_MS = 2200;
 
+const VARIANT: Record<string, { icon: LucideIcon; tone: string }> = {
+  success: { icon: Check, tone: "bg-success-soft text-success" },
+  warning: { icon: AlertTriangle, tone: "bg-warning-soft text-warning" },
+  error: { icon: X, tone: "bg-danger-soft text-danger-text" },
+  neutral: { icon: Info, tone: "bg-surface-hover text-ink-3" },
+};
+
 /**
- * Toaster — root-mounted single-toast renderer (Q4). Reads `toast` directly
- * from the store; no props. Mounted once per route shell (AppShell,
- * TemplatesView, SettingsShell) per PLAN §6.9 step 1. popIn entrance, plain
- * fade-out on auto-dismiss (design doc §5 Interaction Notes).
+ * Toaster — root-mounted single-toast renderer. Reads `toast` directly from
+ * the store; no props. Mounted once per route shell. popIn entrance.
  */
 export function Toaster() {
   const toast = useArtifactStore((s) => s.toast);
@@ -24,27 +30,18 @@ export function Toaster() {
 
   if (!toast) return null;
 
-  // interactive-graph (design §5/§7): 4 variants. glyph + text color per variant;
-  // placement/motion/timing unchanged.
   const variant = toast.variant ?? "neutral";
-  const glyph =
-    variant === "success" ? "✓" : variant === "warning" ? "⚠" : variant === "error" ? "✕" : null;
-  const textColor =
-    variant === "success"
-      ? "text-success"
-      : variant === "warning"
-        ? "text-warning"
-        : variant === "error"
-          ? "text-danger"
-          : "text-text-body";
+  const { icon: Icon, tone } = (VARIANT[variant] ?? VARIANT.neutral)!;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-toast flex justify-center">
       <div
-        role="status"
-        className={`pointer-events-auto flex animate-popIn items-center gap-2 rounded-panel border border-border-menu bg-bg-menu px-4 py-2.5 text-sm shadow-toast ${textColor}`}
+        role={variant === "error" ? "alert" : "status"}
+        className="pointer-events-auto flex animate-popIn items-center gap-3 rounded-lg border border-line-soft bg-surface px-4 py-2.5 text-ui text-ink shadow-toast"
       >
-        {glyph && <span aria-hidden>{glyph}</span>}
+        <span aria-hidden className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${tone}`}>
+          <Icon size={12} strokeWidth={2} />
+        </span>
         {toast.message}
       </div>
     </div>

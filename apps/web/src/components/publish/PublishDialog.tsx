@@ -4,7 +4,10 @@ import { useState } from "react";
 import type { ProjectStore, TargetId } from "@symbion/core";
 import { bump, compareVersions } from "@symbion/core";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Square, SquareCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, Input } from "@/components/ui/input";
 import { PublishDiffView } from "./PublishDiffView";
 
 export interface PublishDialogProps {
@@ -48,59 +51,56 @@ export function PublishDialog({ project, onClose }: PublishDialogProps) {
       </DialogHeader>
 
       <div className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-text-body">Version</label>
-          <input
-            className="h-9 w-full rounded-sm border border-border-input bg-bg-input px-3 text-sm text-text-body"
-            value={version}
-            onChange={(e) => setVersion(e.target.value)}
-          />
-        </div>
+        <Field label="Version" htmlFor="publish-version">
+          <Input id="publish-version" value={version} onChange={(e) => setVersion(e.target.value)} />
+        </Field>
 
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
+              aria-pressed={targets.includes("claude")}
               onClick={() => toggleTarget("claude")}
-              className={`rounded-panel border px-3 py-2.5 text-left text-sm transition-colors ${
-                targets.includes("claude")
-                  ? "border-brand-accent bg-brand-accent-soft text-text-strong"
-                  : "border-border-input text-text-dim hover:bg-white/[.04]"
-              }`}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-ui transition-colors ${
+ targets.includes("claude")
+ ? "border-mint bg-mint-soft text-ink"
+ : "border-line-strong text-ink-muted hover:bg-surface-hover"
+ }`}
             >
-              <span className="font-medium">{targets.includes("claude") ? "☑" : "☐"} Claude</span>
+              {targets.includes("claude") ? <SquareCheck size={16} strokeWidth={1.6} aria-hidden className="shrink-0 text-mint-text" /> : <Square size={16} strokeWidth={1.6} aria-hidden className="shrink-0" />}
+              <span className="font-medium">Claude</span>
             </button>
             <button
               type="button"
+              aria-pressed={targets.includes("codex")}
               onClick={() => toggleTarget("codex")}
-              className={`rounded-panel border px-3 py-2.5 text-left text-sm transition-colors ${
-                targets.includes("codex")
-                  ? "border-brand-accent bg-brand-accent-soft text-text-strong"
-                  : "border-border-input text-text-dim hover:bg-white/[.04]"
-              }`}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-ui transition-colors ${
+ targets.includes("codex")
+ ? "border-mint bg-mint-soft text-ink"
+ : "border-line-strong text-ink-muted hover:bg-surface-hover"
+ }`}
             >
-              <span className="font-medium">{targets.includes("codex") ? "☑" : "☐"} Codex</span>
-              <span className="ml-1 text-xs text-warning">(merged into AGENTS.md · lossy)</span>
+              {targets.includes("codex") ? <SquareCheck size={16} strokeWidth={1.6} aria-hidden className="shrink-0 text-mint-text" /> : <Square size={16} strokeWidth={1.6} aria-hidden className="shrink-0" />}
+              <span className="font-medium">Codex</span>
+              <span className="ml-1 text-caption text-warning">(merged into AGENTS.md · lossy)</span>
             </button>
           </div>
           {targets.includes("codex") && (
-            <label className="ml-1 flex items-center gap-2 text-xs text-text-dim">
-              <input
-                type="checkbox"
-                checked={codexAcknowledged}
-                onChange={(e) => setCodexAcknowledged(e.target.checked)}
-              />
-              I understand — commands will be merged/flattened into AGENTS.md (loses per-file separation)
-            </label>
+            <Checkbox
+              className="ml-1 text-caption text-ink-muted"
+              checked={codexAcknowledged}
+              onChange={(e) => setCodexAcknowledged(e.target.checked)}
+              label="I understand — commands will be merged/flattened into AGENTS.md (loses per-file separation)"
+            />
           )}
         </div>
       </div>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button disabled={!canProceed} onClick={() => setStep("diff")}>
+        <Button size="lg" disabled={!canProceed} onClick={() => setStep("diff")}>
           Preview changes
         </Button>
       </DialogFooter>

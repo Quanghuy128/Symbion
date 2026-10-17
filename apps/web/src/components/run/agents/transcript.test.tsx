@@ -37,7 +37,7 @@ describe("TranscriptRowView (W-5 / W-6)", () => {
       <TranscriptRowView row={thinking} expanded={false} focused={false} isNew={false} live onToggle={noop} onOpenAgent={noop} />
     );
     expect(container.textContent).toContain("Thinking");
-    expect(screen.getByText("Thinking").className).toContain("text-text-faint");
+    expect(screen.getByText("Thinking").className).toContain("text-ink-faint");
     unmount();
 
     const read = aRows.find((r) => r.tool === "Read")!;
@@ -70,7 +70,7 @@ describe("TranscriptRowView (W-5 / W-6)", () => {
     expect(glyph.className).toContain("text-danger");
     const label = container.querySelector("[title^='Bash npm test']") as HTMLElement;
     expect(label.className).not.toContain("text-danger");
-    expect(label.className).toContain("text-text-body");
+    expect(label.className).toContain("text-ink");
     expect(within(screen.getByTestId("step-preview")).getByText("· error").className).toContain("text-danger");
   });
 

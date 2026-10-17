@@ -24,7 +24,7 @@ export function DegradedTelemetryChip({ reason }: DegradedTelemetryChipProps) {
 
   return (
     <Tooltip content={copy}>
-      <span className="inline-flex items-center gap-1 rounded-pill bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[.05em] text-warning">
+      <span className="inline-flex items-center gap-1 rounded-pill bg-warning-soft px-1.5 py-0.5 text-overline font-semibold uppercase text-warning">
         ⚠ telemetry degraded
       </span>
     </Tooltip>

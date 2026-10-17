@@ -203,7 +203,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-auto"
+      className="relative h-full w-full overflow-auto bg-deep"
       onClick={handlePaneClick}
       onContextMenu={handlePaneContextMenu}
       style={{ minHeight: Math.max(content.height + 80, 480) }}
@@ -256,7 +256,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
                 <path
                   d={`M${source.x},${source.y} L${dragConnect.cursor.x},${dragConnect.cursor.y}`}
                   fill="none"
-                  stroke="#c7d2fe"
+                  className="stroke-mint"
                   strokeWidth={1.5}
                   strokeDasharray="6 4"
                   style={{ pointerEvents: "none" }}

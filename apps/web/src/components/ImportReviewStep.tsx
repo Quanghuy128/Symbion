@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { ScanClaudeDirResult } from "@/lib/rpc/types";
 import type { PickedEntry, PickedRole } from "@/components/importPickerShared";
 
@@ -34,7 +36,7 @@ export function ImportReviewStep({
   onBrowseManually,
 }: ImportReviewStepProps) {
   return (
-    <div className="space-y-2 text-sm text-text-body">
+    <div className="space-y-2 text-ui text-ink">
       <p className="text-success">✓ {scanned.agents.length} agents</p>
       <p className="text-success">✓ {scanned.commands.length} commands</p>
 
@@ -44,7 +46,7 @@ export function ImportReviewStep({
             const entry = picked.get(s.relPath);
             const role: PickedRole = entry?.role ?? "ignore";
             return (
-              <div key={s.relPath} className="rounded-sm border border-warning/30 bg-warning/5 p-1.5 text-xs">
+              <div key={s.relPath} className="rounded-sm border border-warning bg-warning-soft p-1.5 text-caption">
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-warning">
                     ⚠ {s.relPath} — {s.reason}
@@ -55,19 +57,19 @@ export function ImportReviewStep({
                     </span>
                   )}
                   {entry?.readError && (
-                    <span className="shrink-0 text-danger" title={entry.readError}>
+                    <span className="shrink-0 text-danger-text" title={entry.readError}>
                       ✗
                     </span>
                   )}
-                  <select
-                    className="shrink-0 rounded-sm border border-border-input bg-bg-input px-1 py-0.5 text-xs"
+                  <Select
+                    className="h-control-sm w-auto shrink-0 px-2 text-caption"
                     value={role}
                     onChange={(e) => onReclassify(s.relPath, e.target.value as PickedRole)}
                   >
                     <option value="ignore">Ignore</option>
                     <option value="agent">Agent</option>
                     <option value="command">Command</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
             );
@@ -77,8 +79,8 @@ export function ImportReviewStep({
 
       <div className="max-h-48 space-y-1 overflow-y-auto">
         {[...scanned.agents, ...scanned.commands].map((a) => (
-          <label key={a.id} className="flex items-center gap-2 text-xs">
-            <input type="checkbox" checked={selected.has(a.id)} onChange={() => onToggle(a.id)} />
+          <label key={a.id} className="flex items-center gap-2 text-caption">
+            <Checkbox checked={selected.has(a.id)} onChange={() => onToggle(a.id)} />
             {a.kind === "agent" ? a.name : `/${a.name}`}
           </label>
         ))}
@@ -86,7 +88,7 @@ export function ImportReviewStep({
 
       <button
         type="button"
-        className="text-xs text-brand-accent underline-offset-2 hover:underline"
+        className="text-caption text-mint underline-offset-2 hover:underline"
         onClick={onBrowseManually}
       >
         Didn&apos;t find what you expected? Browse files manually →

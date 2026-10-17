@@ -1,0 +1,19 @@
+<!-- @dsCard group="Patterns" height=300 subtitle="gallery" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>TemplateCard</title></head>
+<body>
+<div style="padding:var(--space-5);display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">
+  <article class="sy-card"><div class="sy-card__media" aria-hidden="true">/analyze  → ba ×3
+/design   → designer ×3
+/plan     → architect
+/build    → feature-builder
+/review   → code-reviewer</div><div class="sy-card__body"><h3 class="sy-card__title">Loop Engineering pipeline</h3><p class="sy-card__desc">Analyze to ship, with maker and checker agents kept apart.</p><div class="sy-card__foot"><span>9 commands · 6 agents</span><button class="sy-btn sy-btn--outline sy-btn--sm">Apply</button></div></div></article>
+  <article class="sy-card"><div class="sy-card__media" aria-hidden="true">---
+description: Review the diff
+---
+Spawn @code-reviewer on
+$ARGUMENTS</div><div class="sy-card__body"><h3 class="sy-card__title">PR reviewer</h3><p class="sy-card__desc">Reviews the current diff, then posts a summary.</p><div class="sy-card__foot"><span>1 command · 1 agent</span><button class="sy-btn sy-btn--outline sy-btn--sm">Apply</button></div></div></article>
+</div>
+</body>
+</html>

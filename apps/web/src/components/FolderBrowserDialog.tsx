@@ -87,19 +87,19 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
       </DialogHeader>
 
       <DialogBody className="space-y-2">
-        <p className="truncate font-mono text-xs text-text-faint" title={listing?.path ?? currentPath ?? ""}>
+        <p className="truncate font-mono text-code-sm text-ink-muted" title={listing?.path ?? currentPath ?? ""}>
           {listing?.path ?? currentPath ?? "Loading…"}
         </p>
 
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error && <p className="text-caption text-danger-text">{error}</p>}
 
-        <div className="space-y-1 rounded-panel border border-border-input p-1">
-          {loading && <p className="px-2 py-1 text-xs text-text-muted">Loading…</p>}
+        <div className="space-y-1 rounded-lg border border-line-strong p-1">
+          {loading && <p className="px-2 py-1 text-caption text-ink-muted">Loading…</p>}
 
           {!loading && listing?.parentPath && (
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-text-body hover:bg-white/[.06]"
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-ui text-ink hover:bg-surface-hover"
               onClick={() => navigateTo(listing.parentPath as string)}
             >
               <ArrowUp className="h-4 w-4" />
@@ -108,7 +108,7 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
           )}
 
           {!loading && listing?.denied && (
-            <p className="px-2 py-1.5 text-xs text-text-muted">No permission to read this folder.</p>
+            <p className="px-2 py-1.5 text-caption text-ink-muted">No permission to read this folder.</p>
           )}
 
           {!loading &&
@@ -118,7 +118,7 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
                 key={entry.path}
                 type="button"
                 disabled={entry.unreadable}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-ui text-ink hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => !entry.unreadable && navigateTo(entry.path)}
               >
                 {entry.unreadable ? <Lock className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
@@ -127,13 +127,13 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
             ))}
 
           {!loading && !listing?.denied && listing?.entries.length === 0 && (
-            <p className="px-2 py-1.5 text-xs text-text-muted">No subfolders.</p>
+            <p className="px-2 py-1.5 text-caption text-ink-muted">No subfolders.</p>
           )}
         </div>
       </DialogBody>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
         <Button disabled={!listing || loading} onClick={handleChoose}>

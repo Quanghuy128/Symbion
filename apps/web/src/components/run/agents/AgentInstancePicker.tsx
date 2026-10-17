@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AgentNode } from "@symbion/core";
-import { StatusGlyph } from "./StatusGlyph";
+import { StatusGlyph } from "@/components/ui/status-glyph";
 import { fmtClock, fmtTok } from "./format";
 
 export interface AgentInstancePickerProps {
@@ -35,7 +35,7 @@ export function AgentInstancePicker({ anchorRect, agentName, instances, nowMs, o
       role="listbox"
       tabIndex={-1}
       aria-label={`${agentName} instances`}
-      className="fixed z-50 w-72 rounded-sm border border-border-menu bg-bg-menu py-1 text-[11.5px] shadow-dropdown outline-none motion-safe:animate-popIn"
+      className="fixed z-menu w-72 rounded-md border border-line-soft bg-surface py-1 text-caption shadow-menu focus-visible:outline-0 motion-safe:animate-popIn"
       style={{ left: anchorRect.left, top: anchorRect.bottom + 6 }}
       onKeyDown={(e) => {
         if (e.key === "ArrowDown") {
@@ -55,7 +55,7 @@ export function AgentInstancePicker({ anchorRect, agentName, instances, nowMs, o
         }
       }}
     >
-      <p className="px-3 pb-1 text-[10.5px] text-text-muted">
+      <p className="px-3 pb-1 text-overline text-ink-muted">
         {agentName} ran {instances.length} times
       </p>
       {instances.map((a, i) => (
@@ -64,16 +64,16 @@ export function AgentInstancePicker({ anchorRect, agentName, instances, nowMs, o
           type="button"
           role="option"
           aria-selected={i === cursor}
-          className={`flex w-full items-center gap-1.5 px-3 py-1 text-left ${i === cursor ? "bg-white/[.06]" : "hover:bg-white/[.04]"}`}
+          className={`flex w-full items-center gap-1.5 px-3 py-1 text-left ${i === cursor ? "bg-surface-hover" : "hover:bg-surface-hover"}`}
           onMouseEnter={() => setCursor(i)}
           onClick={() => onPick(a.id)}
         >
           <StatusGlyph status={a.status} />
-          <span className="min-w-0 flex-1 truncate text-text-body">{a.description ?? a.id}</span>
-          <span className="font-mono tabular-nums text-text-muted">
+          <span className="min-w-0 flex-1 truncate text-ink">{a.description ?? a.id}</span>
+          <span className="font-mono tabular-nums text-ink-muted">
             {a.startedAtMs !== null ? fmtClock((a.endedAtMs ?? nowMs) - a.startedAtMs) : "—"}
           </span>
-          <span className="w-12 text-right font-mono tabular-nums text-text-body">{fmtTok(a.freshTokens)}</span>
+          <span className="w-12 text-right font-mono tabular-nums text-ink">{fmtTok(a.freshTokens)}</span>
         </button>
       ))}
     </div>

@@ -167,7 +167,7 @@ export const TranscriptList = forwardRef<TranscriptListHandle, TranscriptListPro
           aria-label="Transcript"
         >
           {rows.length === 0 && emptyText ? (
-            <p className="px-3 py-2 text-[11px] text-text-faint">{emptyText}</p>
+            <p className="px-3 py-2 text-caption text-ink-muted">{emptyText}</p>
           ) : (
             <div style={{ position: "relative", height: wl.total }} data-testid="transcript-spacer">
               {items}
@@ -177,10 +177,10 @@ export const TranscriptList = forwardRef<TranscriptListHandle, TranscriptListPro
         {followLive && <JumpToLatestPill count={wl.newCount} onJump={wl.jumpToLatest} />}
       </div>
       {followLive && wl.following && (
-        <div className="border-t border-border-hairline px-2 py-0.5 text-[10px] text-text-faint">▼ following</div>
+        <div className="border-t border-line px-2 py-0.5 text-overline text-ink-muted">▼ following</div>
       )}
       {followLive && !wl.following && wl.newCount === 0 && (
-        <div className="border-t border-border-hairline px-2 py-0.5 text-[10px] text-text-faint">⏸ paused — End to resume</div>
+        <div className="border-t border-line px-2 py-0.5 text-overline text-ink-muted">⏸ paused — End to resume</div>
       )}
       {!followLive && footer}
     </div>

@@ -18,7 +18,7 @@ export interface GraphStatusChipsProps {
 export function GraphStatusChips({ claudeLossy, codexLossy, missingAgentMentions }: GraphStatusChipsProps) {
   return (
     <div className="mb-3 space-y-1.5">
-      <div className="flex flex-wrap items-center gap-3 text-[12px] font-medium">
+      <div className="flex flex-wrap items-center gap-3 text-caption font-medium">
         <span className={`flex items-center gap-1.5 ${claudeLossy ? "text-warning" : "text-success"}`}>
           <span aria-hidden>{claudeLossy ? "▲" : "●"}</span>
           Claude · {claudeLossy ? "lossy" : "clean"}
@@ -29,7 +29,7 @@ export function GraphStatusChips({ claudeLossy, codexLossy, missingAgentMentions
         </span>
       </div>
       {missingAgentMentions.length > 0 && (
-        <p className="text-[12px] text-danger">
+        <p className="text-caption text-danger-text">
           ⚠ {missingAgentMentions.length === 1
             ? `Agent "${missingAgentMentions[0]}" is referenced but does not exist.`
             : `${missingAgentMentions.length} agents are referenced but do not exist: ${missingAgentMentions.join(", ")}.`}

@@ -1,33 +1,60 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { MoreHorizontal, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IconButton } from "./icon-button";
 
 export interface RowMenuAction {
   label: string;
   onSelect: () => void;
   danger?: boolean;
   disabled?: boolean;
+  icon?: LucideIcon;
+  shortcut?: string;
 }
 
 /** Divider sentinel — push this between two RowMenuAction entries. */
 export const ROW_MENU_DIVIDER = "divider" as const;
 export type RowMenuItem = RowMenuAction | typeof ROW_MENU_DIVIDER;
 
+/** Shared surface classes for every popover / menu (row menus, graph menus, palettes). */
+export const menuSurfaceClass = "z-menu rounded-md bg-surface p-[5px] shadow-menu";
+
+export function MenuDivider() {
+  return <div role="separator" className="my-1 border-t border-line" />;
+}
+
+export function MenuItem({ label, onSelect, danger, disabled, icon: Icon, shortcut }: RowMenuAction) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onSelect}
+      className={cn(
+        "flex h-control-sm w-full items-center gap-2 rounded-sm px-2.5 text-left text-label disabled:cursor-not-allowed disabled:opacity-45",
+        danger ? "text-danger-text hover:bg-danger-soft" : "text-ink-2 hover:bg-surface-hover hover:text-ink",
+      )}
+    >
+      {Icon ? <Icon size={16} strokeWidth={1.6} aria-hidden className="shrink-0" /> : null}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {shortcut ? <span className="font-mono text-code-sm text-ink-muted">{shortcut}</span> : null}
+    </button>
+  );
+}
+
 export interface RowMenuProps {
   items: RowMenuItem[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** aria-label for the trigger button; defaults to "Tùy chọn". */
+  /** aria-label for the trigger button; defaults to "Options". */
   triggerLabel?: string;
 }
 
 /**
- * RowMenu — hand-rolled `⋯` dropdown (Q1/Q5, PLAN §6.5): useState open/closed
- * + a useEffect outside-click listener, matching ui/dialog.tsx's existing
- * "no Radix" posture rather than introducing @radix-ui/react-dropdown-menu
- * as a second new Radix primitive in this PR. Kept small (~50 lines) —
- * not a generic shadcn-parity primitive.
+ * RowMenu — hand-rolled dropdown: useState open/closed + an outside-click
+ * listener (no Radix, matching ui/dialog.tsx). Escape closes.
  */
 export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }: RowMenuProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,54 +66,48 @@ export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }:
         onOpenChange(false);
       }
     }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onOpenChange(false);
+    }
     window.addEventListener("mousedown", handleOutsideClick);
-    return () => window.removeEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleKey);
+    };
   }, [open, onOpenChange]);
 
   return (
     // data-no-node-drag: free-node-dragging's NodeInteractionBoundary uses
-    // this marker to exclude interactive leaf controls (the ⋯ menu trigger +
-    // its popup items) from starting a node-body-drag when this component is
-    // rendered inside a graph node — a harmless no-op attribute for RowMenu's
-    // other, non-graph call sites (this component has no graph-specific
-    // dependency; the attribute is only ever READ by GraphCanvas's mousedown
-    // capture boundary, never by RowMenu itself).
+    // this marker to exclude interactive leaf controls (the trigger + its popup
+    // items) from starting a node-body-drag when rendered inside a graph node —
+    // a harmless no-op attribute for RowMenu's other call sites.
     <div ref={containerRef} className="relative" data-no-node-drag>
-      <button
-        type="button"
+      <IconButton
         aria-label={triggerLabel}
+        icon={MoreHorizontal}
+        size="sm"
+        tooltip={false}
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => onOpenChange(!open)}
-        className="flex h-6 w-6 items-center justify-center rounded-sm text-text-faint hover:bg-white/[.06] hover:text-text-dim"
-      >
-        ⋯
-      </button>
+      />
 
       {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-20 mt-1 w-52 animate-popIn rounded-panel border border-border-menu bg-bg-menu py-1 shadow-dropdown"
-        >
+        <div role="menu" className={cn("absolute right-0 top-full mt-1 w-52 animate-popIn", menuSurfaceClass)}>
           {items.map((item, i) =>
             item === ROW_MENU_DIVIDER ? (
-              <div key={`divider-${i}`} className="my-1 border-t border-border-hairline" />
+              <MenuDivider key={`divider-${i}`} />
             ) : (
-              <button
+              <MenuItem
                 key={item.label}
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
-                onClick={() => {
+                {...item}
+                onSelect={() => {
                   onOpenChange(false);
                   item.onSelect();
                 }}
-                className={cn(
-                  "block w-full px-3 py-1.5 text-left text-[13px] disabled:cursor-not-allowed disabled:opacity-40",
-                  item.danger ? "text-danger hover:bg-danger/10" : "text-text-body hover:bg-white/[.06]"
-                )}
-              >
-                {item.label}
-              </button>
-            )
+              />
+            ),
           )}
         </div>
       )}

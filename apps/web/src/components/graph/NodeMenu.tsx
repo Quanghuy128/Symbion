@@ -1,5 +1,6 @@
 "use client";
 
+import { Play } from "lucide-react";
 import { RowMenu, ROW_MENU_DIVIDER } from "@/components/ui/row-menu";
 
 export interface NodeMenuProps {
@@ -42,7 +43,8 @@ export function NodeMenu({
     kind === "command"
       ? [
           {
-            label: executeDisabledReason ? `▶ Execute… (${executeDisabledReason})` : "▶ Execute…",
+            label: executeDisabledReason ? `Execute… (${executeDisabledReason})` : "Execute…",
+            icon: Play,
             onSelect: () => onExecute?.(),
             disabled: !onExecute,
           },

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { NodeHandle } from "./NodeHandle";
 import { NodeMenu } from "./NodeMenu";
 import { NodeTokenBadge, type NodeTokenBadgeProps } from "./NodeTokenBadge";
+import { Kind } from "@/components/ui/kind";
+import { agentRing } from "./nodeRings";
 
 export interface AgentNodeData {
   label: string;
@@ -31,7 +33,7 @@ export interface AgentNodeData {
   runPulseKey?: number;
   /** workflow-agent-run (design §5 / G1): run-panel selection halo, drawn as
    *  a SECOND ring OUTSIDE the status ring so selection never hides status.
-   *  "hover" = soft white, "selected" = brand-accent. */
+   *  "hover" = soft white, "selected" = mint ring. */
   runHalo?: "hover" | "selected";
   /** plain data-bag index signature (unchanged shape from the xyflow-era
    *  `NodeProps<Node<T>>` requirement). */
@@ -42,7 +44,7 @@ export interface AgentNodeProps {
   data: AgentNodeData;
 }
 
-/** AgentNode — agent node (design §3.2: violet #a78bfa). Dumb, same contract as CommandNode. */
+/** AgentNode — agent node (Kind tile carries the kind). Dumb, same contract as CommandNode. */
 export function AgentNode({ data }: AgentNodeProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -80,23 +82,18 @@ export function AgentNode({ data }: AgentNodeProps) {
 
   return (
     <div
-      className={`group relative rounded-nav-item px-3 py-2 text-[12.5px] font-medium text-white transition-opacity ${
-        isWorking ? "animate-glowPulse" : lockIn || rowPulse ? "animate-countLockIn" : ""
-      }`}
+      className={`group relative flex min-h-10 flex-col justify-center rounded-lg border border-line-soft bg-surface px-2.5 text-label text-ink transition-opacity ${
+ isWorking ? "animate-glowPulse" : lockIn || rowPulse ? "animate-countLockIn" : ""
+ }`}
       style={{
-        background: "#a78bfa",
         opacity: data.dimmed ? 0.35 : 1,
-        boxShadow: isWorking
-          ? "0 0 0 2px #22d3ee"
-          : isSettled
-            ? "0 0 0 2px #4ade80"
-            : isError
-              ? "0 0 0 2px #f87171"
-              : data.justAdded
-                ? "0 0 0 3px #6366f1"
-                : data.highlighted
-                  ? "0 0 0 2px #e9d5ff"
-                  : undefined,
+        boxShadow: agentRing({
+          working: isWorking,
+          settled: isSettled,
+          error: isError,
+          justAdded: data.justAdded,
+          highlighted: data.highlighted,
+        }),
         transition: "box-shadow .3s ease, opacity .12s ease",
       }}
       onMouseEnter={() => setHovered(true)}
@@ -106,21 +103,22 @@ export function AgentNode({ data }: AgentNodeProps) {
         <span
           aria-hidden
           data-run-halo={data.runHalo}
-          className={`pointer-events-none absolute -inset-[6px] rounded-[13px] border-2 transition-colors duration-100 ${
-            data.runHalo === "selected" ? "border-brand-accent" : "border-white/50"
-          }`}
+          className={`pointer-events-none absolute -inset-[6px] rounded-[20px] border-2 transition-colors duration-100 ${
+ data.runHalo === "selected" ? "border-mint" : "border-line-strong"
+ }`}
         />
       )}
       <NodeHandle
         role="target"
         connectable={connectable}
-        className={connectable ? "!bg-agent" : "!bg-transparent !border !border-white/40"}
+        className={connectable ? "!bg-agent" : "!bg-transparent !border !border-line-strong"}
       />
 
-      <span className="pr-4">
-        {data.label}
+      <span className="flex items-center gap-2 pr-4">
+        <Kind kind="agent" size="sm" />
+        <span className="min-w-0 truncate">{data.label}</span>
         {data.invocations && data.invocations.total !== undefined && data.invocations.total > 1 && (
-          <span className="ml-1 text-[10px] tabular-nums text-white/70">
+          <span className="ml-1 text-overline tabular-nums text-ink-muted">
             {data.invocations.done < data.invocations.total
               ? `${data.invocations.done}/${data.invocations.total}`
               : `✓${data.invocations.total}`}

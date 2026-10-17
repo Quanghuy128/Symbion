@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export interface ApplyResultPanelProps {
@@ -16,21 +17,23 @@ export interface ApplyResultPanelProps {
 export function ApplyResultPanel({ projectName, finalName, wasRenamed, onOpenProject, onClose }: ApplyResultPanelProps) {
   return (
     <div className="space-y-3">
-      <p className="text-sm text-green-600">✓ Applied</p>
+      <p className="flex items-center gap-2 text-ui text-success">
+        <Check size={16} strokeWidth={1.6} aria-hidden /> Applied
+      </p>
       {wasRenamed ? (
-        <p className="text-sm">
+        <p className="text-ui">
           Added to project &quot;{projectName}&quot; as &quot;{finalName}&quot; (name collided with an existing
           one, so it was auto-renamed to avoid overwriting).
         </p>
       ) : (
-        <p className="text-sm">
+        <p className="text-ui">
           &quot;{finalName}&quot; was added to project &quot;{projectName}&quot; as a draft.
         </p>
       )}
-      <p className="text-xs text-muted-foreground">Status: draft — nothing written to the repo yet.</p>
+      <p className="text-caption text-ink-muted">Status: draft — nothing written to the repo yet.</p>
 
       <div className="flex justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Close
         </Button>
         <Button onClick={onOpenProject}>Open project →</Button>

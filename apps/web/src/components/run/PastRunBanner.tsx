@@ -1,5 +1,6 @@
 "use client";
 
+import { History } from "lucide-react";
 import type { RunInfo } from "@symbion/rpc-types";
 
 export interface PastRunBannerProps {
@@ -45,10 +46,13 @@ export function PastRunBanner({ run, index, onExit, onRerun }: PastRunBannerProp
   });
 
   return (
-    <div className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+    <div className="flex items-center justify-between border-b border-line bg-warning-soft px-3 py-2 text-caption">
       <span className="flex items-center gap-2 text-warning">
-        <span>🕘 VIEWING PAST RUN{index !== undefined ? ` · #${index}` : ""} · {dateLabel}</span>
-        <span className="text-text-body">
+        <span className="flex items-center gap-1.5">
+          <History size={14} strokeWidth={1.6} aria-hidden />
+          VIEWING PAST RUN{index !== undefined ? ` · #${index}` : ""} · {dateLabel}
+        </span>
+        <span className="text-ink">
           {STATUS_LABEL[run.status] ?? run.status}
           {duration ? ` · ${duration}` : ""}
         </span>
@@ -57,14 +61,14 @@ export function PastRunBanner({ run, index, onExit, onRerun }: PastRunBannerProp
       <span className="flex items-center gap-2">
         <button
           type="button"
-          className="rounded-sm px-2 py-1 text-text-body hover:bg-white/[.06]"
+          className="rounded-sm px-2 py-1 text-ink hover:bg-surface-hover"
           onClick={onRerun}
         >
-          ▶ Run again
+          Run again
         </button>
         <button
           type="button"
-          className="rounded-sm px-2 py-1 text-text-body hover:bg-white/[.06]"
+          className="rounded-sm px-2 py-1 text-ink hover:bg-surface-hover"
           onClick={onExit}
         >
           Exit history

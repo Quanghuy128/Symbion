@@ -7,7 +7,7 @@ describe("NodeHandle", () => {
     const onDragStart = vi.fn();
     render(<NodeHandle role="source" connectable onDragStart={onDragStart} />);
     const handle = screen.getByRole("presentation");
-    expect(handle.className).toContain("bg-command");
+    expect(handle.className).toContain("bg-workflow");
     fireEvent.mouseDown(handle);
     expect(onDragStart).toHaveBeenCalledTimes(1);
   });
@@ -17,7 +17,7 @@ describe("NodeHandle", () => {
     render(<NodeHandle role="source" connectable={false} onDragStart={onDragStart} />);
     const handle = screen.getByRole("presentation");
     expect(handle.className).toContain("bg-transparent");
-    expect(handle.className).toContain("border-white/40");
+    expect(handle.className).toContain("border-line-strong");
     fireEvent.mouseDown(handle);
     expect(onDragStart).not.toHaveBeenCalled();
   });

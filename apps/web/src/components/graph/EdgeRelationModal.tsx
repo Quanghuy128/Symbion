@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { AgentRef } from "@symbion/core";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 
 export interface EdgeRelationModalProps {
   commandName: string;
@@ -63,15 +63,15 @@ export function EdgeRelationModal({
         <DialogTitle>Relationship</DialogTitle>
       </DialogHeader>
 
-      <p className="mb-4 text-[13px]">
-        <span className="text-command">/{commandName}</span>
-        <span className="mx-2 text-text-faint">──►</span>
+      <p className="mb-4 text-label">
+        <span className="text-workflow">/{commandName}</span>
+        <span className="mx-2 text-ink-muted">──►</span>
         <span className="text-agent">{agentName}</span>
       </p>
 
       <div className="space-y-4">
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-text-body">Count</label>
+          <label className="mb-1.5 block text-label text-ink-2">Count</label>
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -92,7 +92,8 @@ export function EdgeRelationModal({
                 const v = e.target.value === "" ? NaN : Number.parseInt(e.target.value, 10);
                 setCount(v);
               }}
-              className={`w-16 text-center ${countValid ? "" : "border-danger focus-visible:ring-danger"}`}
+              aria-invalid={!countValid}
+              className="w-16 text-center"
             />
             <Button
               type="button"
@@ -104,7 +105,7 @@ export function EdgeRelationModal({
               +
             </Button>
           </div>
-          <p className={`mt-1 text-xs ${countValid ? "text-text-faint" : "text-danger"}`}>
+          <p className={`mt-1 text-caption ${countValid ? "text-ink-muted" : "text-danger-text"}`}>
             {countValid
               ? "how many times this agent runs in parallel."
               : "Count must be an integer ≥ 1"}
@@ -112,46 +113,46 @@ export function EdgeRelationModal({
         </div>
 
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-text-body">
+          <label className="mb-1.5 block text-label font-medium text-ink">
             Goal (optional)
           </label>
-          <textarea
+          <Textarea
             rows={3}
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             placeholder="What should this agent accomplish?"
-            className="flex w-full rounded-sm border border-border-input bg-bg-input px-3 py-2 text-sm text-text-body outline-none placeholder:text-text-faint focus-visible:ring-1 focus-visible:ring-brand-accent"
+            className="min-h-0 py-2"
           />
         </div>
 
         <div>
-          <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[.05em] text-text-faint">
+          <label className="mb-1.5 block text-overline uppercase text-ink-muted">
             Edge preview
           </label>
-          <div className="rounded-panel border border-border-input bg-bg-code p-3 text-[13px]">
+          <div className="rounded-lg border border-line-strong bg-sidebar p-3 text-label">
             {decorated ? (
               <span className="inline-flex items-center gap-2">
                 <span className="text-agent">{agentName}</span>
                 {count > 1 && (
-                  <span className="inline-flex items-center rounded-pill bg-bg-menu px-1.5 py-0.5 text-[11px] text-accent-text">
+                  <span className="inline-flex items-center rounded-pill bg-surface px-1.5 py-0.5 text-caption text-mint-text">
                     ×{count}
                   </span>
                 )}
-                {trimmedGoal && <span className="text-text-muted">— {trimmedGoal}</span>}
+                {trimmedGoal && <span className="text-ink-muted">— {trimmedGoal}</span>}
               </span>
             ) : (
-              <span className="text-text-faint">
+              <span className="text-ink-muted">
                 <span className="text-agent">{agentName}</span> · This edge will have no label
               </span>
             )}
           </div>
         </div>
 
-        {error && <p className="text-xs text-danger">✗ {error}</p>}
+        {error && <p className="text-caption text-danger-text">✗ {error}</p>}
       </div>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
         <Button disabled={!countValid || saving} onClick={handleSave}>

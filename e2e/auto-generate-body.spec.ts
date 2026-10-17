@@ -36,13 +36,13 @@ test.afterEach(async () => {
 
 async function createProjectAndOpenAgentForm(page: import("@playwright/test").Page) {
   await page.goto(daemon.url);
-  await page.getByRole("button", { name: "+ New project" }).first().click();
+  await page.getByRole("main").getByRole("button", { name: "New project" }).first().click();
   await page.getByPlaceholder("My API Service").fill("e2e-genbody");
   await page.getByPlaceholder("/home/me/code/my-service").fill(daemon.projectRoot);
   await expect(page.getByText("✓ Folder exists")).toBeVisible();
   await page.getByRole("button", { name: "Create project", exact: true }).click();
-  await expect(page.getByRole("button", { name: "+ Add agent" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "+ Add agent" }).first().click();
+  await expect(page.getByRole("button", { name: "Add agent" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Add agent" }).first().click();
   await expect(page.getByText("Agent builder")).toBeVisible();
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { extractAgentMentions, type CanonicalArtifact } from "@symbion/core";
@@ -166,7 +167,7 @@ export function RunDialog({
 
       <div className="space-y-3" onKeyDown={onKeyDown}>
         <div>
-          <label className="mb-1 block text-xs text-text-muted">Requirement ($ARGUMENTS)</label>
+          <label className="mb-1 block text-caption text-ink-muted">Requirement ($ARGUMENTS)</label>
           {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
           <Input
             autoFocus
@@ -179,7 +180,7 @@ export function RunDialog({
 
         <button
           type="button"
-          className="text-xs text-text-muted hover:text-text-body"
+          className="text-caption text-ink-muted hover:text-ink"
           onClick={() => setShowModel((v) => !v)}
         >
           {showModel ? "▾" : "▸"} Model override (optional)
@@ -190,15 +191,15 @@ export function RunDialog({
 
         {result !== "loading" && result.invocationEcho && (
           <div>
-            <p className="mb-1 text-xs text-text-muted">Will run</p>
-            <div className="rounded-panel border border-border-input bg-bg-code p-2">
-              <code className="select-all break-all text-[11px] text-text-body">{result.invocationEcho}</code>
+            <p className="mb-1 text-caption text-ink-muted">Will run</p>
+            <div className="rounded-lg border border-line bg-sidebar p-3">
+              <code className="select-all break-all font-mono text-code-sm text-ink">{result.invocationEcho}</code>
             </div>
           </div>
         )}
 
         {result !== "loading" && result.lastRun && result.lastRun.endedAt && (
-          <p className="text-xs text-text-muted">
+          <p className="text-caption text-ink-muted">
             Last run: {result.lastRun.status}
             {result.lastRun.durationMs != null ? ` · ${Math.round(result.lastRun.durationMs / 1000)}s` : ""}
             {result.lastRun.costUsd != null ? ` · ~$${result.lastRun.costUsd.toFixed(2)}` : ""}
@@ -206,12 +207,12 @@ export function RunDialog({
         )}
 
         <div>
-          <p className="mb-1 text-xs text-text-muted">Preflight</p>
+          <p className="mb-1 text-caption text-ink-muted">Preflight</p>
           <PreflightStrip result={result} onAction={handleAction} />
         </div>
 
         {result !== "loading" && result.permissionSummary.sentence && (
-          <p className="rounded-panel border border-border-hairline bg-bg-panel p-2 text-xs text-text-body">
+          <p className="rounded-lg border border-line bg-app p-2 text-caption text-ink">
             ⓘ {result.permissionSummary.sentence}{" "}
             {/* F-P3-1 (P3): the consent line's [change] link — the design doc's
              *  R2 wireframe (§3.2) always specified this, but P1/P2 never
@@ -220,7 +221,7 @@ export function RunDialog({
              *  the same Settings→Execution destination R7's editor lives at. */}
             <button
               type="button"
-              className="underline decoration-dotted hover:text-text-strong"
+              className="underline decoration-dotted hover:text-ink"
               onClick={() => router.push(`/settings?project=${encodeURIComponent(projectId)}#execution`)}
             >
               [change]
@@ -229,29 +230,29 @@ export function RunDialog({
         )}
 
         {needsAck && (
-          <div className="rounded-panel border border-warning/40 bg-warning/10 p-3">
-            <p className="text-xs font-semibold text-warning">⚠ FIRST RUN IN THIS PROJECT</p>
-            <p className="mt-1 text-xs text-text-body">
+          <div className="rounded-lg border border-warning bg-warning-soft p-3">
+            <p className="text-caption font-semibold text-warning">⚠ FIRST RUN IN THIS PROJECT</p>
+            <p className="mt-1 text-caption text-ink">
               Symbion will launch an AI agent in {permissionCwd}. With mode {permissionMode} it can create and
               modify files there without asking. Symbion&apos;s diff-preview does NOT apply to what the agent
               writes. You can cancel the run at any time.
             </p>
-            <label className="mt-2 flex items-center gap-2 text-xs text-text-body">
+            <label className="mt-2 flex items-center gap-2 text-caption text-ink">
               <Checkbox checked={ackChecked} onChange={(e) => setAckChecked(e.target.checked)} />
               I understand the agent may modify files in {permissionCwd || "this project"}
             </label>
           </div>
         )}
 
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error && <p className="text-caption text-danger-text">{error}</p>}
       </div>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={handleExecute} disabled={!canExecute}>
-          {starting ? "⟳ Starting…" : hasWarn && !blocked ? "▶ Execute anyway" : "▶ Execute"}
+        <Button size="lg" icon={starting ? Loader2 : Play} onClick={handleExecute} disabled={!canExecute}>
+          {starting ? "Starting…" : hasWarn && !blocked ? "Execute anyway" : "Execute"}
         </Button>
       </DialogFooter>
     </Dialog>

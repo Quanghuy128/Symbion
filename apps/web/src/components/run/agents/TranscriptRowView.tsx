@@ -2,7 +2,7 @@
 
 import { Component, memo, type ReactNode } from "react";
 import type { TranscriptRow } from "@symbion/core";
-import { StatusGlyph } from "./StatusGlyph";
+import { StatusGlyph } from "@/components/ui/status-glyph";
 import { StepPreview } from "./StepPreview";
 import { fmtClock } from "./format";
 
@@ -21,7 +21,7 @@ export class RowErrorBoundary extends Component<{ children: ReactNode }, { faile
   render(): ReactNode {
     if (this.state.failed) {
       return (
-        <div className="flex h-5 items-center px-2 text-[11px] text-text-faint" role="note">
+        <div className="flex h-5 items-center px-2 text-caption text-ink-muted" role="note">
           couldn&apos;t render this step
         </div>
       );
@@ -75,12 +75,12 @@ export const TranscriptRowView = memo(function TranscriptRowView({
             : row.status;
   const labelClass =
     row.kind === "thinking"
-      ? "text-text-faint"
+      ? "text-ink-faint"
       : row.kind === "text"
-        ? "text-text-secondary"
+        ? "text-ink-3"
         : row.kind === "system" || row.kind === "unknown"
-          ? "text-text-muted"
-          : "text-text-body";
+          ? "text-ink-muted"
+          : "text-ink";
   const title = row.resultLabel ? `${row.label} · ${row.resultLabel}` : row.label;
 
   const activate = () => {
@@ -94,9 +94,9 @@ export const TranscriptRowView = memo(function TranscriptRowView({
         type="button"
         aria-expanded={canExpand ? expanded : undefined}
         aria-label={isSpawn ? `Open ${row.label}` : undefined}
-        className={`flex h-5 w-full items-center gap-1.5 rounded-sm px-2 text-left text-[11px] hover:bg-white/[.04] ${
-          focused ? "bg-white/[.06] outline outline-1 outline-brand-accent/60" : ""
-        } ${!canExpand && !isSpawn ? "cursor-default" : ""}`}
+        className={`flex h-5 w-full items-center gap-1.5 rounded-sm px-2 text-left text-caption hover:bg-surface-hover ${
+ focused ? "bg-surface-hover outline outline-1 outline-focus-ring" : ""
+ } ${!canExpand && !isSpawn ? "cursor-default" : ""}`}
         onClick={activate}
         onKeyDown={(e) => {
           if (e.key === "Enter" && isSpawn) {
@@ -106,19 +106,19 @@ export const TranscriptRowView = memo(function TranscriptRowView({
           }
         }}
       >
-        <span className="w-8 shrink-0 font-mono text-[10px] tabular-nums text-text-faint">{fmtClock(row.atMs)}</span>
+        <span className="w-8 shrink-0 font-mono text-code-sm tabular-nums text-ink-muted">{fmtClock(row.atMs)}</span>
         {canExpand ? (
-          <span className="w-2 shrink-0 text-[9px] text-text-faint">{expanded ? "▾" : "▸"}</span>
+          <span className="w-2 shrink-0 text-overline text-ink-muted">{expanded ? "▾" : "▸"}</span>
         ) : (
           <span className="w-2 shrink-0" />
         )}
         {glyphStatus ? <StatusGlyph status={glyphStatus} live={live && glyphStatus === "running"} /> : <span className="w-3 shrink-0" />}
         <span className={`min-w-0 flex-1 truncate ${labelClass}`} title={title}>
           {row.label}
-          {row.resultLabel && <span className="text-text-muted"> · {row.resultLabel}</span>}
+          {row.resultLabel && <span className="text-ink-muted"> · {row.resultLabel}</span>}
         </span>
-        {row.legacyTruncated && <span className="shrink-0 text-[9.5px] text-text-faint">pre-upgrade</span>}
-        {isSpawn && <span className="shrink-0 text-text-muted">›</span>}
+        {row.legacyTruncated && <span className="shrink-0 text-overline text-ink-muted">pre-upgrade</span>}
+        {isSpawn && <span className="shrink-0 text-ink-muted">›</span>}
       </button>
       {expanded && canExpand && (
         <StepPreview

@@ -37,7 +37,7 @@ export function NodeTokenBadge({ fresh, costUsd, breakdown, live, degraded, labe
 
   return (
     <span
-      className="relative mt-0.5 block w-full font-mono text-[11px] tabular-nums text-white/90"
+      className="relative mt-0.5 block w-full font-mono text-code-sm tabular-nums text-ink-3"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

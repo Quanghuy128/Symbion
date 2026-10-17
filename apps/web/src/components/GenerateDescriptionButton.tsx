@@ -60,7 +60,7 @@ export function GenerateDescriptionButton({ currentDescription, onGenerate, onAp
         <DialogHeader>
           <DialogTitle>Replace description?</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-text-muted">
+        <p className="text-ui text-ink-muted">
           The current description text will be replaced — continue?
         </p>
         <DialogFooter>

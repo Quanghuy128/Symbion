@@ -67,14 +67,14 @@ export function GraphEdgePath({ id, sourcePoint, targetPoint, data, interaction 
   const isFlowing = runFlow === "flowing";
   const isSettled = runFlow === "settled";
   const baseColor = pending
-    ? "#565c68"
+    ? "var(--line-strong)"
     : data?.missing
-      ? "#f87171"
+      ? "var(--danger)"
       : isFlowing || isSettled
-        ? "#22d3ee"
-        : "#565c68";
+        ? "var(--running)"
+        : "var(--line-strong)";
   const runLinked = data?.runLinked === true;
-  const color = data?.highlighted ? "#c7d2fe" : runLinked ? "#a5f3fc" : baseColor;
+  const color = data?.highlighted ? "var(--mint)" : runLinked ? "var(--running)" : baseColor;
   const strokeWidth = data?.highlighted || isFlowing || runLinked ? 2.5 : 1.5;
   const opacity = runLinked ? 1 : data?.dimmed ? 0.35 : isSettled ? 0.6 : drawn ? 1 : 0;
 

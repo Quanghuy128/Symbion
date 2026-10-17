@@ -1,97 +1,86 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Symbion dark left-rail redesign — Tailwind tokens ported from DESIGN.md
- * (docs/loops/symbion-dark-redesign-design.md §7) + the 10 PLAN resolutions
- * in docs/loops/symbion-dark-redesign-STATE.md §6.2. Dark-only (Q7): no
- * `.dark`-scoped variants are used anywhere in the app, `darkMode: "class"`
- * is kept only because removing it is out of scope for this presentation-only
- * pass (no code path ever applies `.dark`).
+ * Symbion design system — Tailwind mapping (docs/design-system/tokens.json).
+ * Every colour/shadow is a CSS variable defined in src/app/globals.css that
+ * holds a FULL colour value, so Tailwind opacity modifiers (`bg-x/10`) do not
+ * work on token colours — use the matching `-soft` token instead.
  */
+const v = (n: string) => `var(--${n})`;
+
 const config: Config = {
   darkMode: "class",
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
+    fontSize: {
+      greeting: ["40px", { lineHeight: "46px", fontWeight: "600", letterSpacing: "-0.02em" }],
+      "page-title": ["32px", { lineHeight: "38px", fontWeight: "600", letterSpacing: "-0.02em" }],
+      "dialog-title": ["22px", { lineHeight: "28px", fontWeight: "600", letterSpacing: "-0.015em" }],
+      title: ["17px", { lineHeight: "24px", fontWeight: "500" }],
+      body: ["15px", { lineHeight: "22px", fontWeight: "400" }],
+      ui: ["14px", { lineHeight: "20px", fontWeight: "400" }],
+      label: ["13px", { lineHeight: "18px", fontWeight: "500" }],
+      caption: ["12px", { lineHeight: "16px", fontWeight: "400" }],
+      overline: ["11px", { lineHeight: "14px", fontWeight: "600", letterSpacing: "0.06em" }],
+      code: ["13px", { lineHeight: "20px", fontWeight: "400" }],
+      "code-sm": ["12px", { lineHeight: "18px", fontWeight: "400" }],
+    },
     extend: {
       colors: {
-        // Legacy semantic tokens (still consumed by existing className call
-        // sites that haven't been migrated to the new named tokens below —
-        // e.g. `border-border`, `bg-background`, `text-muted-foreground`).
-        // Now backed by the SAME dark-token values as bg-app/border-hairline/
-        // etc so old + new classnames render identically during migration.
-        border: "rgba(var(--border), 0.06)",
-        background: "rgb(var(--background))",
-        foreground: "rgb(var(--foreground))",
-        muted: "rgb(var(--muted))",
-        "muted-foreground": "rgb(var(--muted-foreground))",
-        primary: "rgb(var(--primary))",
-        "primary-foreground": "rgb(var(--primary-foreground))",
-        destructive: "rgb(var(--destructive))",
-        accent: "rgb(var(--accent))",
-
-        // DESIGN.md §7 token set — new named colors for the redesign.
-        "bg-app": "#0a0b0e",
-        "bg-rail": "#0e1014",
-        "bg-panel": "#13151a",
-        "bg-surface": "#15171d",
-        "bg-menu": "#1b1e25",
-        "bg-input": "#0d0f13",
-        "bg-code": "#08090c",
-        "border-hairline": "rgba(255,255,255,.06)",
-        "border-subtle": "rgba(255,255,255,.05)",
-        "border-input": "rgba(255,255,255,.10)",
-        "border-menu": "rgba(255,255,255,.09)",
-        "text-strong": "#f3f4f6",
-        "text-body": "#e5e7eb",
-        "text-secondary": "#c5cad3",
-        "text-muted": "#9aa0ab",
-        "text-dim": "#8a909b",
-        "text-faint": "#565c68",
-        "brand-accent": "#6366f1",
-        "brand-accent-soft": "rgba(99,102,241,.16)",
-        "accent-text": "#a5b4fc",
-        "accent-text-hi": "#c7d2fe",
-        command: "#818cf8",
-        "command-hi": "#a5b4fc",
-        agent: "#a78bfa",
-        "agent-hi": "#c4b5fd",
-        skill: "#22d3ee",
-        success: "#4ade80",
-        warning: "#fbbf24",
-        danger: "#f87171",
-        "danger-hi": "#fca5a5",
-        "overwrite-btn": "#dc2626",
-        // graph-execution-realtime design §7 (resolved Q1): run-active reuses
-        // the `skill` hex under a distinct semantic name — pulsing ring, edge
-        // flow, live dots for the run engine, never reused for outcomes.
-        "run-active": "#22d3ee",
-        "run-active-soft": "rgba(34,211,238,.18)",
-      },
-      fontFamily: {
-        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
-      },
-      borderRadius: {
-        lg: "var(--radius)",
-        sm: "8px",
-        "nav-item": "9px",
-        panel: "12px",
-        dialog: "16px",
-        pill: "20px",
-      },
-      boxShadow: {
-        dropdown: "0 14px 40px rgba(0,0,0,.5)",
-        dialog: "0 30px 80px rgba(0,0,0,.6)",
-        drawer: "-20px 0 60px rgba(0,0,0,.5)",
-        toast: "0 14px 40px rgba(0,0,0,.5)",
-        // graph-execution-realtime design §7: looping run-active glow ring.
-        "glow-run": "0 0 0 4px rgba(34,211,238,.18), 0 0 14px 2px rgba(34,211,238,.18)",
-      },
-      keyframes: {
-        fadeIn: {
-          from: { opacity: "0" },
-          to: { opacity: "1" },
+        app: v("bg-app"),
+        sidebar: v("bg-sidebar"),
+        deep: v("bg-deep"),
+        surface: { DEFAULT: v("surface"), hover: v("surface-hover"), active: v("surface-active") },
+        line: { DEFAULT: v("line"), soft: v("line-soft"), strong: v("line-strong") },
+        ink: { DEFAULT: v("ink"), 2: v("ink-2"), 3: v("ink-3"), muted: v("ink-muted"), faint: v("ink-faint") },
+        mint: {
+          DEFAULT: v("mint"),
+          text: v("mint-text"),
+          hover: v("mint-hover"),
+          strong: v("mint-strong"),
+          soft: v("mint-soft"),
         },
+        "on-mint": v("on-mint"),
+        "focus-ring": v("focus-ring"),
+        workflow: { DEFAULT: v("workflow"), soft: v("workflow-soft") },
+        agent: { DEFAULT: v("agent"), soft: v("agent-soft") },
+        skill: { DEFAULT: v("skill"), soft: v("skill-soft") },
+        running: { DEFAULT: v("running"), soft: v("running-soft") },
+        success: { DEFAULT: v("success"), soft: v("success-soft") },
+        warning: { DEFAULT: v("warning"), soft: v("warning-soft") },
+        danger: { DEFAULT: v("danger"), text: v("danger-text"), soft: v("danger-soft") },
+        "on-danger": v("on-danger"),
+        diff: { add: v("diff-add"), del: v("diff-del") },
+        overlay: v("overlay"),
+        "graph-dot": v("graph-dot"),
+      },
+      borderColor: { DEFAULT: v("line") },
+      fontFamily: {
+        display: ["var(--font-display)", "var(--font-sans)", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+      },
+      borderRadius: { xs: "6px", sm: "8px", md: "10px", lg: "14px", xl: "20px", pill: "999px" },
+      boxShadow: {
+        menu: v("shadow-menu"),
+        dialog: v("shadow-dialog"),
+        toast: v("shadow-toast"),
+        composer: v("shadow-composer"),
+        "ring-running": "0 0 0 2px var(--running), 0 0 18px var(--running-soft)",
+      },
+      spacing: {
+        "control-sm": "30px",
+        "control-md": "36px",
+        "control-lg": "40px",
+        sidebar: "288px",
+        rail: "56px",
+        drawer: "560px",
+      },
+      maxWidth: { content: "920px", "content-wide": "1040px" },
+      zIndex: { rail: "10", runbar: "30", drawer: "40", dialog: "50", menu: "60", toast: "70" },
+      transitionDuration: { DEFAULT: "120ms" },
+      keyframes: {
+        fadeIn: { from: { opacity: "0" }, to: { opacity: "1" } },
         slideIn: {
           from: { transform: "translateX(24px)", opacity: "0" },
           to: { transform: "translateX(0)", opacity: "1" },
@@ -100,36 +89,26 @@ const config: Config = {
           from: { transform: "scale(.97) translateY(6px)", opacity: "0" },
           to: { transform: "scale(1) translateY(0)", opacity: "1" },
         },
-        // interactive-graph (design §7): one-shot handle affordance ring.
-        // Runs ONCE (see animation.pulse count `1`); collapsed by the global
-        // prefers-reduced-motion block in globals.css like the other keyframes.
+        // One-shot handle affordance ring (runs once; see animation.pulse).
         pulse: {
-          "0%": { boxShadow: "0 0 0 0 rgba(129,140,248,.5)" },
-          "100%": { boxShadow: "0 0 0 6px rgba(129,140,248,0)" },
+          "0%": { boxShadow: "0 0 0 0 var(--mint-soft)" },
+          "100%": { boxShadow: "0 0 0 6px transparent" },
         },
-        // graph-execution-realtime design §5/§7: looping run-active ring pulse
-        // on an executing node (~1.6-2s loop, distinct from the one-shot `pulse`
-        // above). Collapses to a state swap under prefers-reduced-motion
-        // (joins the existing globals.css block).
+        // Looping run-active ring pulse on an executing node.
         glowPulse: {
-          "0%": { boxShadow: "0 0 0 0 rgba(34,211,238,.5)" },
-          "50%": { boxShadow: "0 0 0 6px rgba(34,211,238,.05)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(34,211,238,.5)" },
+          "0%": { boxShadow: "0 0 0 0 var(--running-soft)" },
+          "50%": { boxShadow: "0 0 0 6px var(--running-soft)" },
+          "100%": { boxShadow: "0 0 0 0 var(--running-soft)" },
         },
-        // P2 (graph-execution-realtime design §3.5/§7): edge current while a
-        // dispatch is actively flowing — stroke-dasharray 6/4 + dashoffset
-        // linear loop ~600ms. Collapses under prefers-reduced-motion.
-        dashFlow: {
-          from: { strokeDashoffset: "10" },
-          to: { strokeDashoffset: "0" },
-        },
-        // P2: one-shot "lock-in" flash when a node's live token count freezes
-        // on settle (design §3.5's "pulse -> one 300ms lock-in flash -> steady").
+        // Edge current while a dispatch is flowing.
+        dashFlow: { from: { strokeDashoffset: "10" }, to: { strokeDashoffset: "0" } },
+        // One-shot lock-in flash when a node's live token count freezes.
         countLockIn: {
-          "0%": { boxShadow: "0 0 0 0 rgba(255,255,255,0)" },
-          "40%": { boxShadow: "0 0 0 3px rgba(255,255,255,.35)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(255,255,255,0)" },
+          "0%": { boxShadow: "0 0 0 0 transparent" },
+          "40%": { boxShadow: "0 0 0 3px var(--ink-faint)" },
+          "100%": { boxShadow: "0 0 0 0 transparent" },
         },
+        livePulse: { "50%": { opacity: ".35" } },
       },
       animation: {
         fadeIn: "fadeIn .16s ease both",
@@ -139,6 +118,7 @@ const config: Config = {
         glowPulse: "glowPulse 1.8s cubic-bezier(.2,.8,.2,1) infinite",
         dashFlow: "dashFlow .6s linear infinite",
         countLockIn: "countLockIn .3s cubic-bezier(.2,.8,.2,1) 1",
+        livePulse: "livePulse 1.6s ease-in-out infinite",
       },
     },
   },

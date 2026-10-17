@@ -55,7 +55,7 @@ export function GraphEdgeLabel({ sourcePoint, targetPoint, data, interaction }: 
       >
         <span
           aria-label="Saving…"
-          className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-text-faint border-t-transparent"
+          className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted border-t-transparent"
         />
       </div>
     );
@@ -95,14 +95,13 @@ export function GraphEdgeLabel({ sourcePoint, targetPoint, data, interaction }: 
       {decorated && !confirmingDelete && (
         <Tooltip content={data?.goal || (data?.count ? `×${data.count}` : "")}>
           {(data?.count ?? 0) > 1 ? (
-            <span className="inline-flex items-center rounded-pill bg-bg-menu px-1.5 py-0.5 text-[11px] font-medium text-accent-text">
+            <span className="inline-flex items-center rounded-pill bg-surface px-1.5 py-0.5 text-caption font-medium text-mint-text">
               ×{data!.count}
             </span>
           ) : (
             <span
               aria-label="Has a goal"
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ background: "#a78bfa" }}
+              className="inline-block h-2 w-2 rounded-full bg-agent"
             />
           )}
         </Tooltip>
@@ -114,7 +113,7 @@ export function GraphEdgeLabel({ sourcePoint, targetPoint, data, interaction }: 
             type="button"
             aria-label="Edit relationship"
             onClick={() => data?.onOpenModal?.()}
-            className="flex h-5 w-5 items-center justify-center rounded-full border border-border-menu bg-bg-menu text-accent-text hover:text-accent-text-hi"
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-line-soft bg-surface text-mint-text hover:text-mint-hover"
           >
             +
           </button>
@@ -122,7 +121,7 @@ export function GraphEdgeLabel({ sourcePoint, targetPoint, data, interaction }: 
             type="button"
             aria-label="Unlink"
             onClick={() => setConfirmingDelete(true)}
-            className="flex h-5 w-5 items-center justify-center rounded-full border border-border-menu bg-bg-menu text-text-faint hover:text-danger"
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-line-soft bg-surface text-ink-muted hover:text-danger-text"
           >
             ×
           </button>
@@ -130,7 +129,7 @@ export function GraphEdgeLabel({ sourcePoint, targetPoint, data, interaction }: 
       )}
 
       {confirmingDelete && (
-        <span className="inline-flex items-center gap-1 rounded-sm border border-border-menu bg-bg-menu px-1.5 py-0.5 text-[11px] text-text-body">
+        <span className="inline-flex items-center gap-1 rounded-sm border border-line-soft bg-surface px-1.5 py-0.5 text-caption text-ink">
           Delete?
           <button
             type="button"
@@ -147,7 +146,7 @@ export function GraphEdgeLabel({ sourcePoint, targetPoint, data, interaction }: 
             type="button"
             aria-label="Cancel"
             onClick={() => setConfirmingDelete(false)}
-            className="text-text-faint hover:text-text-body"
+            className="text-ink-muted hover:text-ink"
           >
             ✗
           </button>

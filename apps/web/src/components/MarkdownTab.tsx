@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
+import { symbionEditorTheme } from "@/lib/codemirror/theme";
 import {
   parseClaudeFile,
   renderArtifacts,
@@ -51,11 +52,13 @@ export function MarkdownTab({ artifact, onChange }: MarkdownTabProps) {
 
   return (
     <div className="space-y-2">
-      <CodeMirror value={raw} height="360px" theme="dark" extensions={[markdown()]} onChange={handleChange} />
+      <div className="overflow-hidden rounded-lg border border-line">
+        <CodeMirror value={raw} height="360px" theme={symbionEditorTheme} extensions={[markdown()]} onChange={handleChange} />
+      </div>
       {error ? (
-        <p className="text-xs text-danger">✗ {error} (Save temporarily locked, using the last valid version)</p>
+        <p className="text-caption text-danger-text">✗ {error} (Save temporarily locked, using the last valid version)</p>
       ) : (
-        <p className="text-xs text-success">✓ markdown is valid, synced to IR</p>
+        <p className="text-caption text-success">✓ markdown is valid, synced to IR</p>
       )}
     </div>
   );

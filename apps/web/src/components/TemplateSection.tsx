@@ -21,13 +21,13 @@ export interface TemplateSectionProps {
  */
 export function TemplateSection({ title, items, skipped, onSelect }: TemplateSectionProps) {
   return (
-    <section className="space-y-2">
-      <h2 className="border-b border-border pb-1 text-sm font-semibold text-muted-foreground">{title}</h2>
+    <section className="space-y-3">
+      <h2 className="text-title text-ink">{title}</h2>
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No templates in this section yet.</p>
+        <p className="text-caption text-ink-muted">No templates in this section yet.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
           {items.map((item) => (
             <TemplateCard key={item.id} item={item} onClick={() => onSelect(item)} />
           ))}
@@ -35,7 +35,7 @@ export function TemplateSection({ title, items, skipped, onSelect }: TemplateSec
       )}
 
       {skipped.map((s) => (
-        <p key={s.relPath} className="text-xs text-amber-600">
+        <p key={s.relPath} className="text-caption text-warning">
           ⚠ {s.relPath} failed to load → skipped ({s.reason})
         </p>
       ))}

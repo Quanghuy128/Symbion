@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
+import { symbionEditorTheme } from "@/lib/codemirror/theme";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 
@@ -17,8 +18,8 @@ export interface TemplateMarkdownViewerProps {
  * MarkdownTab's `@codemirror/lang-markdown` extension list but in
  * non-editable mode (EditorView.editable.of(false) + EditorState.readOnly.of(true),
  * per templates-marketplace PLAN §1's exact note — no new editor dependency).
- * `theme="dark"` matches MarkdownTab's CodeMirror instance so both editors
- * stay visually consistent with the dark redesign (no separate/second theme).
+ * The shared `symbionEditorTheme` matches MarkdownTab's CodeMirror instance so
+ * both editors stay visually consistent (no separate/second theme).
  */
 export function TemplateMarkdownViewer({ content, selectAllRef }: TemplateMarkdownViewerProps) {
   const cmRef = useRef<ReactCodeMirrorRef>(null);
@@ -33,12 +34,14 @@ export function TemplateMarkdownViewer({ content, selectAllRef }: TemplateMarkdo
   }
 
   return (
-    <CodeMirror
-      ref={cmRef}
-      value={content}
-      height="360px"
-      theme="dark"
-      extensions={[markdown(), EditorView.editable.of(false), EditorState.readOnly.of(true)]}
-    />
+    <div className="overflow-hidden rounded-lg border border-line">
+      <CodeMirror
+        ref={cmRef}
+        value={content}
+        height="360px"
+        theme={symbionEditorTheme}
+        extensions={[markdown(), EditorView.editable.of(false), EditorState.readOnly.of(true)]}
+      />
+    </div>
   );
 }

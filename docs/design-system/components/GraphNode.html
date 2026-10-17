@@ -1,0 +1,18 @@
+<!-- @dsCard group="Patterns" height=270 subtitle="dependency map" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>GraphNode</title></head>
+<body>
+<div class="sy-graph" style="height:250px;margin:var(--space-4)">
+  <svg width="100%" height="250" style="position:absolute;inset:0" aria-hidden="true">
+    <path class="sy-edge is-running" d="M212 62 C 260 62, 260 120, 300 120"/>
+    <path class="sy-edge" d="M212 62 C 260 62, 260 196, 300 196"/>
+    <path class="sy-edge is-broken" d="M496 120 C 530 120, 530 62, 560 62"/>
+  </svg>
+  <div class="sy-node is-selected" style="left:16px;top:40px"><span class="sy-kind sy-kind--workflow"><svg class="sy-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5L6 13.5"/></svg></span><span class="sy-node__text"><span class="sy-node__title">/ship</span><span class="sy-node__sub">3 agents</span></span></div>
+  <div class="sy-node is-running" style="left:300px;top:98px"><span class="sy-kind sy-kind--agent"><svg class="sy-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="5" width="10" height="8" rx="2"/><path d="M8 2.5V5M6 9h.01M10 9h.01"/></svg></span><span class="sy-node__text"><span class="sy-node__title">code-reviewer</span><span class="sy-node__sub">running · 12.4k tok</span></span></div>
+  <div class="sy-node" style="left:300px;top:174px"><span class="sy-kind sy-kind--agent"><svg class="sy-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="5" width="10" height="8" rx="2"/><path d="M8 2.5V5M6 9h.01M10 9h.01"/></svg></span><span class="sy-node__text"><span class="sy-node__title">feature-builder</span><span class="sy-node__sub">sonnet</span></span></div>
+  <div class="sy-node is-missing" style="left:560px;top:40px"><span class="sy-node__text"><span class="sy-node__title">qa-runner</span><span class="sy-node__sub">missing</span></span></div>
+</div>
+</body>
+</html>

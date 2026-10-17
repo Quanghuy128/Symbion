@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { CanonicalArtifact, ProjectStore } from "@symbion/core";
+import { Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Kind } from "@/components/ui/kind";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { RowMenu, ROW_MENU_DIVIDER } from "@/components/ui/row-menu";
 import { BuilderDrawer } from "./BuilderDrawer";
 import { DependencyGraph } from "./DependencyGraph";
@@ -109,31 +112,124 @@ export function ProjectView({ project }: ProjectViewProps) {
     }
   }
 
+  /** One list row (Kind tile, name, description, draft Badge, row menu) with the
+   *  inline second-click delete confirm. Logic is unchanged — presentation only. */
+  function renderRow(a: CanonicalArtifact, kind: "workflow" | "agent") {
+    const isWorkflow = kind === "workflow";
+    const label = isWorkflow ? `/${a.name}` : a.name;
+    const secondary = isWorkflow ? a.description : (a.tools ?? []).join(", ");
+    return (
+      <li key={a.id} className="border-b border-line last:border-b-0">
+        {confirmDeleteId === a.id ? (
+          <div className="flex items-center justify-between gap-3 px-3 py-3 text-ui">
+            <span className="text-ink">
+              Confirm delete {isWorkflow ? "/" : ""}
+              {a.name}?
+            </span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={cancelDelete}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={deletingId === a.id}
+                onClick={() => confirmDelete(a)}
+              >
+                {deletingId === a.id ? "Deleting…" : "Delete"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 rounded-md px-3 transition-colors hover:bg-surface-hover">
+            <button className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left" onClick={() => setEditing(a)}>
+              <Kind kind={kind} />
+              <span className="min-w-0 flex-1">
+                <span className={isWorkflow ? "block truncate font-mono text-code text-ink" : "block truncate text-ui text-ink"}>
+                  {label}
+                </span>
+                {secondary ? <span className="block truncate text-caption text-ink-muted">{secondary}</span> : null}
+              </span>
+              {a.meta.status === "draft" && <Badge variant="draft">draft</Badge>}
+            </button>
+            <RowMenu
+              open={openMenuId === a.id}
+              onOpenChange={(open) => setOpenMenuId(open ? a.id : null)}
+              items={
+                isWorkflow
+                  ? [
+                      { label: "Edit", onSelect: () => setEditing(a) },
+                      { label: "Copy run command", onSelect: () => setRunCommandFor(a) },
+                      ROW_MENU_DIVIDER,
+                      {
+                        label: "Delete",
+                        danger: true,
+                        disabled: !daemonConnected,
+                        onSelect: () => requestDelete(a.id),
+                      },
+                    ]
+                  : [
+                      { label: "Edit", onSelect: () => setEditing(a) },
+                      ROW_MENU_DIVIDER,
+                      {
+                        label: "Delete",
+                        danger: true,
+                        disabled: !daemonConnected,
+                        onSelect: () => requestDelete(a.id),
+                      },
+                    ]
+              }
+            />
+          </div>
+        )}
+        {deleteErrorId === a.id && deleteError && (
+          <p className="px-3 pb-3 text-caption text-danger-text">✗ Delete failed: {deleteError}</p>
+        )}
+      </li>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border-hairline px-8 py-5">
-        <div>
-          <h1 className="text-[23px] font-bold tracking-[-.02em] text-text-strong">{project.name}</h1>
-          <p className="font-mono text-[12.5px] text-text-faint">{project.path}</p>
+      <div className="flex items-center justify-between gap-4 border-b border-line px-10 py-6">
+        <div className="min-w-0">
+          <h1 className="truncate font-display text-page-title text-ink">{project.name}</h1>
+          <p className="truncate font-mono text-code-sm text-ink-muted">{project.path}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="destructive" size="sm" disabled={!daemonConnected || removing} onClick={handleRemoveProject}>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="danger-outline"
+            size="sm"
+            disabled={!daemonConnected || removing}
+            onClick={handleRemoveProject}
+          >
             {removing ? "Deleting…" : "Delete"}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setTab(tab === "list" ? "graph" : "list")}>
-            {tab === "list" ? "Graph" : "List"}
-          </Button>
-          <Button size="sm" disabled={!daemonConnected} onClick={() => setPublishing(true)}>
-            Publish ▸
+          <SegmentedControl
+            aria-label="View"
+            size="sm"
+            value={tab}
+            onValueChange={setTab}
+            options={[
+              { value: "list", label: "List" },
+              { value: "graph", label: "Graph" },
+            ]}
+          />
+          <Button size="sm" icon={Upload} disabled={!daemonConnected} onClick={() => setPublishing(true)}>
+            Publish
           </Button>
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[1000px] flex-1 overflow-y-auto px-8 py-8">
+      <div className="mx-auto w-full max-w-content-wide flex-1 overflow-y-auto px-10 py-10">
         {isEmpty ? (
           <div className="flex h-full items-center justify-center gap-2">
-            <Button onClick={() => setEditing(newArtifact("agent"))}>+ Add agent</Button>
-            <Button onClick={() => setEditing(newArtifact("command"))}>+ Add workflow</Button>
+            <Button icon={Plus} onClick={() => setEditing(newArtifact("command"))}>
+              Add workflow
+            </Button>
+            <Button variant="outline" icon={Plus} onClick={() => setEditing(newArtifact("agent"))}>
+              Add agent
+            </Button>
           </div>
         ) : tab === "graph" ? (
           <DependencyGraph
@@ -145,141 +241,25 @@ export function ProjectView({ project }: ProjectViewProps) {
             publishDialogClosedSignal={publishClosedSignal}
           />
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-10">
             <section>
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-[10.5px] font-bold uppercase tracking-[.09em] text-text-faint">
-                  Workflows / Commands ({commands.length})
-                </h2>
-                <Button size="sm" variant="outline" onClick={() => setEditing(newArtifact("command"))}>
-                  + Add workflow
+                <h2 className="text-overline uppercase text-ink-muted">Workflows / Commands ({commands.length})</h2>
+                <Button size="sm" variant="outline" icon={Plus} onClick={() => setEditing(newArtifact("command"))}>
+                  Add workflow
                 </Button>
               </div>
-              <ul className="space-y-2">
-                {commands.map((c) => (
-                  <li
-                    key={c.id}
-                    className="rounded-panel border border-border-hairline bg-bg-panel px-4 py-3 text-sm"
-                  >
-                    {confirmDeleteId === c.id ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-text-body">Confirm delete /{c.name}?</span>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={cancelDelete}>
-                            Cancel
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={deletingId === c.id}
-                            onClick={() => confirmDelete(c)}
-                          >
-                            {deletingId === c.id ? "Deleting…" : "Delete"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between gap-2">
-                        <button className="min-w-0 flex-1 text-left" onClick={() => setEditing(c)}>
-                          <span className={c.meta.status === "draft" ? "text-command" : "text-command-hi"}>
-                            {c.meta.status === "draft" ? "○" : "●"} /{c.name}
-                          </span>{" "}
-                          <span className="text-text-muted">{c.description}</span>
-                          {c.meta.status === "draft" && (
-                            <Badge variant="draft" className="ml-2">
-                              draft
-                            </Badge>
-                          )}
-                        </button>
-                        <RowMenu
-                          open={openMenuId === c.id}
-                          onOpenChange={(open) => setOpenMenuId(open ? c.id : null)}
-                          items={[
-                            { label: "Edit", onSelect: () => setEditing(c) },
-                            { label: "Copy run command", onSelect: () => setRunCommandFor(c) },
-                            ROW_MENU_DIVIDER,
-                            {
-                              label: "Delete",
-                              danger: true,
-                              disabled: !daemonConnected,
-                              onSelect: () => requestDelete(c.id),
-                            },
-                          ]}
-                        />
-                      </div>
-                    )}
-                    {deleteErrorId === c.id && deleteError && (
-                      <p className="mt-2 text-xs text-danger">✗ Delete failed: {deleteError}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <ul className="border-t border-line">{commands.map((c) => renderRow(c, "workflow"))}</ul>
             </section>
 
             <section>
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-[10.5px] font-bold uppercase tracking-[.09em] text-text-faint">
-                  Agents ({agents.length})
-                </h2>
-                <Button size="sm" variant="outline" onClick={() => setEditing(newArtifact("agent"))}>
-                  + Add agent
+                <h2 className="text-overline uppercase text-ink-muted">Agents ({agents.length})</h2>
+                <Button size="sm" variant="outline" icon={Plus} onClick={() => setEditing(newArtifact("agent"))}>
+                  Add agent
                 </Button>
               </div>
-              <ul className="space-y-2">
-                {agents.map((a) => (
-                  <li key={a.id} className="rounded-panel border border-border-hairline bg-bg-panel px-4 py-3 text-sm">
-                    {confirmDeleteId === a.id ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-text-body">Confirm delete {a.name}?</span>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={cancelDelete}>
-                            Cancel
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={deletingId === a.id}
-                            onClick={() => confirmDelete(a)}
-                          >
-                            {deletingId === a.id ? "Deleting…" : "Delete"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between gap-2">
-                        <button className="min-w-0 flex-1 text-left" onClick={() => setEditing(a)}>
-                          <span className={a.meta.status === "draft" ? "text-agent" : "text-agent-hi"}>
-                            {a.meta.status === "draft" ? "○" : "●"} {a.name}
-                          </span>{" "}
-                          <span className="text-text-muted">{(a.tools ?? []).join(", ")}</span>
-                          {a.meta.status === "draft" && (
-                            <Badge variant="draft" className="ml-2">
-                              draft
-                            </Badge>
-                          )}
-                        </button>
-                        <RowMenu
-                          open={openMenuId === a.id}
-                          onOpenChange={(open) => setOpenMenuId(open ? a.id : null)}
-                          items={[
-                            { label: "Edit", onSelect: () => setEditing(a) },
-                            ROW_MENU_DIVIDER,
-                            {
-                              label: "Delete",
-                              danger: true,
-                              disabled: !daemonConnected,
-                              onSelect: () => requestDelete(a.id),
-                            },
-                          ]}
-                        />
-                      </div>
-                    )}
-                    {deleteErrorId === a.id && deleteError && (
-                      <p className="mt-2 text-xs text-danger">✗ Delete failed: {deleteError}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <ul className="border-t border-line">{agents.map((a) => renderRow(a, "agent"))}</ul>
             </section>
           </div>
         )}

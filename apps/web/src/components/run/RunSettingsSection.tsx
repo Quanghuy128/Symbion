@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { DEFAULT_RUN_CONFIG, type ProjectRunConfig } from "@symbion/core";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Radio, Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 
 export interface RunSettingsSectionProps {
@@ -93,21 +95,20 @@ export function RunSettingsSection({ config, onSave }: RunSettingsSectionProps) 
   }
 
   return (
-    <div id="execution" className="rounded-panel border border-border-hairline bg-bg-panel p-4">
-      <h3 className="mb-3 text-sm font-semibold text-text-strong">EXECUTION (used by ▶ Execute)</h3>
+    <div id="execution" className="rounded-lg border border-line-soft bg-surface p-4">
+      <h3 className="mb-3 text-label text-ink">EXECUTION (used by ▶ Execute)</h3>
 
       <div className="mb-4">
-        <p className="mb-1 text-xs font-semibold text-text-muted">Permission mode</p>
+        <p className="mb-1.5 text-label text-ink-2">Permission mode</p>
         <div className="space-y-1.5">
-          <label className="flex items-start gap-2 text-xs text-text-body">
-            <input type="radio" name="run-permission-mode" checked={mode === "plan"} onChange={() => setMode("plan")} />
+          <label className="flex items-start gap-2 text-caption text-ink">
+            <Radio name="run-permission-mode" checked={mode === "plan"} onChange={() => setMode("plan")} />
             <span>
               <span className="font-medium">plan</span> — read-only, agent proposes only
             </span>
           </label>
-          <label className="flex items-start gap-2 text-xs text-text-body">
-            <input
-              type="radio"
+          <label className="flex items-start gap-2 text-caption text-ink">
+            <Radio
               name="run-permission-mode"
               checked={mode === "acceptEdits"}
               onChange={() => setMode("acceptEdits")}
@@ -117,9 +118,8 @@ export function RunSettingsSection({ config, onSave }: RunSettingsSectionProps) 
               still blocked
             </span>
           </label>
-          <label className="flex items-start gap-2 text-xs text-text-body">
-            <input
-              type="radio"
+          <label className="flex items-start gap-2 text-caption text-ink">
+            <Radio
               name="run-permission-mode"
               checked={mode === "bypassPermissions"}
               onChange={() => setMode("bypassPermissions")}
@@ -133,15 +133,15 @@ export function RunSettingsSection({ config, onSave }: RunSettingsSectionProps) 
       </div>
 
       <div className="mb-4">
-        <p className="mb-1 text-xs font-semibold text-text-muted">Allowed tools</p>
+        <p className="mb-1.5 text-label text-ink-2">Allowed tools</p>
         <div className="mb-2 flex flex-wrap gap-1">
           {allowedTools.map((tool) => (
             <span
               key={tool}
-              className="flex items-center gap-1 rounded-pill bg-bg-code px-2 py-0.5 text-[11px] text-text-body"
+              className="flex items-center gap-1 rounded-pill bg-sidebar px-2 py-0.5 text-caption text-ink"
             >
               {tool}
-              <button type="button" className="text-text-faint hover:text-danger" onClick={() => removeTool(tool)}>
+              <button type="button" className="text-ink-muted hover:text-danger-text" onClick={() => removeTool(tool)}>
                 ×
               </button>
             </span>
@@ -159,15 +159,15 @@ export function RunSettingsSection({ config, onSave }: RunSettingsSectionProps) 
               }
             }}
           />
-          <Button variant="outline" size="sm" onClick={addTool}>
-            + Add
+          <Button variant="outline" size="sm" icon={Plus} onClick={addTool}>
+            Add
           </Button>
         </div>
       </div>
 
       <div className="mb-2">
-        <p className="mb-1 text-xs font-semibold text-text-muted">Ceilings</p>
-        <div className="flex items-center gap-2 text-xs text-text-body">
+        <p className="mb-1.5 text-label text-ink-2">Ceilings</p>
+        <div className="flex items-center gap-2 text-caption text-ink">
           <span>wall clock (</span>
           <Input
             type="number"
@@ -189,16 +189,16 @@ export function RunSettingsSection({ config, onSave }: RunSettingsSectionProps) 
             className="w-24 text-center disabled:opacity-40"
           />
           <span>)</span>
-          <label className="ml-3 flex items-center gap-1 text-[11px] text-text-muted">
-            <input type="checkbox" checked={noTokenCap} onChange={(e) => setNoTokenCap(e.target.checked)} />
+          <label className="ml-3 flex items-center gap-1 text-caption text-ink-muted">
+            <Checkbox checked={noTokenCap} onChange={(e) => setNoTokenCap(e.target.checked)} />
             no cap
           </label>
         </div>
       </div>
 
-      <p className="mb-3 text-[11px] text-text-faint">ⓘ Every run still shows a confirm dialog.</p>
+      <p className="mb-3 text-caption text-ink-muted">ⓘ Every run still shows a confirm dialog.</p>
 
-      {error && <p className="mb-2 text-xs text-danger">{error}</p>}
+      {error && <p className="mb-2 text-caption text-danger-text">{error}</p>}
 
       <Button onClick={handleSave} disabled={saving}>
         {saving ? "Saving…" : "Save"}
@@ -209,7 +209,7 @@ export function RunSettingsSection({ config, onSave }: RunSettingsSectionProps) 
           <DialogHeader>
             <DialogTitle>⚠ Allow bypassPermissions?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-text-body">
+          <p className="text-ui text-ink">
             The agent will be able to run ANY shell command and edit ANY file in this project without asking —
             this is the least-safe permission mode. The next run in this project will re-show the first-run
             acknowledgment.

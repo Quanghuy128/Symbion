@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import { Plus, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Radio } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 
 export interface ProjectPickerStepProps {
@@ -38,8 +40,8 @@ export function ProjectPickerStep({
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <p className="text-sm text-muted-foreground">No projects yet — create one first</p>
-        <Button onClick={onCreateProjectRequested}>+ New project</Button>
+        <p className="text-ui text-ink-muted">No projects yet — create one first</p>
+        <Button icon={Plus} onClick={onCreateProjectRequested}>New project</Button>
       </div>
     );
   }
@@ -47,38 +49,40 @@ export function ProjectPickerStep({
   return (
     <div className="space-y-2">
       {!daemonConnected && (
-        <p className="text-xs font-medium text-destructive">
+        <p className="text-caption font-medium text-danger-text">
           ⚠ daemon disconnected — cannot apply right now. Reconnecting…
         </p>
       )}
 
-      <Input placeholder="🔍 Search projects…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
+      <div className="relative">
+        <Search size={16} strokeWidth={1.6} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+        <Input className="pl-9" placeholder="Search projects…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
+      </div>
 
       <div className="max-h-48 space-y-1 overflow-y-auto">
-        {filtered.length === 0 && <p className="text-xs text-muted-foreground">No matching projects found.</p>}
+        {filtered.length === 0 && <p className="text-caption text-ink-muted">No matching projects found.</p>}
         {filtered.map((p) => (
           <label
             key={p.id}
-            className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted ${
-              selectedId === p.id ? "bg-muted" : ""
-            } ${!daemonConnected ? "opacity-60" : ""}`}
+            className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-ui hover:bg-surface-hover ${
+ selectedId === p.id ? "bg-surface-hover" : ""
+ } ${!daemonConnected ? "opacity-60" : ""}`}
           >
-            <input
-              type="radio"
+            <Radio
               name="template-apply-project"
               checked={selectedId === p.id}
               disabled={!daemonConnected}
               onChange={() => onSelect(p.id)}
             />
             <span className="flex-1 truncate font-medium">{p.name}</span>
-            <span className="truncate text-xs text-muted-foreground" title={p.path}>
+            <span className="truncate text-caption text-ink-muted" title={p.path}>
               {p.path}
             </span>
           </label>
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-ink-muted">
         The template will be saved to the selected project as a draft — nothing written to the repo yet. You still need to Publish later to write
         it to disk.
       </p>

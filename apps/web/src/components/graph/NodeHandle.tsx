@@ -21,9 +21,9 @@ export interface NodeHandleProps {
  * agnostic, matching how xyflow's own `<Handle position={Position.Right}>`
  * only supplied the dot, not the node-relative placement).
  *
- * Ported verbatim from today's `Handle` usage: `!bg-command`/`!bg-agent`/
+ * Ported verbatim from today's `Handle` usage: `!bg-workflow`/`!bg-agent`/
  * `!bg-danger` classes (source vs. target vs. missing-agent) and the hollow
- * `!bg-transparent !border !border-white/40` non-connectable treatment are
+ * `!bg-transparent !border !border-line-strong` non-connectable treatment are
  * passed in via `className` by the caller, unchanged.
  *
  * The one-shot hover "pulse" (design §5's "re-key the handle to force
@@ -52,9 +52,9 @@ export function NodeHandle({ role, connectable, onDragStart, className }: NodeHa
         className ??
         (connectable
           ? role === "source"
-            ? "!bg-command animate-pulse"
+            ? "!bg-workflow animate-pulse"
             : "!bg-agent"
-          : "!bg-transparent !border !border-white/40")
+          : "!bg-transparent !border !border-line-strong")
       }
       style={{
         position: "absolute",

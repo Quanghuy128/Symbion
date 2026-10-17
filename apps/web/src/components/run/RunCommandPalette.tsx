@@ -1,5 +1,6 @@
 "use client";
 
+import { History, Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CanonicalArtifact } from "@symbion/core";
@@ -65,7 +66,7 @@ export function RunCommandPalette({ open, onClose }: RunCommandPaletteProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[15vh]"
+      className="fixed inset-0 z-dialog flex items-start justify-center bg-overlay pt-[15vh]"
       onClick={onClose}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
@@ -74,7 +75,7 @@ export function RunCommandPalette({ open, onClose }: RunCommandPaletteProps) {
       <div
         role="dialog"
         aria-label="Command palette"
-        className="w-[480px] animate-popIn overflow-hidden rounded-dialog border border-border-hairline bg-bg-panel shadow-dialog"
+        className="w-[480px] animate-popIn overflow-hidden rounded-xl bg-surface shadow-dialog"
         onClick={(e) => e.stopPropagation()}
       >
         {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
@@ -83,38 +84,40 @@ export function RunCommandPalette({ open, onClose }: RunCommandPaletteProps) {
           placeholder={currentProject ? `Execute /<name>… or "history"` : "Open a project to execute a command"}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full border-b border-border-hairline bg-transparent px-4 py-3 text-sm text-text-body outline-none placeholder:text-text-faint"
+          className="w-full border-b border-line bg-transparent px-4 py-3 text-ui text-ink placeholder:text-ink-faint focus-visible:outline-0"
         />
 
         <div className="max-h-[320px] overflow-y-auto py-1">
           {currentProject && filtered.length > 0 && (
             <>
-              <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-text-faint">Execute</p>
+              <p className="px-3 py-1 text-overline uppercase text-ink-muted">Execute</p>
               {filtered.map((c) => (
                 <button
                   key={c.id}
                   type="button"
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text-body hover:bg-white/[.06]"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-ui text-ink hover:bg-surface-hover"
                   onClick={() => selectExecute(c.id)}
                 >
-                  ▶ Execute /{c.name}…
+                  <Play size={16} strokeWidth={1.6} aria-hidden className="shrink-0 text-ink-muted" />
+                  Execute /{c.name}…
                 </button>
               ))}
             </>
           )}
 
           {currentProject && filtered.length === 0 && (
-            <p className="px-4 py-2 text-xs text-text-faint">No published commands match &quot;{query}&quot;.</p>
+            <p className="px-4 py-2 text-caption text-ink-muted">No published commands match &quot;{query}&quot;.</p>
           )}
 
-          <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-text-faint">Run history</p>
+          <p className="px-3 py-1 text-overline uppercase text-ink-muted">Run history</p>
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex w-full items-center gap-2 px-4 py-2 text-left text-ui text-ink hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40"
             onClick={selectHistory}
             disabled={!currentProject}
           >
-            🕘 Run history
+            <History size={16} strokeWidth={1.6} aria-hidden className="shrink-0 text-ink-muted" />
+            Run history
           </button>
         </div>
       </div>

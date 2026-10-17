@@ -1,6 +1,9 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useRunStore } from "@/lib/run/useRunStore";
+import { IconButton } from "@/components/ui/icon-button";
+import { StatusGlyph, type GlyphStatus } from "@/components/ui/status-glyph";
 import { CancelControl } from "./CancelControl";
 
 function fmtElapsed(ms: number): string {
@@ -22,10 +25,18 @@ const STATUS_LABEL: Record<string, string> = {
   timedOut: "STOPPED",
 };
 
+/** Run status -> StatusGlyph status (the single glyph/colour source). */
+function glyphFor(status: string): GlyphStatus {
+  if (status === "completed") return "done";
+  if (status === "failed") return "error";
+  if (status === "cancelled" || status === "timedOut") return "interrupted";
+  return "running";
+}
+
 /**
- * RunBar — bottom-dock app-wide run bar (design §3.7 / R4). Shows a live run
- * (any screen) + is the reattach handle. Terminal-until-dismissed. P1: status +
- * elapsed + cancel (no token badges — that's P2).
+ * RunBar — in-flow dock card for the app-wide run bar (design §3.7 / R4). Shows
+ * a live run (any screen) + is the reattach handle. Terminal-until-dismissed.
+ * Status + elapsed + cancel only (no progress/token data exists for it).
  */
 export function RunBar() {
   const run = useRunStore((s) => s.run);
@@ -40,23 +51,17 @@ export function RunBar() {
   const active = !terminal;
 
   return (
-    <div className="flex h-10 items-center justify-between border-t border-border-hairline bg-bg-menu px-4 text-xs">
+    <div className="relative z-runbar m-3 flex h-12 items-center justify-between rounded-lg border border-line-soft bg-surface px-4 text-caption shadow-toast">
       <span className="flex items-center gap-2">
-        <span className={active ? "text-run-active" : run.status === "failed" ? "text-danger" : "text-text-muted"}>
-          {active ? "◉" : run.status === "completed" ? "✓" : run.status === "failed" ? "✗" : "◼"}
-        </span>
-        <span className="font-semibold text-text-body">{STATUS_LABEL[run.status] ?? run.status}</span>
-        <span className="text-text-body">/{run.commandName}</span>
+        <StatusGlyph status={glyphFor(run.status)} live={active} size="md" />
+        <span className="font-semibold text-ink">{STATUS_LABEL[run.status] ?? run.status}</span>
+        <span className="font-mono text-code text-ink">/{run.commandName}</span>
         {connection === "reconnecting" && <span className="text-warning">⟳ RECONNECTING…</span>}
-        <span className="font-mono tabular-nums text-text-muted">{fmtElapsed(elapsedMs)}</span>
+        <span className="font-mono tabular-nums text-ink-muted">{fmtElapsed(elapsedMs)}</span>
       </span>
       <span className="flex items-center gap-2">
         {active && <CancelControl onConfirm={cancelRun} cancelling={run.status === "cancelling"} />}
-        {terminal && (
-          <button className="text-text-muted hover:text-text-body" onClick={detach} aria-label="Dismiss">
-            ✕
-          </button>
-        )}
+        {terminal && <IconButton aria-label="Dismiss" icon={X} size="sm" onClick={detach} />}
       </span>
     </div>
   );

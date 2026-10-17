@@ -54,20 +54,20 @@ export function NodeDeleteConfirm({
     <div
       ref={ref}
       role="dialog"
-      className="z-30 w-64 animate-popIn rounded-panel border border-border-menu bg-bg-menu p-3 shadow-dropdown"
+      className="z-30 w-64 animate-popIn rounded-lg border border-line-soft bg-surface p-3 shadow-menu"
     >
-      <p className="text-[13px] text-text-body">
+      <p className="text-label text-ink">
         Delete {kind === "command" ? `/${artifactName}` : artifactName}?
       </p>
 
       {showRefWarning && (
-        <p className="mt-2 text-[11.5px] leading-snug text-warning">
+        <p className="mt-2 text-caption leading-snug text-warning">
           ⚠ {referencingCommands.length} workflow(s) still reference {artifactName} —{" "}
           {referencingCommands.join(", ")} will show a red link.
         </p>
       )}
 
-      {error && <p className="mt-2 text-[11.5px] text-danger">✗ {error}</p>}
+      {error && <p className="mt-2 text-caption text-danger-text">✗ {error}</p>}
 
       <div className="mt-3 flex justify-end gap-2">
         <Button size="sm" variant="outline" disabled={deleting} onClick={onCancel}>

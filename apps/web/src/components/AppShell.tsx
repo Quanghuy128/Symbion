@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import { initDaemonSession } from "@/lib/rpc/client";
-import { AppRail } from "./AppRail";
+import { Sidebar } from "./shell/Sidebar";
 import { EmptyState } from "./EmptyState";
 import { CreateProjectDialog } from "./CreateProjectDialog";
 import { ImportDialog } from "./ImportDialog";
@@ -104,17 +104,17 @@ export function AppShell() {
   }, [startHeartbeat]);
 
   return (
-    <div className="flex h-screen flex-col bg-bg-app text-text-body">
+    <div className="flex h-screen flex-col bg-app text-ink">
       <div className="flex flex-1 overflow-hidden">
-        <AppRail onCreateProject={() => setCreateOpen(true)} onSelectProject={handleSelectProject} />
+        <Sidebar onCreateProject={() => setCreateOpen(true)} onSelectProject={handleSelectProject} />
 
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto bg-app">
           {currentProject ? (
             <ProjectView project={currentProject} />
           ) : projects.length === 0 ? (
             <EmptyState onCreateProject={() => setCreateOpen(true)} onImport={() => setImportOpen(true)} />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-text-muted">
+            <div className="flex h-full items-center justify-center text-ui text-ink-muted">
               Select a project in the sidebar.
             </div>
           )}

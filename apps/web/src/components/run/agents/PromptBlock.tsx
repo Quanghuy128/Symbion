@@ -17,21 +17,21 @@ export function PromptBlock({ label, text, truncated }: PromptBlockProps) {
   if (text === undefined) return null;
   const long = text.length > 180 || text.split("\n").length > 3;
   return (
-    <div className="border-b border-border-hairline px-3 py-1.5 text-[11px]" data-testid="prompt-block">
-      <div className="mb-0.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[.05em] text-text-faint">
+    <div className="border-b border-line px-3 py-1.5 text-caption" data-testid="prompt-block">
+      <div className="mb-0.5 flex items-center justify-between text-overline font-semibold uppercase text-ink-muted">
         <span>{label}</span>
         <CopyButton text={text} label={`Copy ${label.toLowerCase()}`} />
       </div>
       {text.trim().length === 0 ? (
-        <p className="text-text-faint">—</p>
+        <p className="text-ink-muted">—</p>
       ) : (
-        <p className={`whitespace-pre-wrap break-words text-text-body ${open ? "max-h-60 overflow-auto" : "line-clamp-3"}`}>{text}</p>
+        <p className={`whitespace-pre-wrap break-words text-ink ${open ? "max-h-60 overflow-auto" : "line-clamp-3"}`}>{text}</p>
       )}
       {(long || truncated) && (
         <div className="mt-0.5 flex items-center justify-between">
-          {truncated && open ? <span className="text-[10px] text-warning">{TRUNCATION_NOTE}</span> : <span />}
+          {truncated && open ? <span className="text-overline text-warning">{TRUNCATION_NOTE}</span> : <span />}
           {long && (
-            <button type="button" className="text-[10.5px] text-text-muted hover:text-text-body" onClick={() => setOpen((o) => !o)}>
+            <button type="button" className="text-overline text-ink-muted hover:text-ink" onClick={() => setOpen((o) => !o)}>
               {open ? "Show less ▾" : "Show more ▸"}
             </button>
           )}

@@ -37,18 +37,18 @@ function formatResetTime(resetAt: number): string {
 export function AuthorFetchErrorPanel({ kind, message, resetAt, onRetry }: AuthorFetchErrorPanelProps) {
   return (
     <div className="flex flex-col items-center gap-3 py-10 text-center">
-      <p className="text-sm font-medium">{HEADING_BY_KIND[kind]}</p>
-      <p className="max-w-md text-xs text-muted-foreground">{message}</p>
+      <p className="text-ui font-medium">{HEADING_BY_KIND[kind]}</p>
+      <p className="max-w-md text-caption text-ink-muted">{message}</p>
       {kind === "rate-limit" && resetAt !== undefined && (
-        <p className="text-xs text-muted-foreground">The limit resets at {formatResetTime(resetAt)}.</p>
+        <p className="text-caption text-ink-muted">The limit resets at {formatResetTime(resetAt)}.</p>
       )}
       <Button variant="outline" onClick={onRetry}>
         Retry
       </Button>
       {kind === "rate-limit" && (
-        <p className="text-[11px] text-muted-foreground">You may still be rate-limited until the reset time above.</p>
+        <p className="text-caption text-ink-muted">You may still be rate-limited until the reset time above.</p>
       )}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-ink-muted">
         ℹ The &quot;Symbion&quot; tab still works normally, no network needed.
       </p>
     </div>

@@ -198,9 +198,9 @@ export function GenerateBodyButton({
       <ProviderStatusPill providerId={providerId} />
 
       {!providerId && daemonConnected && (
-        <p className="mt-1 text-xs text-text-muted">
+        <p className="mt-1 text-caption text-ink-muted">
           No AI provider selected —{" "}
-          <Link href="/settings" className="underline">
+          <Link href="/settings" className="text-mint-text underline hover:text-mint-hover">
             go to Settings to choose one
           </Link>
           .
@@ -208,10 +208,10 @@ export function GenerateBodyButton({
       )}
 
       {errorCode && (
-        <div className="mt-1 flex items-center gap-2 text-xs text-danger">
+        <div className="mt-1 flex items-center gap-2 text-caption text-danger-text">
           <span>{errorMessage || ERROR_MESSAGES[errorCode] || DEFAULT_ERROR_MESSAGE}</span>
           {errorCode === "llm-timeout" && (
-            <button type="button" className="underline" onClick={handleRetry} disabled={busy || cooldown}>
+            <button type="button" className="text-mint-text underline hover:text-mint-hover" onClick={handleRetry} disabled={busy || cooldown}>
               Retry
             </button>
           )}
@@ -219,7 +219,7 @@ export function GenerateBodyButton({
            *  provider-connectivity/auth/not-configured failure now links to the
            *  provider-agnostic Settings page (STATE §3.2/§4d). */}
           {SETTINGS_CTA_CODES.has(errorCode) && (
-            <Link href="/settings" className="underline">
+            <Link href="/settings" className="text-mint-text underline hover:text-mint-hover">
               Open provider settings
             </Link>
           )}
@@ -230,7 +230,7 @@ export function GenerateBodyButton({
         <DialogHeader>
           <DialogTitle>Replace content?</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-text-muted">
+        <p className="text-ui text-ink-muted">
           The current content will be replaced with AI-generated content — continue?
         </p>
         <DialogFooter>
@@ -245,7 +245,7 @@ export function GenerateBodyButton({
         <DialogHeader>
           <DialogTitle>Use AI to generate content</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-text-muted">{firstUseDisclosureCopy(providerId)}</p>
+        <p className="text-ui text-ink-muted">{firstUseDisclosureCopy(providerId)}</p>
         <DialogFooter>
           <Button onClick={handleDisclosureAck}>Got it</Button>
         </DialogFooter>

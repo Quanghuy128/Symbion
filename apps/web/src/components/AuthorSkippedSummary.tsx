@@ -24,13 +24,13 @@ export function AuthorSkippedSummary({ items }: AuthorSkippedSummaryProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className="text-xs text-amber-600">
+    <div className="text-caption text-warning">
       <div className="flex items-center gap-2">
         <span>
           ⚠ {items.length} templates failed to load → skipped
         </span>
         {items.length > COLLAPSE_THRESHOLD && (
-          <button onClick={() => setExpanded((v) => !v)} className="underline hover:text-foreground">
+          <button onClick={() => setExpanded((v) => !v)} className="underline hover:text-ink">
             {expanded ? "Hide details" : "Show details"}
           </button>
         )}

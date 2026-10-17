@@ -161,14 +161,14 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
           />
         )}
 
-        {treeLoading && <p className="text-xs text-text-muted">Scanning folder tree…</p>}
+        {treeLoading && <p className="text-caption text-ink-muted">Scanning folder tree…</p>}
         {tree && <FileTreePicker tree={tree} picked={picked} onRoleChange={onTreeRoleChange} />}
 
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error && <p className="text-caption text-danger-text">{error}</p>}
       </DialogBody>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
         <Button disabled={!scanned || totalSelected === 0 || importing} onClick={handleImport}>

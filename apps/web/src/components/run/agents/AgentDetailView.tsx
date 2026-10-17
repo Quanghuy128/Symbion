@@ -6,7 +6,7 @@ import { AgentDetailHeader } from "./AgentDetailHeader";
 import { PromptBlock } from "./PromptBlock";
 import { ResultCard } from "./ResultCard";
 import { TranscriptList, type TranscriptListHandle } from "./TranscriptList";
-import { StatusGlyph } from "./StatusGlyph";
+import { StatusGlyph } from "@/components/ui/status-glyph";
 import { fmtDurationWords, fmtTok } from "./format";
 
 export interface BreadcrumbSegment {
@@ -49,18 +49,18 @@ export const AgentDetailView = forwardRef<TranscriptListHandle, AgentDetailViewP
 
   return (
     <div className="flex h-full min-h-0 flex-col motion-safe:animate-slideIn" data-testid="agent-detail" data-agent-id={agent.id}>
-      <div className="flex items-center gap-1 border-b border-border-hairline px-2 py-1 text-[11px] text-text-muted">
-        <button type="button" className="shrink-0 rounded-sm px-1 hover:bg-white/[.06] hover:text-text-body" onClick={onBack}>
+      <div className="flex items-center gap-1 border-b border-line px-2 py-1 text-caption text-ink-muted">
+        <button type="button" className="shrink-0 rounded-sm px-1 hover:bg-surface-hover hover:text-ink" onClick={onBack}>
           ← Agents
         </button>
         <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1 truncate">
           {breadcrumb.map((seg, i) => (
             <span key={seg.id} className="flex min-w-0 items-center gap-1">
-              {i > 0 && <span className="text-text-faint">›</span>}
+              {i > 0 && <span className="text-ink-muted">›</span>}
               {i === breadcrumb.length - 1 ? (
-                <span className="truncate text-text-body">{seg.label}</span>
+                <span className="truncate text-ink">{seg.label}</span>
               ) : (
-                <button type="button" className="truncate hover:text-text-body" onClick={() => onNavigate(seg.id)}>
+                <button type="button" className="truncate hover:text-ink" onClick={() => onNavigate(seg.id)}>
                   {seg.label}
                 </button>
               )}
@@ -68,7 +68,7 @@ export const AgentDetailView = forwardRef<TranscriptListHandle, AgentDetailViewP
           ))}
         </nav>
         {isRoot && onRaw && (
-          <button type="button" aria-label="Raw log" title="Raw log" className="shrink-0 px-1 hover:text-text-body" onClick={onRaw}>
+          <button type="button" aria-label="Raw log" title="Raw log" className="shrink-0 px-1 hover:text-ink" onClick={onRaw}>
             ≡
           </button>
         )}
@@ -93,9 +93,9 @@ export const AgentDetailView = forwardRef<TranscriptListHandle, AgentDetailViewP
         emptyText={emptyText}
         footer={
           settled ? (
-            <div className="border-t border-border-hairline">
+            <div className="border-t border-line">
               <ResultCard result={agent.result} agentErrored={agent.status === "error"} />
-              <p className="flex items-center gap-1 px-3 pb-1 text-[10.5px] text-text-muted">
+              <p className="flex items-center gap-1 px-3 pb-1 text-overline text-ink-muted">
                 <StatusGlyph status={agent.status} />
                 {agent.status === "done" ? "done" : agent.status} in {fmtDurationWords(durationMs)} · {fmtTok(agent.freshTokens)} tok
               </p>

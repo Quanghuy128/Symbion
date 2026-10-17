@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CanonicalArtifact } from "@symbion/core";
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Banner } from "@/components/ui/banner";
 import { Input } from "@/components/ui/input";
 import { FolderBrowserDialog } from "@/components/FolderBrowserDialog";
 import { WorkflowDetectionPanel } from "@/components/WorkflowDetectionPanel";
@@ -307,11 +308,11 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
       <DialogBody className="space-y-3">
         <div>
-          <label className="mb-1 block text-sm font-medium text-text-body">Project name</label>
+          <label className="mb-1.5 block text-label text-ink-2">Project name</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My API Service" />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-text-body">Repo path</label>
+          <label className="mb-1.5 block text-label text-ink-2">Repo path</label>
           <div className="flex gap-2">
             <Input
               value={path}
@@ -324,9 +325,9 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
             </Button>
           </div>
           {validation && step === "form" && (
-            <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
+            <div className="mt-1 flex items-center gap-2 text-caption text-ink-muted">
               {validation.reason === "unc-unsupported" ? (
-                <span className="text-danger">
+                <span className="text-danger-text">
                   ⚠ UNC paths (\\server\share\...) are not supported yet. Use a drive path, e.g.
                   C:\Users\me\code\my-service
                 </span>
@@ -364,9 +365,9 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
         )}
 
         {step === "detected" && scanError && (
-          <div className="space-y-2 rounded-panel border border-danger/40 bg-danger/10 p-3 text-sm">
-            <p className="text-danger">⚠ Scanning .claude/ failed: {scanError}</p>
-            <div className="flex justify-end gap-2">
+          <Banner tone="danger" icon={null} className="flex-col">
+            <p>Scanning .claude/ failed: {scanError}</p>
+            <div className="mt-2 flex justify-end gap-2">
               <Button size="sm" variant="outline" onClick={handleDecline}>
                 Create empty project
               </Button>
@@ -374,7 +375,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
                 Retry
               </Button>
             </div>
-          </div>
+          </Banner>
         )}
 
         {step === "scanning" && <ImportScanningState />}
@@ -390,16 +391,16 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
           />
         )}
 
-        {step === "review" && treeLoading && <p className="text-xs text-text-muted">Scanning folder tree…</p>}
+        {step === "review" && treeLoading && <p className="text-caption text-ink-muted">Scanning folder tree…</p>}
         {step === "review" && tree && (
           <FileTreePicker tree={tree} picked={picked} onRoleChange={onTreeRoleChange} />
         )}
 
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error && <p className="text-caption text-danger-text">{error}</p>}
       </DialogBody>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
         {step === "form" && (

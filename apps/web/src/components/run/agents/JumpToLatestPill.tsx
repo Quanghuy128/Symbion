@@ -12,7 +12,7 @@ export function JumpToLatestPill({ count, onJump }: JumpToLatestPillProps) {
     <button
       type="button"
       onClick={onJump}
-      className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border-menu bg-bg-menu px-3 py-1 text-[11px] text-text-body shadow-dropdown motion-safe:animate-popIn hover:bg-white/[.06]"
+      className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-line-soft bg-surface px-3 py-1 text-caption text-ink shadow-menu motion-safe:animate-popIn hover:bg-surface-hover"
     >
       ↓ {count} new · Jump to latest
     </button>

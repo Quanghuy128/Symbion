@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AgentNode, BackgroundTask } from "@symbion/core";
-import { StatusGlyph } from "./StatusGlyph";
+import { StatusGlyph } from "@/components/ui/status-glyph";
 import { LiveDuration } from "./LiveDuration";
 
 export interface BackgroundGroupProps {
@@ -21,11 +21,11 @@ export function BackgroundGroup({ tasks, live, terminal, nowMs, onOpen }: Backgr
   }, [terminal]);
   if (tasks.length === 0) return null;
   return (
-    <div className="mt-2 border-t border-border-hairline pt-1" data-testid="background-group">
+    <div className="mt-2 border-t border-line pt-1" data-testid="background-group">
       <button
         type="button"
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[.05em] text-text-muted"
+        className="flex w-full items-center justify-between px-2 py-0.5 text-overline font-semibold uppercase text-ink-muted"
         onClick={() => setOpen((o) => !o)}
       >
         <span>Background · {tasks.length}</span>
@@ -36,11 +36,11 @@ export function BackgroundGroup({ tasks, live, terminal, nowMs, onOpen }: Backgr
           <button
             key={t.toolUseId}
             type="button"
-            className="flex w-full items-center gap-1.5 px-2 py-0.5 pl-4 text-left text-[11px] hover:bg-white/[.04]"
+            className="flex w-full items-center gap-1.5 px-2 py-0.5 pl-4 text-left text-caption hover:bg-surface-hover"
             onClick={() => onOpen(t)}
           >
             <StatusGlyph status={t.status} live={live} />
-            <span className="min-w-0 flex-1 truncate font-mono text-text-body" title={t.command ?? t.label}>
+            <span className="min-w-0 flex-1 truncate font-mono text-ink" title={t.command ?? t.label}>
               $ {t.command ?? t.label}
             </span>
             <LiveDuration
@@ -48,9 +48,9 @@ export function BackgroundGroup({ tasks, live, terminal, nowMs, onOpen }: Backgr
               endedAtMs={t.endedAtMs}
               nowMs={nowMs}
               ticking={live && t.status === "running"}
-              className="text-[10.5px] text-text-muted"
+              className="text-overline text-ink-muted"
             />
-            <span className="text-text-muted">›</span>
+            <span className="text-ink-muted">›</span>
           </button>
         ))}
     </div>
@@ -69,7 +69,7 @@ export function UnattributedGroup({ node, eventCount, onOpen }: UnattributedGrou
   return (
     <button
       type="button"
-      className="mt-1 flex w-full items-center justify-between border-t border-border-hairline px-2 py-1 text-[10px] font-semibold uppercase tracking-[.05em] text-warning hover:bg-white/[.04]"
+      className="mt-1 flex w-full items-center justify-between border-t border-line px-2 py-1 text-overline font-semibold uppercase text-warning hover:bg-surface-hover"
       onClick={onOpen}
       data-testid="unattributed-group"
     >

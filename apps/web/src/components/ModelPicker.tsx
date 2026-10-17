@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { callRpc, DaemonRpcError } from "@/lib/rpc/client";
 import type { ListModelsOutcome, ListModelsParams, ListModelsResult, LlmModelOption, ProviderId } from "@/lib/rpc/types";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Select } from "@/components/ui/input";
 
 export interface ModelPickerProps {
   providerId: ProviderId | null;
@@ -88,18 +89,18 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
   }, [providerId]);
 
   if (!providerId) {
-    return <span className="text-xs text-text-muted">No AI provider selected</span>;
+    return <span className="text-caption text-ink-muted">No AI provider selected</span>;
   }
 
   // Branch 1: unreachable / thrown RpcError — unchanged.
   if (loadError) {
-    return <span className="text-xs text-danger">{loadError}</span>;
+    return <span className="text-caption text-danger-text">{loadError}</span>;
   }
 
   // Branch 2: reachable, but /api/tags itself failed.
   if (outcome === "fetch-failed") {
     return (
-      <span className="text-xs text-danger">
+      <span className="text-caption text-danger-text">
         {errorDetail || "Could not fetch the model list from Ollama."}
       </span>
     );
@@ -114,7 +115,7 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
         content={
           <span className="flex flex-col gap-1">
             <span>No models are loaded in Ollama yet. Run the command below, then come back here:</span>
-            <code className="select-all rounded-sm border border-border-input bg-bg-code px-2 py-1 text-text-body">
+            <code className="select-all rounded-xs bg-app px-2 py-1 font-mono text-code-sm text-ink">
               {SUGGESTED_PULL_COMMAND}
             </code>
           </span>
@@ -123,16 +124,17 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
         {/* tabIndex on this span (rather than the disabled <select>, which cannot
             receive focus) keeps the tooltip reachable via keyboard (Tab). */}
         <span tabIndex={0} className="inline-flex">
-          <select
+          <Select
             aria-label="Select AI model"
             title={`No models are loaded in Ollama yet. Run the command below, then come back here: ${SUGGESTED_PULL_COMMAND}`}
-            className="h-8 rounded-sm border border-danger bg-bg-input px-2 text-xs text-text-body focus:outline-none focus:ring-1 focus:ring-danger"
+            aria-invalid="true"
+            className="h-control-sm w-auto px-2 text-label"
             disabled
             value=""
             onChange={() => {}}
           >
             <option value="">No models loaded</option>
-          </select>
+          </Select>
         </span>
       </Tooltip>
     );
@@ -140,9 +142,9 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
 
   // Branch 4: populated dropdown (outcome === "ok").
   return (
-    <select
+    <Select
       aria-label="Select AI model"
-      className="h-8 rounded-sm border border-border-input bg-bg-input px-2 text-xs text-text-body"
+      className="h-control-sm w-auto px-2 text-label"
       value={value}
       disabled={disabled || models.length === 0}
       onChange={(e) => onChange(e.target.value)}
@@ -153,6 +155,6 @@ export function ModelPicker({ providerId, value, onChange, disabled }: ModelPick
           {m.tier ? ` (${TIER_LABEL[m.tier]})` : ""}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }

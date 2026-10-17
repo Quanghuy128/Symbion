@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import type { ImportTreeNode, ListTreeResult } from "@/lib/rpc/types";
+import { ChevronDown, ChevronRight, Folder } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MAX_FILE_KIB } from "@/components/importPickerShared";
 
@@ -73,18 +75,18 @@ export function FileTreePicker({ tree, picked, onRoleChange }: FileTreePickerPro
   const roots = useMemo(() => buildTree(tree.nodes), [tree.nodes]);
 
   if (tree.nodes.length === 0) {
-    return <p className="py-4 text-center text-sm text-text-muted">No files found.</p>;
+    return <p className="py-4 text-center text-ui text-ink-muted">No files found.</p>;
   }
 
   return (
     <div className="space-y-2">
       {tree.truncated && (
-        <p className="rounded-sm border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-warning">
+        <p className="rounded-sm border border-warning bg-warning-soft px-2 py-1.5 text-caption text-warning">
           ⚠ Results truncated ({tree.truncatedReasons.join(", ")}) — this repo is large; some files
           are not shown.
         </p>
       )}
-      <div className="max-h-72 overflow-y-auto rounded-panel border border-border-input p-1 text-sm">
+      <div className="max-h-72 overflow-y-auto rounded-lg border border-line-strong p-1 text-ui">
         {roots.map((shape) => (
           <TreeRow
             key={shape.node.relPath}
@@ -116,25 +118,25 @@ function TreeRow({ shape, depth, picked, onRoleChange }: TreeRowProps) {
     return (
       <div>
         <div
-          className={`flex items-center gap-1.5 py-0.5 ${node.ignored ? "text-text-dim" : "text-text-body"}`}
+          className={`flex items-center gap-1.5 py-0.5 ${node.ignored ? "text-ink-muted" : "text-ink"}`}
           style={indent}
         >
           {expandable ? (
             <button
               type="button"
-              className="w-4 shrink-0 text-text-muted hover:text-text-body"
+              className="flex w-4 shrink-0 items-center justify-center text-ink-muted hover:text-ink"
               onClick={() => setExpanded((e) => !e)}
               aria-label={expanded ? "Collapse" : "Expand"}
             >
-              {expanded ? "▾" : "▸"}
+              {expanded ? <ChevronDown size={14} strokeWidth={1.6} aria-hidden /> : <ChevronRight size={14} strokeWidth={1.6} aria-hidden />}
             </button>
           ) : (
             <span className="w-4 shrink-0" />
           )}
-          <span className="shrink-0">📁</span>
+          <Folder size={14} strokeWidth={1.6} aria-hidden className="shrink-0 text-ink-muted" />
           <span className={node.ignored ? "italic" : ""}>{node.name}</span>
-          {node.ignored && <span className="text-[10px] uppercase tracking-wide">(ignored)</span>}
-          {node.isSymlink && <span className="text-[10px] text-text-dim">↳ symlink</span>}
+          {node.ignored && <span className="text-overline uppercase">(ignored)</span>}
+          {node.isSymlink && <span className="text-overline text-ink-muted">↳ symlink</span>}
         </div>
         {expandable && expanded && (
           <div>
@@ -159,14 +161,14 @@ function TreeRow({ shape, depth, picked, onRoleChange }: TreeRowProps) {
   const role: PickedRole = entry?.role ?? "ignore";
 
   const row = (
-    <div className="flex items-center gap-1.5 py-0.5 text-text-body" style={indent}>
+    <div className="flex items-center gap-1.5 py-0.5 text-ink" style={indent}>
       <span className="w-4 shrink-0" />
       <Checkbox
         checked={role !== "ignore"}
         disabled={!!disabledReason}
         onChange={(e) => onRoleChange(node, e.target.checked ? "agent" : "ignore")}
       />
-      <span className={`min-w-0 flex-1 truncate ${disabledReason ? "text-text-dim" : ""}`}>
+      <span className={`min-w-0 flex-1 truncate ${disabledReason ? "text-ink-muted" : ""}`}>
         {node.name}
       </span>
       {entry?.warning && (
@@ -175,12 +177,12 @@ function TreeRow({ shape, depth, picked, onRoleChange }: TreeRowProps) {
         </span>
       )}
       {entry?.readError && (
-        <span className="shrink-0 text-xs text-danger" title={entry.readError}>
+        <span className="shrink-0 text-caption text-danger-text" title={entry.readError}>
           ✗
         </span>
       )}
-      <select
-        className="shrink-0 rounded-sm border border-border-input bg-bg-input px-1 py-0.5 text-xs disabled:opacity-50"
+      <Select
+        className="h-control-sm w-auto shrink-0 px-2 text-caption"
         value={role}
         disabled={!!disabledReason}
         onChange={(e) => onRoleChange(node, e.target.value as PickedRole)}
@@ -188,7 +190,7 @@ function TreeRow({ shape, depth, picked, onRoleChange }: TreeRowProps) {
         <option value="ignore">Ignore</option>
         <option value="agent">Agent</option>
         <option value="command">Command</option>
-      </select>
+      </Select>
     </div>
   );
 

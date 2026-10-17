@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Bot, ChevronDown, HelpCircle, Maximize2, Plus, Slash } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
+import { MenuItem, menuSurfaceClass } from "@/components/ui/row-menu";
+import { cn } from "@/lib/utils";
 
 export interface GraphToolbarProps {
   onAdd: (kind: "agent" | "command") => void;
@@ -36,67 +41,58 @@ export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDi
   }, [addOpen]);
 
   return (
-    <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-pill border border-border-menu bg-bg-menu px-1.5 py-1 shadow-dropdown">
+    <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-pill border border-line-soft bg-surface px-1.5 py-1 shadow-menu">
       <div ref={ref} className="relative">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
+          icon={Plus}
           disabled={disabled}
+          aria-haspopup="menu"
+          aria-expanded={addOpen}
           onClick={() => setAddOpen((o) => !o)}
           title={disabled ? "Daemon connection required." : undefined}
-          className="flex h-7 items-center gap-1 rounded-pill px-2.5 text-[12.5px] font-medium text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-pill"
         >
-          ＋ Add ▾
-        </button>
+          Add
+          <ChevronDown size={14} strokeWidth={1.6} aria-hidden />
+        </Button>
         {addOpen && (
-          <div
-            role="menu"
-            className="absolute left-0 top-full z-30 mt-1 w-44 animate-popIn rounded-panel border border-border-menu bg-bg-menu py-1 shadow-dropdown"
-          >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+          <div role="menu" className={cn("absolute left-0 top-full mt-1 w-44 animate-popIn", menuSurfaceClass)}>
+            <MenuItem
+              label="Add workflow"
+              icon={Slash}
+              onSelect={() => {
                 setAddOpen(false);
                 onAdd("command");
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06]"
-            >
-              <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#818cf8" }} />
-              Add workflow
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+            />
+            <MenuItem
+              label="Add agent"
+              icon={Bot}
+              onSelect={() => {
                 setAddOpen(false);
                 onAdd("agent");
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-text-body hover:bg-white/[.06]"
-            >
-              <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#a78bfa" }} />
-              Add agent
-            </button>
+            />
           </div>
         )}
       </div>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
+        icon={Maximize2}
         disabled={fitDisabled}
         onClick={onFitView}
-        className="flex h-7 items-center gap-1 rounded-pill px-2.5 text-[12.5px] font-medium text-text-body hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-pill"
       >
-        ⤢ Fit to view
-      </button>
+        Fit to view
+      </Button>
 
-      <button
-        type="button"
-        aria-label="Legend"
-        onClick={onToggleLegend}
-        className="flex h-7 w-7 items-center justify-center rounded-pill text-[13px] font-medium text-text-body hover:bg-white/[.06]"
-      >
-        ?
-      </button>
+      <IconButton aria-label="Legend" icon={HelpCircle} size="sm" onClick={onToggleLegend} className="rounded-pill" />
     </div>
   );
 }

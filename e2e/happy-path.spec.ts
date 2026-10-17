@@ -28,11 +28,11 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
 
   // S2 — empty state: exactly the two CTAs, no sidebar project rows yet selected.
   await expect(page.getByText("No projects yet")).toBeVisible();
-  await expect(page.getByRole("button", { name: "+ New project" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "↧ Import existing .claude/" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("button", { name: "New project" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import existing .claude/" })).toBeVisible();
 
   // S3 — create project via TYPED path (no native picker in this flow).
-  await page.getByRole("button", { name: "+ New project" }).first().click();
+  await page.getByRole("main").getByRole("button", { name: "New project" }).first().click();
   await page.getByPlaceholder("My API Service").fill("e2e-demo");
   await page.getByPlaceholder("/home/me/code/my-service").fill(daemon.projectRoot);
 
@@ -42,8 +42,8 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   await page.getByRole("button", { name: "Create project", exact: true }).click();
 
   // Project now in sidebar + main area shows the two add buttons (empty project).
-  await expect(page.getByRole("button", { name: "e2e-demo" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "+ Add agent" }).first()).toBeVisible();
+  await expect(page.getByRole("complementary").getByRole("button", { name: /^e2e-demo/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add agent" }).first()).toBeVisible();
 
   // No disk write yet from project creation beyond .symbion/store.json — confirm
   // the target repo's .claude/ does NOT exist before any publish (no silent write).
@@ -51,7 +51,7 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   expect(existsSync(join(daemon.projectRoot, ".symbion", "store.json"))).toBe(true);
 
   // S7 — add an agent via the FORM tab.
-  await page.getByRole("button", { name: "+ Add agent" }).first().click();
+  await page.getByRole("button", { name: "Add agent" }).first().click();
   await expect(page.getByText("Agent builder")).toBeVisible();
   await expect(page.getByText("By description")).toBeVisible(); // form tab active by default
 
@@ -70,14 +70,14 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   // Drawer closes after save; artifact now listed with a draft dot.
   await expect(page.getByText("Agent builder")).not.toBeVisible();
   await expect(page.getByText("code-reviewer")).toBeVisible();
-  await expect(page.getByText("·draft")).toBeVisible();
+  await expect(page.getByText("draft", { exact: true }).first()).toBeVisible();
 
   // Still nothing written into the target repo's .claude/ — saveArtifact only
   // touches .symbion/store.json (STATE §4/§5b).
   expect(existsSync(join(daemon.projectRoot, ".claude"))).toBe(false);
 
   // S8 — add a workflow/command via the FORM tab.
-  await page.getByRole("button", { name: "+ Add workflow" }).first().click();
+  await page.getByRole("button", { name: "Add workflow" }).first().click();
   await expect(page.getByText("Workflow builder")).toBeVisible();
   await expect(page.getByText("By description")).toBeVisible(); // form tab active by default
 
@@ -105,7 +105,7 @@ test("create project -> add agent + command -> live preview -> publish -> diff -
   expect(existsSync(join(daemon.projectRoot, ".claude"))).toBe(false);
 
   // S10 — publish.
-  await page.getByRole("button", { name: "Publish ▸" }).click();
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Publish" })).toBeVisible();
   // Claude target checked by default; proceed straight to diff preview.
   await page.getByRole("button", { name: "Preview changes" }).click();

@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import type { DiffFile, ProjectStore, TargetId } from "@symbion/core";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { Banner } from "@/components/ui/banner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { callRpc } from "@/lib/rpc/client";
 import type { ComputeDiffResult, WriteResult } from "@/lib/rpc/types";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
@@ -19,11 +22,12 @@ export interface PublishDiffViewProps {
   onClose: () => void;
 }
 
-const STATUS_GLYPH: Record<DiffFile["status"], string> = {
-  new: "+",
-  update: "~",
-  same: "=",
-  conflict: "!",
+// State words (not glyphs) carry each file's status — colour is never the only signal.
+const STATUS_BADGE: Record<DiffFile["status"], { label: string; variant: BadgeVariant }> = {
+  new: { label: "New", variant: "success" },
+  update: { label: "Updated", variant: "warning" },
+  same: { label: "Unchanged", variant: "plain" },
+  conflict: { label: "Conflict", variant: "danger" },
 };
 
 /** S11 — Publish diff preview + conflict resolve. Conflicts unchecked, block write until resolved. */
@@ -59,7 +63,7 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
   if (loading || !diff) {
     return (
       <Dialog open onClose={onClose} className="w-[640px]">
-        <p className="text-sm text-text-muted">Computing diff…</p>
+        <p className="text-ui text-ink-muted">Computing diff…</p>
       </Dialog>
     );
   }
@@ -121,20 +125,20 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
       ) : (
         <label
           key={file.relPath}
-          className="flex items-center gap-2 rounded-panel border border-border-hairline px-2 py-1 text-sm text-text-body"
+          className="flex items-center gap-3 rounded-md border border-line px-3 py-2 text-ui text-ink"
         >
-          <input type="checkbox" checked={selected.has(file.relPath)} onChange={() => toggle(file.relPath)} />
-          <span className="font-mono text-xs">{STATUS_GLYPH[file.status]}</span>
-          <span>{file.relPath}</span>
+          <Checkbox checked={selected.has(file.relPath)} onChange={() => toggle(file.relPath)} />
+          <span className="min-w-0 flex-1 truncate font-mono text-code">{file.relPath}</span>
+          <Badge variant={STATUS_BADGE[file.status].variant}>{STATUS_BADGE[file.status].label}</Badge>
         </label>
       )
     ),
     ...diff.files
       .filter((f) => f.status === "same")
       .map((file) => (
-        <div key={file.relPath} className="flex items-center gap-2 px-2 py-1 text-sm text-text-faint">
-          <span className="font-mono text-xs">=</span>
-          <span>{file.relPath}</span>
+        <div key={file.relPath} className="flex items-center gap-3 px-3 py-2 text-ui text-ink-muted">
+          <span className="min-w-0 flex-1 truncate font-mono text-code">{file.relPath}</span>
+          <Badge variant={STATUS_BADGE.same.variant}>{STATUS_BADGE.same.label}</Badge>
         </div>
       )),
   ];
@@ -146,14 +150,14 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
       </DialogHeader>
 
       {hasInitOnNonExisting && (
-        <p className="mb-2 text-xs text-text-muted">Will initialize .claude/</p>
+        <p className="mb-2 text-caption text-ink-muted">Will initialize .claude/</p>
       )}
 
       {firstForeignMergeFiles.length > 0 && (
-        <p className="mb-2 rounded-panel border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
-          ℹ {firstForeignMergeFiles.map((f) => f.relPath).join(", ")} already exist and will be edited by Symbion
+        <Banner tone="warning" className="mb-2">
+          {firstForeignMergeFiles.map((f) => f.relPath).join(", ")} already exist and will be edited by Symbion
           for the first time (existing content is kept outside the managed region).
-        </p>
+        </Banner>
       )}
 
       <div className="max-h-96 space-y-2 overflow-y-auto">
@@ -161,18 +165,25 @@ export function PublishDiffView({ project, targets, version, onBack, onClose }: 
       </div>
 
       {!daemonConnected && (
-        <p className="mb-2 text-xs text-danger">⚠ Daemon disconnected — cannot write to disk.</p>
+        <Banner tone="danger" className="mt-3">
+          Daemon disconnected — cannot write to disk.
+        </Banner>
       )}
-      {writeError && <p className="mb-2 text-xs text-danger">✗ Write failed: {writeError}</p>}
+      {writeError && (
+        <Banner tone="danger" className="mt-3">
+          Write failed: {writeError}
+        </Banner>
+      )}
 
       <DialogFooter>
         <Button variant="outline" onClick={onBack}>
           Back
         </Button>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
         <Button
+          size="lg"
           disabled={nothingToWrite || selected.size === 0 || writing || !daemonConnected}
           onClick={handleWrite}
         >

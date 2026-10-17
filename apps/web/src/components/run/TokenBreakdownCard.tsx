@@ -40,56 +40,56 @@ export function TokenBreakdownCard({ label, live, own, agents, costUsd }: TokenB
   const showAgentsColumn = agents !== undefined;
 
   return (
-    <div className="w-[300px] rounded-panel border border-border-menu bg-bg-menu p-3 text-[11px] shadow-dropdown">
+    <div className="w-[300px] rounded-lg border border-line-soft bg-surface p-3 text-caption shadow-menu">
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-semibold text-text-body">{label} — token usage</span>
-        {live && <span className="text-run-active">LIVE ⟳</span>}
+        <span className="font-semibold text-ink">{label} — token usage</span>
+        {live && <span className="text-running">LIVE ⟳</span>}
       </div>
 
       <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 gap-y-1 tabular-nums">
         <span />
-        <span className="text-right text-text-muted">own</span>
-        {showAgentsColumn && <span className="text-right text-text-muted">+ agents</span>}
-        <span className="text-right text-text-muted">total</span>
+        <span className="text-right text-ink-muted">own</span>
+        {showAgentsColumn && <span className="text-right text-ink-muted">+ agents</span>}
+        <span className="text-right text-ink-muted">total</span>
 
-        <span className="text-text-muted">input</span>
-        <span className="text-right text-text-body">{fmtTok(own.input)}</span>
-        {showAgentsColumn && <span className="text-right text-text-body">{fmtTok(agents?.input ?? 0)}</span>}
-        <span className="text-right text-text-body">{fmtTok(totalUsage.input)}</span>
+        <span className="text-ink-muted">input</span>
+        <span className="text-right text-ink">{fmtTok(own.input)}</span>
+        {showAgentsColumn && <span className="text-right text-ink">{fmtTok(agents?.input ?? 0)}</span>}
+        <span className="text-right text-ink">{fmtTok(totalUsage.input)}</span>
 
-        <span className="text-text-muted">output</span>
-        <span className="text-right text-text-body">{fmtTok(own.output)}</span>
-        {showAgentsColumn && <span className="text-right text-text-body">{fmtTok(agents?.output ?? 0)}</span>}
-        <span className="text-right text-text-body">{fmtTok(totalUsage.output)}</span>
+        <span className="text-ink-muted">output</span>
+        <span className="text-right text-ink">{fmtTok(own.output)}</span>
+        {showAgentsColumn && <span className="text-right text-ink">{fmtTok(agents?.output ?? 0)}</span>}
+        <span className="text-right text-ink">{fmtTok(totalUsage.output)}</span>
       </div>
 
-      <div className="my-2 border-t border-border-hairline" />
+      <div className="my-2 border-t border-line" />
 
       <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 gap-y-1 tabular-nums">
-        <span className="font-semibold text-text-strong">fresh</span>
-        <span className="text-right font-semibold text-text-strong">{fmtTok(fresh(own))}</span>
+        <span className="font-semibold text-ink">fresh</span>
+        <span className="text-right font-semibold text-ink">{fmtTok(fresh(own))}</span>
         {showAgentsColumn && (
-          <span className="text-right font-semibold text-text-strong">{fmtTok(fresh(agents ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }))}</span>
+          <span className="text-right font-semibold text-ink">{fmtTok(fresh(agents ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }))}</span>
         )}
-        <span className="text-right font-semibold text-text-strong">{fmtTok(fresh(totalUsage))}</span>
+        <span className="text-right font-semibold text-ink">{fmtTok(fresh(totalUsage))}</span>
 
-        <span className="text-text-faint">cache read</span>
-        <span className="text-right text-text-faint">{fmtTok(own.cacheRead)}</span>
-        {showAgentsColumn && <span className="text-right text-text-faint">{fmtTok(agents?.cacheRead ?? 0)}</span>}
-        <span className="text-right text-text-faint">{fmtTok(totalUsage.cacheRead)}</span>
+        <span className="text-ink-muted">cache read</span>
+        <span className="text-right text-ink-muted">{fmtTok(own.cacheRead)}</span>
+        {showAgentsColumn && <span className="text-right text-ink-muted">{fmtTok(agents?.cacheRead ?? 0)}</span>}
+        <span className="text-right text-ink-muted">{fmtTok(totalUsage.cacheRead)}</span>
 
-        <span className="text-text-faint">cache write</span>
-        <span className="text-right text-text-faint">{fmtTok(own.cacheWrite)}</span>
-        {showAgentsColumn && <span className="text-right text-text-faint">{fmtTok(agents?.cacheWrite ?? 0)}</span>}
-        <span className="text-right text-text-faint">{fmtTok(totalUsage.cacheWrite)}</span>
+        <span className="text-ink-muted">cache write</span>
+        <span className="text-right text-ink-muted">{fmtTok(own.cacheWrite)}</span>
+        {showAgentsColumn && <span className="text-right text-ink-muted">{fmtTok(agents?.cacheWrite ?? 0)}</span>}
+        <span className="text-right text-ink-muted">{fmtTok(totalUsage.cacheWrite)}</span>
       </div>
 
-      <div className="mt-2 flex items-center justify-between border-t border-border-hairline pt-2">
-        <span className="text-text-muted">cost</span>
-        <span className="font-semibold text-text-strong">{costUsd !== undefined ? `~$${costUsd.toFixed(2)}` : "$ —"}</span>
+      <div className="mt-2 flex items-center justify-between border-t border-line pt-2">
+        <span className="text-ink-muted">cost</span>
+        <span className="font-semibold text-ink">{costUsd !== undefined ? `~$${costUsd.toFixed(2)}` : "$ —"}</span>
       </div>
 
-      <p className="mt-2 text-[10px] leading-snug text-text-faint">
+      <p className="mt-2 text-overline leading-snug text-ink-muted">
         Headline counts fresh tokens only; cache traffic is included in the $ cost.
       </p>
     </div>

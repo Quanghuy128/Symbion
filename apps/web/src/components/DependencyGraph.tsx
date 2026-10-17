@@ -27,6 +27,8 @@ import type {
   SetNodeLayoutResult,
 } from "@symbion/rpc-types";
 import { GraphStatusChips } from "./graph/GraphStatusChips";
+import { History, X } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { GraphToolbar } from "./graph/GraphToolbar";
 import { GraphCanvasMenu } from "./graph/GraphCanvasMenu";
 import { GraphLegend } from "./graph/GraphLegend";
@@ -1098,14 +1100,14 @@ export function DependencyGraph({
        *  a [View summary] action that opens the SAME read-only replay path
        *  history uses (a reconciled run IS a completed historical run). */}
       {reconciledNotice && (
-        <div className="mb-2 flex items-center justify-between rounded-panel border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="mb-2 flex items-center justify-between rounded-lg border border-danger bg-danger-soft px-3 py-2 text-caption text-danger-text">
           <span>
             Run /{reconciledNotice.commandName} marked failed — daemon restarted.
           </span>
           <span className="flex items-center gap-2">
             <button
               type="button"
-              className="underline decoration-dotted hover:text-danger/80"
+              className="underline decoration-dotted hover:text-danger-text"
               onClick={() => {
                 void openHistoryRun(projectId, reconciledNotice.runId);
                 dismissReconciledNotice();
@@ -1113,16 +1115,14 @@ export function DependencyGraph({
             >
               [View summary]
             </button>
-            <button type="button" className="text-danger/70 hover:text-danger" onClick={dismissReconciledNotice}>
-              ✕
-            </button>
+            <IconButton aria-label="Dismiss" icon={X} size="sm" onClick={dismissReconciledNotice} />
           </span>
         </div>
       )}
 
       {viewingHistory && historyLoading && !historyRun && (
-        <div className="border-b border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-          🕘 loading past run…
+        <div className="flex items-center gap-2 border-b border-line bg-warning-soft px-3 py-2 text-caption text-warning">
+          <History size={14} strokeWidth={1.6} aria-hidden /> loading past run…
         </div>
       )}
 
@@ -1151,10 +1151,10 @@ export function DependencyGraph({
 
       <div
         style={panelShown ? undefined : { height: 480 }}
-        className={`relative flex rounded-panel border border-border-hairline bg-bg-panel ${
-          // design Q2: the mission layout grows to the viewport height while a run is shown
-          panelShown ? "h-[calc(100vh-200px)] min-h-[480px]" : ""
-        }`}
+        className={`relative flex rounded-lg border border-line bg-deep ${
+ // design Q2: the mission layout grows to the viewport height while a run is shown
+ panelShown ? "h-[calc(100vh-200px)] min-h-[480px]" : ""
+ }`}
       >
         <div className="relative flex-1">
           <GraphToolbar
@@ -1170,9 +1170,10 @@ export function DependencyGraph({
             <button
               type="button"
               onClick={() => setHistoryPopoverOpen((o) => !o)}
-              className="absolute left-3 top-12 z-10 flex h-7 items-center gap-1 rounded-pill border border-border-menu bg-bg-menu px-2.5 text-[12.5px] font-medium text-text-body shadow-dropdown hover:bg-white/[.06]"
+              className="absolute left-3 top-12 z-10 flex h-7 items-center gap-1.5 rounded-pill border border-line-soft bg-surface px-2.5 text-label text-ink shadow-menu hover:bg-surface-hover"
             >
-              🕘 runs {runCount}
+              <History size={14} strokeWidth={1.6} aria-hidden />
+              runs {runCount}
             </button>
           )}
           {historyPopoverOpen && (
@@ -1269,7 +1270,7 @@ export function DependencyGraph({
             same mount point; design Q1: 360px fixed). Live runs and history
             share ONE component; history sources from the history* slice. */}
         {panelShown && agentView && agentCtx && (shownRun || historyLoading) && (
-          <div className="flex w-[360px] shrink-0 flex-col border-l border-border-hairline">
+          <div className="flex w-[360px] shrink-0 flex-col border-l border-line">
             <AgentsPanel
               view={agentView}
               runId={shownRun?.runId ?? historyRunId}

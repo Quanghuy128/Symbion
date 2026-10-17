@@ -6,7 +6,7 @@ import { AUTHOR_REGISTRY } from "@symbion/core";
 import { DaemonRpcError, initDaemonSession } from "@/lib/rpc/client";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import type { FetchAuthorTemplatesOutcome } from "@/lib/rpc/types";
-import { AppRail } from "./AppRail";
+import { Sidebar } from "./shell/Sidebar";
 import { Toaster } from "./ui/toast";
 import { AuthorTabs } from "./AuthorTabs";
 import { AuthorFetchLoadingState } from "./AuthorFetchLoadingState";
@@ -122,16 +122,16 @@ export function TemplatesView() {
   const skippedFor = (prefix: string) => (isGithubAuthor ? [] : skipped.filter((s) => s.relPath.startsWith(prefix)));
 
   return (
-    <div className="flex h-screen bg-bg-app text-text-body">
-      <AppRail
+    <div className="flex h-screen bg-app text-ink">
+      <Sidebar
         onCreateProject={() => router.push("/?createProject=1")}
         onSelectProject={(id) => router.push(`/?openProject=${encodeURIComponent(id)}`)}
       />
-      <main className="flex-1 overflow-auto p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
+      <main className="flex-1 overflow-auto bg-app px-10 py-10">
+        <div className="mx-auto max-w-content-wide space-y-6">
           <div>
-            <h1 className="text-lg font-semibold">Templates</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="font-display text-page-title text-ink">Templates</h1>
+            <p className="mt-1 text-body text-ink-3">
               Library of ready-made agent / command / skill templates — preview then apply to your project.
             </p>
           </div>
@@ -176,7 +176,7 @@ export function TemplatesView() {
                 <>
                   <AuthorSkippedSummary items={skipped} />
                   {items.length === 0 && (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-caption text-warning">
                       ⚠ Loaded, but no valid templates were found in repo {currentAuthorMeta?.kind === "github" ? currentAuthorMeta.repoLabel : currentAuthorLabel}.
                     </p>
                   )}
@@ -185,13 +185,13 @@ export function TemplatesView() {
             </>
           )}
 
-          <div className="border-t border-border pt-3 text-xs text-muted-foreground">
+          <div className="border-t border-line pt-3 text-caption text-ink-muted">
             Get inspired by community template sets (e.g. ECC){" "}
             <a
               href="https://github.com/affaan-m/ecc"
               target="_blank"
               rel="noreferrer"
-              className="underline hover:text-foreground"
+              className="underline hover:text-ink"
             >
               ↗
             </a>

@@ -1,7 +1,9 @@
 "use client";
 
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Banner } from "@/components/ui/banner";
 import type { WriteResult } from "@/lib/rpc/types";
 
 export interface PublishResultViewProps {
@@ -23,17 +25,19 @@ export function PublishResultView({ result, version, onDone }: PublishResultView
       </DialogHeader>
 
       <DialogBody>
-        <p className="text-sm text-text-body">
-          <span className="text-success">✓</span> {created} created · {updated} updated · {errors.length}{" "}
+        <p className="flex items-center gap-2 text-ui text-ink">
+          <Check size={16} strokeWidth={1.6} aria-hidden className="text-success" /> {created} created · {updated} updated · {errors.length}{" "}
           error(s)
         </p>
-        <p className="mt-1 font-mono text-xs text-text-faint">Backup: {result.backupDir}</p>
+        <p className="mt-1 font-mono text-code-sm text-ink-muted">Backup: {result.backupDir}</p>
 
         {errors.length > 0 && (
-          <ul className="mt-3 space-y-1">
+          <ul className="mt-3 space-y-2">
             {errors.map((e) => (
-              <li key={e.relPath} className="rounded-panel bg-danger/10 px-2 py-1 text-xs text-danger">
-                {e.relPath}: {e.error}
+              <li key={e.relPath}>
+                <Banner tone="danger" icon={null}>
+                  {e.relPath}: {e.error}
+                </Banner>
               </li>
             ))}
           </ul>

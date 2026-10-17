@@ -5,6 +5,8 @@ import { NodeHandle } from "./NodeHandle";
 import { NodeMenu } from "./NodeMenu";
 import { Tooltip } from "@/components/ui/tooltip";
 import { NodeTokenBadge, type NodeTokenBadgeProps } from "./NodeTokenBadge";
+import { Kind } from "@/components/ui/kind";
+import { commandRing } from "./nodeRings";
 
 export interface CommandNodeData {
   label: string;
@@ -43,7 +45,7 @@ export interface CommandNodeData {
   runPulseKey?: number;
   /** workflow-agent-run (design §5 / G1): run-panel selection halo, drawn as
    *  a SECOND ring OUTSIDE the status ring so selection never hides status.
-   *  "hover" = soft white, "selected" = brand-accent. */
+   *  "hover" = soft white, "selected" = mint ring. */
   runHalo?: "hover" | "selected";
 
   /** plain data-bag index signature (unchanged shape from the xyflow-era
@@ -57,7 +59,7 @@ export interface CommandNodeProps {
 }
 
 /**
- * CommandNode — /command node (design §3.2: indigo #818cf8). Stays dumb: all
+ * CommandNode — /command node (Kind tile carries the kind). Stays dumb: all
  * derived state (highlighted/dimmed/unlinked/justAdded/connectable) is computed
  * in DependencyGraph. Local state is ONLY ephemeral UI (menu open, handle hover).
  */
@@ -109,25 +111,19 @@ export function CommandNode({ data }: CommandNodeProps) {
 
   return (
     <div
-      className={`group relative rounded-nav-item px-3 py-2 text-[12.5px] font-medium text-white transition-opacity ${
-        isRunActive ? "animate-glowPulse" : lockIn || rowPulse ? "animate-countLockIn" : ""
-      }`}
+      className={`group relative flex min-h-10 flex-col justify-center rounded-lg border border-line-soft bg-surface px-2.5 text-label text-ink transition-opacity ${
+ isRunActive ? "animate-glowPulse" : lockIn || rowPulse ? "animate-countLockIn" : ""
+ }`}
       style={{
-        background: "#818cf8",
         opacity: participantDim ? 0.35 : data.dimmed ? 0.35 : 1,
-        boxShadow: isRunActive
-          ? "0 0 0 2px #22d3ee"
-          : isRunDone
-            ? "0 0 0 2px #4ade80"
-            : isRunError
-              ? "0 0 0 2px #f87171"
-              : isRunCancelled
-                ? "0 0 0 2px rgba(255,255,255,.3)"
-                : data.justAdded
-                  ? "0 0 0 3px #6366f1"
-                  : data.highlighted
-                    ? "0 0 0 2px #c7d2fe"
-                    : undefined,
+        boxShadow: commandRing({
+          active: isRunActive,
+          done: isRunDone,
+          error: isRunError,
+          cancelled: isRunCancelled,
+          justAdded: data.justAdded,
+          highlighted: data.highlighted,
+        }),
         transition: "box-shadow .3s ease, opacity .12s ease",
       }}
       onMouseEnter={() => setHovered(true)}
@@ -137,18 +133,21 @@ export function CommandNode({ data }: CommandNodeProps) {
         <span
           aria-hidden
           data-run-halo={data.runHalo}
-          className={`pointer-events-none absolute -inset-[6px] rounded-[13px] border-2 transition-colors duration-100 ${
-            data.runHalo === "selected" ? "border-brand-accent" : "border-white/50"
-          }`}
+          className={`pointer-events-none absolute -inset-[6px] rounded-[20px] border-2 transition-colors duration-100 ${
+ data.runHalo === "selected" ? "border-mint" : "border-line-strong"
+ }`}
         />
       )}
       <NodeHandle
         role="source"
         connectable={connectable}
-        className={connectable ? "!bg-command animate-pulse" : "!bg-transparent !border !border-white/40"}
+        className={connectable ? "!bg-workflow animate-pulse" : "!bg-transparent !border !border-line-strong"}
       />
 
-      <span className="pr-4">{data.label}</span>
+      <span className="flex items-center gap-2 pr-4">
+        <Kind kind="workflow" size="sm" />
+        <span className="min-w-0 truncate">{data.label}</span>
+      </span>
 
       {data.badge && <NodeTokenBadge {...data.badge} label={data.label} />}
 
@@ -162,7 +161,7 @@ export function CommandNode({ data }: CommandNodeProps) {
               e.stopPropagation();
               data.onEditBody?.();
             }}
-            className="ml-1 inline-flex items-center rounded-pill bg-warning/15 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-[.05em] text-warning"
+            className="ml-1 inline-flex items-center rounded-pill bg-warning-soft px-1.5 py-0.5 text-overline font-semibold uppercase text-warning"
           >
             not linked
           </button>

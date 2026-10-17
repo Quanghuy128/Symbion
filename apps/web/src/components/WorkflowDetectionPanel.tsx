@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export interface WorkflowDetectionPanelProps {
@@ -34,10 +35,13 @@ export function WorkflowDetectionPanel({
   // Codex-only, informational case (Q5): no import action available.
   if (!importAvailable) {
     return (
-      <div className="space-y-2 rounded-panel border border-border-hairline bg-white/[.03] p-3 text-sm">
-        <p className="font-medium text-text-body">⚠ Existing workflow detected</p>
-        <p className="text-xs text-text-muted">Found: {foundParts.join(", ")}</p>
-        <p className="text-xs text-text-muted">
+      <div className="space-y-2 rounded-lg border border-line-soft bg-surface p-3 text-ui">
+        <p className="flex items-center gap-2 font-medium text-ink">
+          <AlertTriangle size={16} strokeWidth={1.6} aria-hidden className="text-warning" />
+          Existing workflow detected
+        </p>
+        <p className="text-caption text-ink-muted">Found: {foundParts.join(", ")}</p>
+        <p className="text-caption text-ink-muted">
           Symbion does not support importing from AGENTS.md in this version yet. This file will not be affected.
         </p>
         <div className="flex justify-end">
@@ -50,13 +54,16 @@ export function WorkflowDetectionPanel({
   }
 
   return (
-    <div className="space-y-2 rounded-panel border border-border-hairline bg-white/[.03] p-3 text-sm">
-      <p className="font-medium text-text-body">⚠ Existing workflow detected</p>
-      <p className="text-xs text-text-muted">
+    <div className="space-y-2 rounded-lg border border-line-soft bg-surface p-3 text-ui">
+      <p className="flex items-center gap-2 font-medium text-ink">
+          <AlertTriangle size={16} strokeWidth={1.6} aria-hidden className="text-warning" />
+          Existing workflow detected
+        </p>
+      <p className="text-caption text-ink-muted">
         Found: {foundParts.join(", ")}
         {hasAgentsMd && hasClaudeDir ? " (display only, import not supported yet)" : ""}
       </p>
-      <p className="text-xs text-text-muted">
+      <p className="text-caption text-ink-muted">
         Do you want to import the existing agents/commands into this project? The original files in the repo will NOT be modified.
       </p>
       <div className="flex justify-end gap-2">

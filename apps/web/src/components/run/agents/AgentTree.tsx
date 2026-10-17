@@ -3,7 +3,7 @@
 import { memo, useState } from "react";
 import type { AgentNode } from "@symbion/core";
 import { useThrottledValue } from "@/lib/run/useNow";
-import { StatusGlyph } from "./StatusGlyph";
+import { StatusGlyph } from "@/components/ui/status-glyph";
 import { LiveDuration } from "./LiveDuration";
 import { TokenBreakdownCard } from "../TokenBreakdownCard";
 import { fmtTok } from "./format";
@@ -62,9 +62,9 @@ export const AgentTreeRow = memo(function AgentTreeRow({
       aria-selected={selected}
       aria-level={depth + 1}
       data-agent-id={agent.id}
-      className={`relative cursor-pointer border-l-2 px-2 py-1 text-[11.5px] ${
-        selected ? "border-l-brand-accent bg-brand-accent-soft" : "border-l-transparent hover:bg-white/[.04]"
-      } ${focused ? "outline outline-1 outline-brand-accent/60" : ""} ${isNew ? "motion-safe:animate-fadeIn" : ""}`}
+      className={`relative cursor-pointer border-l-2 px-2 py-1 text-caption ${
+ selected ? "border-l-mint bg-mint-soft" : "border-l-transparent hover:bg-surface-hover"
+ } ${focused ? "outline outline-1 outline-focus-ring" : ""} ${isNew ? "motion-safe:animate-fadeIn" : ""}`}
       style={{ paddingLeft: 8 + indentLevels * 12 }}
       onClick={() => onOpen(agent.id)}
       onMouseEnter={() => {
@@ -77,30 +77,30 @@ export const AgentTreeRow = memo(function AgentTreeRow({
       }}
     >
       <div className="flex items-center gap-1.5">
-        {overflow > 0 && <span className="shrink-0 text-[10px] text-text-faint">↳ +{overflow}</span>}
+        {overflow > 0 && <span className="shrink-0 text-overline text-ink-muted">↳ +{overflow}</span>}
         <StatusGlyph status={agent.status} live={live && !cancelling} size="md" />
         {isRoot ? (
           <>
-            <span className="truncate font-semibold text-command">{agent.agentType}</span>
-            {agent.model && <span className="shrink-0 truncate text-[10.5px] text-text-muted">{agent.model}</span>}
+            <span className="truncate font-semibold text-workflow">{agent.agentType}</span>
+            {agent.model && <span className="shrink-0 truncate text-overline text-ink-muted">{agent.model}</span>}
           </>
         ) : (
           <>
             <span className={`shrink-0 font-semibold ${agent.kind === "unattributed" ? "text-warning" : "text-agent"}`}>{agent.agentType}</span>
             {agent.description && (
-              <span className="min-w-0 truncate text-text-body" title={agent.description}>
+              <span className="min-w-0 truncate text-ink" title={agent.description}>
                 {agent.description}
               </span>
             )}
             {notOnGraph && (
-              <span className="shrink-0 rounded-pill bg-white/[.06] px-1.5 text-[9.5px] text-text-faint">not on graph</span>
+              <span className="shrink-0 rounded-pill bg-surface-hover px-1.5 text-overline text-ink-muted">not on graph</span>
             )}
           </>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-[10.5px] text-text-muted">
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-overline text-ink-muted">
           <LiveDuration startedAtMs={agent.startedAtMs} endedAtMs={agent.endedAtMs} nowMs={nowMs} ticking={ticking} />
           <span
-            className="relative font-mono tabular-nums text-text-body"
+            className="relative font-mono tabular-nums text-ink"
             onMouseEnter={() => setTokHover(true)}
             onMouseLeave={() => setTokHover(false)}
           >
@@ -114,14 +114,14 @@ export const AgentTreeRow = memo(function AgentTreeRow({
         </span>
       </div>
       {(nowDoing || sl) && (
-        <div className="mt-0.5 truncate pl-5 text-[10.5px] text-text-muted" title={nowDoing ?? undefined}>
+        <div className="mt-0.5 truncate pl-5 text-overline text-ink-muted" title={nowDoing ?? undefined}>
           {nowDoing ? (
             nowDoing
           ) : sl ? (
             <>
               {sl.text}
               {sl.errors && (
-                <span className="text-danger">
+                <span className="text-danger-text">
                   {" "}
                   · {agent.errorCount} error{agent.errorCount === 1 ? "" : "s"}
                 </span>
@@ -181,10 +181,10 @@ export function AgentTree({ root, selectedAgentId, focusedAgentId, live, nowMs, 
         />
       ))}
       {root.status === "starting" && root.children.length === 0 && (
-        <p className="px-3 py-2 text-[11px] text-text-muted motion-safe:animate-pulse">Waiting for the CLI to start streaming…</p>
+        <p className="px-3 py-2 text-caption text-ink-muted motion-safe:animate-pulse">Waiting for the CLI to start streaming…</p>
       )}
       {root.status !== "starting" && root.children.length === 0 && (
-        <p className="px-3 py-1.5 text-[11px] text-text-faint">No subagents spawned.</p>
+        <p className="px-3 py-1.5 text-caption text-ink-muted">No subagents spawned.</p>
       )}
     </div>
   );

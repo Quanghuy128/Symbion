@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { CanonicalArtifact } from "@symbion/core";
 import { extractAgentMentions } from "@symbion/core";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { GenerateBodyButton } from "@/components/GenerateBodyButton";
 import { ModelPicker } from "@/components/ModelPicker";
 import { GenerateBodyDisclosure } from "@/components/GenerateBodyDisclosure";
@@ -30,12 +30,12 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
   return (
     <div className="space-y-3">
       <div>
-        <label className="mb-1 block text-sm font-medium text-text-body">command name (→ /name)</label>
+        <label className="mb-1.5 block text-label text-ink-2">command name (→ /name)</label>
         <Input value={artifact.name} onChange={(e) => update("name", e.target.value)} placeholder="analyze" />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-text-body">description *</label>
+        <label className="mb-1.5 block text-label text-ink-2">description *</label>
         <Input
           value={artifact.description}
           onChange={(e) => update("description", e.target.value)}
@@ -45,7 +45,7 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium text-text-body">Content</label>
+          <label className="text-label text-ink-2">Content</label>
           <div className="flex items-center gap-2">
             <ModelPicker providerId={activeProviderId} value={bodyModelId} onChange={setBodyModelId} />
             <GenerateBodyButton
@@ -59,8 +59,8 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
             />
           </div>
         </div>
-        <textarea
-          className="h-40 w-full rounded-sm border border-border-input bg-bg-input p-2 text-sm text-text-body"
+        <Textarea
+          className="h-40 py-2 font-mono text-code"
           value={artifact.body}
           onChange={(e) => update("body", e.target.value)}
         />
@@ -68,8 +68,8 @@ export function WorkflowForm({ artifact, allArtifacts, onChange }: WorkflowFormP
       </div>
 
       {mentions.length > 0 && (
-        <div className="text-xs">
-          <span className="text-text-muted">Referenced agents: </span>
+        <div className="text-caption">
+          <span className="text-ink-muted">Referenced agents: </span>
           {mentions.map((m) => (
             <span key={m} className={agentNames.has(m) ? "text-success" : "text-warning"}>
               • {m} {agentNames.has(m) ? "✓" : "(does not exist)"}{" "}

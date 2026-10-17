@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { NodeHandle } from "./NodeHandle";
 
@@ -23,7 +24,7 @@ export interface MissingAgentNodeProps {
 
 /**
  * MissingAgentNode — placeholder for a dangling `@mention` (design §3.2 state 3).
- * NOT a connect target (isConnectable=false, E5). Hover reveals "＋ Create this agent"
+ * NOT a connect target (isConnectable=false, E5). Hover reveals a "Create this agent"
  * which turns the phantom into a real agent draft (P7).
  */
 export function MissingAgentNode({ data }: MissingAgentNodeProps) {
@@ -31,7 +32,7 @@ export function MissingAgentNode({ data }: MissingAgentNodeProps) {
 
   return (
     <div
-      className="relative rounded-nav-item border border-dashed border-danger bg-danger/10 px-3 py-2 text-[12.5px] font-medium text-danger-hi transition-opacity"
+      className="relative flex min-h-10 items-center rounded-lg border-[1.5px] border-dashed border-line-strong bg-transparent px-2.5 text-label text-ink-muted transition-opacity"
       style={{ opacity: data.dimmed ? 0.35 : 1 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -48,10 +49,11 @@ export function MissingAgentNode({ data }: MissingAgentNodeProps) {
             e.stopPropagation();
             data.onCreateAgent?.(data.name);
           }}
-          className="absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-sm bg-brand-accent-soft px-2 py-1 text-[11px] font-medium text-accent-text hover:bg-brand-accent-soft/80 disabled:cursor-not-allowed disabled:opacity-40"
+          className="absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-sm bg-mint-soft px-2 py-1 text-caption font-medium text-mint-text hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40"
           title={!data.daemonConnected ? "Daemon connection required." : undefined}
         >
-          ＋ Create this agent
+          <Plus size={14} strokeWidth={1.6} aria-hidden className="mr-1 inline-block" />
+          Create this agent
         </button>
       )}
     </div>

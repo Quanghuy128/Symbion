@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FileText } from "lucide-react";
 import { renderArtifacts, validateArtifact, type CanonicalArtifact, type LintIssue } from "@symbion/core";
 
 export interface LivePreviewPaneProps {
@@ -30,18 +31,21 @@ export function LivePreviewPane({ artifact, allArtifacts }: LivePreviewPaneProps
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border-hairline px-3 py-2 font-mono text-[12.5px] text-text-faint">
-        {artifact.kind === "agent" ? `.claude/agents/${artifact.name || "<name>"}.md` : `.claude/commands/${artifact.name || "<name>"}.md`}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-sidebar px-3 font-mono text-code-sm text-ink-3">
+        <FileText size={14} strokeWidth={1.6} aria-hidden className="shrink-0 text-ink-muted" />
+        <span className="truncate">
+          {artifact.kind === "agent" ? `.claude/agents/${artifact.name || "<name>"}.md` : `.claude/commands/${artifact.name || "<name>"}.md`}
+        </span>
       </div>
-      <pre className="flex-1 overflow-auto whitespace-pre-wrap bg-bg-code p-3 font-mono text-[12.5px] text-text-body">
+      <pre className="flex-1 overflow-auto whitespace-pre-wrap bg-sidebar p-3 font-mono text-code text-ink">
         {preview}
       </pre>
-      <div className="border-t border-border-hairline p-2 text-xs">
+      <div className="border-t border-line p-2 text-caption">
         {errors.length === 0 && warnings.length === 0 && (
           <p className="text-success">✓ frontmatter valid · filename matches name</p>
         )}
         {errors.map((e, i) => (
-          <p key={i} className="text-danger">
+          <p key={i} className="text-danger-text">
             ✗ {e.message}
           </p>
         ))}

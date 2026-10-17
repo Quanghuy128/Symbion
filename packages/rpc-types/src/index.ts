@@ -11,6 +11,7 @@
 import type {
   CanonicalArtifact,
   DiffFile,
+  FourWay,
   PersistedRunEvent,
   ProjectRunConfig,
   ProjectSettings,
@@ -19,7 +20,9 @@ import type {
   RenderedFile,
   RunInfo,
   RunListItem,
+  RunState,
   RunStatus,
+  RunSummary,
   TargetId,
   TemplateListItem,
 } from "@symbion/core";
@@ -683,6 +686,42 @@ export interface GetRunEventsResult {
   done: boolean;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// free-node-dragging (docs/loops/free-node-dragging-STATE.md PLAN §3). New,
+// separate RPC surface — reads/writes `.symbion/<project>/layout.json`, a
+// presentation-only file that never touches the canonical IR / artifact CRUD
+// shapes above.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** One node's manually-dragged (x,y), in the same canvas-local, unitless,
+ *  top-left-origin coordinate space `computeLayout`'s dagre output already uses. */
+export interface NodeLayoutPosition {
+  x: number;
+  y: number;
+}
+
+export interface GetNodeLayoutParams {
+  projectId: string;
+}
+export interface GetNodeLayoutResult {
+  /** keyed by the same id string a `GraphCanvasNode.id` carries — a real
+   *  `CanonicalArtifact.id` uuid, or a synthetic `missing-<name>` string.
+   *  Missing/corrupt `layout.json` resolves to `{}` — never throws (AC-4). */
+  positions: Record<string, NodeLayoutPosition>;
+}
+
+export interface SetNodeLayoutParams {
+  projectId: string;
+  nodeId: string;
+  position: NodeLayoutPosition;
+}
+export interface SetNodeLayoutResult {
+  /** the FULL updated map, so the client never has to locally guess/merge —
+   *  also the natural place a second tab's concurrent write is reconciled
+   *  from (last-write-wins, no locking, per STATE's locked decision). */
+  positions: Record<string, NodeLayoutPosition>;
+}
+
 /** SSE `event: run` frame payload (batched events, id = last seq in batch). */
 export interface RunSseEventsFrame {
   runId: string;
@@ -727,7 +766,9 @@ export type RpcMethod =
   | "startRun"
   | "cancelRun"
   | "listRuns"
-  | "getRunEvents";
+  | "getRunEvents"
+  | "getNodeLayout"
+  | "setNodeLayout";
 
 export interface RpcRequest<M extends RpcMethod = RpcMethod, P = unknown> {
   method: M;
@@ -743,6 +784,7 @@ export interface RpcErrorBody {
 export type {
   CanonicalArtifact,
   DiffFile,
+  FourWay,
   PersistedRunEvent,
   ProjectRunConfig,
   ProjectSettings,
@@ -751,7 +793,9 @@ export type {
   RenderedFile,
   RunInfo,
   RunListItem,
+  RunState,
   RunStatus,
+  RunSummary,
   TargetId,
   TemplateListItem,
 };

@@ -116,6 +116,20 @@ const config: Config = {
           "50%": { boxShadow: "0 0 0 6px rgba(34,211,238,.05)" },
           "100%": { boxShadow: "0 0 0 0 rgba(34,211,238,.5)" },
         },
+        // P2 (graph-execution-realtime design §3.5/§7): edge current while a
+        // dispatch is actively flowing — stroke-dasharray 6/4 + dashoffset
+        // linear loop ~600ms. Collapses under prefers-reduced-motion.
+        dashFlow: {
+          from: { strokeDashoffset: "10" },
+          to: { strokeDashoffset: "0" },
+        },
+        // P2: one-shot "lock-in" flash when a node's live token count freezes
+        // on settle (design §3.5's "pulse -> one 300ms lock-in flash -> steady").
+        countLockIn: {
+          "0%": { boxShadow: "0 0 0 0 rgba(255,255,255,0)" },
+          "40%": { boxShadow: "0 0 0 3px rgba(255,255,255,.35)" },
+          "100%": { boxShadow: "0 0 0 0 rgba(255,255,255,0)" },
+        },
       },
       animation: {
         fadeIn: "fadeIn .16s ease both",
@@ -123,6 +137,8 @@ const config: Config = {
         popIn: "popIn .16s cubic-bezier(.2,.8,.2,1) both",
         pulse: "pulse .9s cubic-bezier(.2,.8,.2,1) 1",
         glowPulse: "glowPulse 1.8s cubic-bezier(.2,.8,.2,1) infinite",
+        dashFlow: "dashFlow .6s linear infinite",
+        countLockIn: "countLockIn .3s cubic-bezier(.2,.8,.2,1) 1",
       },
     },
   },

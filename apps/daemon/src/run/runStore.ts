@@ -20,6 +20,7 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
+import { selectPruneTargets } from "@symbion/core";
 import type { PersistedRunEvent, RunInfo, RunListItem } from "../rpc/contract.js";
 import { atomicWriteJson } from "../store/store.js";
 import { resolveConfinedPath, PathConfinementError } from "../rpc/guard.js";
@@ -201,13 +202,30 @@ export function reconcile(projectRoot: string, liveRunIds: Set<string>): void {
  * prune — keep the newest `keep` runs by startedAt; delete the rest. Only
  * deletes dirs directly under `.symbion/runs/` whose name matches RUNID_RE;
  * lstat-refuses symlinked dirs (same G-guard posture as safeDeleteProjectStore).
+ *
+ * The SORT+SELECT step delegates to `core.selectPruneTargets` (STATE §18.1 P3
+ * — a pure, unit-tested extraction of what used to be this function's inline
+ * sort-and-slice; behavior-preserving, not new pruning logic). Everything else
+ * (lstat/rmSync/symlink-refusal/re-confinement) is inherently fs work and
+ * stays here.
+ *
+ * `liveRunIds` (STATE §20 review fix — 🟠 High): any currently-active/starting/
+ * cancelling run tracked in-memory by `runManager` is EXCLUDED from deletion
+ * candidacy regardless of its `startedAt` age, mirroring `reconcile()`'s
+ * existing `liveRunIds.has(run.runId)` exemption immediately above. Without
+ * this, a long-running active run (its run.json is written synchronously at
+ * `start()`, long before it finishes) could be the "oldest" candidate if
+ * enough other runs for the same project complete with newer `startedAt`
+ * timestamps while it's still executing — pruning would then delete its
+ * still-in-flight directory out from under it.
  */
-export function prune(projectRoot: string, keep = DEFAULT_KEEP): void {
+export function prune(projectRoot: string, keep = DEFAULT_KEEP, liveRunIds: Set<string> = new Set()): void {
   const dir = runsDirAbs(projectRoot);
   if (!existsSync(dir)) return;
   const candidates: Array<{ name: string; startedAt: string }> = [];
   for (const name of readdirSync(dir)) {
     if (!RUNID_RE.test(name)) continue; // never touch foreign files/dirs
+    if (liveRunIds.has(name)) continue; // never a prune candidate while live
     const abs = join(dir, name);
     let st;
     try {
@@ -219,10 +237,13 @@ export function prune(projectRoot: string, keep = DEFAULT_KEEP): void {
     const run = readRunJson(projectRoot, name);
     candidates.push({ name, startedAt: run?.startedAt ?? "" });
   }
-  if (candidates.length <= keep) return;
-  candidates.sort((a, b) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0));
-  const toDelete = candidates.slice(0, candidates.length - keep);
-  for (const { name } of toDelete) {
+  const toDeleteNames = new Set(
+    selectPruneTargets(
+      candidates.map((c) => ({ runId: c.name, startedAt: c.startedAt })),
+      keep
+    )
+  );
+  for (const name of toDeleteNames) {
     // re-confine before delete (belt-and-braces).
     const abs = runDirAbs(projectRoot, name);
     // lstat guard again immediately before removal (TOCTOU-narrow).

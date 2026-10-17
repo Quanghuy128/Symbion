@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Handle, Position, type NodeProps } from "reactflow";
+import { useEffect, useRef, useState } from "react";
+import { NodeHandle } from "./NodeHandle";
 import { NodeMenu } from "./NodeMenu";
 import { Tooltip } from "@/components/ui/tooltip";
+import { NodeTokenBadge, type NodeTokenBadgeProps } from "./NodeTokenBadge";
 
 export interface CommandNodeData {
   label: string;
@@ -33,6 +34,26 @@ export interface CommandNodeData {
   runStatus?: "idle" | "starting" | "active" | "done" | "error" | "cancelled";
   /** false → 35% dim, no hover (non-participant during a mission). Defaults true (no run). */
   runParticipant?: boolean;
+  /** P2 (design §3.5/§4): roll-up token badge (own + Σ agents). Undefined
+   *  outside a run OR before the first usage event. */
+  badge?: NodeTokenBadgeProps;
+  /** P2: bumped by DependencyGraph on a timeline feed-row click for this
+   *  node's actor — re-keying replays the one-shot pulse once (design §5's
+   *  "feed row click pulses the node"). */
+  runPulseKey?: number;
+  /** workflow-agent-run (design §5 / G1): run-panel selection halo, drawn as
+   *  a SECOND ring OUTSIDE the status ring so selection never hides status.
+   *  "hover" = soft white, "selected" = brand-accent. */
+  runHalo?: "hover" | "selected";
+
+  /** plain data-bag index signature (unchanged shape from the xyflow-era
+   *  `NodeProps<Node<T>>` requirement — no longer required by the self-coded
+   *  `GraphNode`/`GraphCanvas` contract, kept for shape stability). */
+  [key: string]: unknown;
+}
+
+export interface CommandNodeProps {
+  data: CommandNodeData;
 }
 
 /**
@@ -40,11 +61,11 @@ export interface CommandNodeData {
  * derived state (highlighted/dimmed/unlinked/justAdded/connectable) is computed
  * in DependencyGraph. Local state is ONLY ephemeral UI (menu open, handle hover).
  */
-export function CommandNode({ data }: NodeProps<CommandNodeData>) {
+export function CommandNode({ data }: CommandNodeProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  // one-shot pulse: re-key the handle each time hover begins so the .9s animation replays once.
-  const [pulseKey, setPulseKey] = useState(0);
+  // one-shot pulse-on-hover is now owned internally by NodeHandle (self-coded
+  // remount-to-replay trick), replacing the xyflow-era local pulseKey state.
   const connectable = data.connectable ?? false;
   // Run engine v1: runParticipant defaults true (no active run — zero visual
   // change to the existing authoring graph). Active glow takes priority over
@@ -56,10 +77,40 @@ export function CommandNode({ data }: NodeProps<CommandNodeData>) {
   const isRunError = data.runStatus === "error";
   const isRunCancelled = data.runStatus === "cancelled";
 
+  // P2 (design §3.5): one-shot "lock-in" flash the instant this node
+  // transitions from active -> done (was live, now settled) — the previous
+  // runStatus is tracked in a ref so this only fires on the ACTIVE->DONE edge,
+  // never on every render while done.
+  const wasActiveRef = useRef(false);
+  const [lockIn, setLockIn] = useState(false);
+  useEffect(() => {
+    if (isRunActive) {
+      wasActiveRef.current = true;
+    } else if (isRunDone && wasActiveRef.current) {
+      wasActiveRef.current = false;
+      setLockIn(true);
+      const t = window.setTimeout(() => setLockIn(false), 300);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [isRunActive, isRunDone]);
+
+  // P2: feed-row-click -> node pulse (design §5). Re-fires the one-shot
+  // `pulse` keyframe whenever runPulseKey changes (a new key = a new click).
+  const [rowPulse, setRowPulse] = useState(false);
+  const lastPulseKeyRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (data.runPulseKey === undefined || data.runPulseKey === lastPulseKeyRef.current) return;
+    lastPulseKeyRef.current = data.runPulseKey;
+    setRowPulse(true);
+    const t = window.setTimeout(() => setRowPulse(false), 900);
+    return () => window.clearTimeout(t);
+  }, [data.runPulseKey]);
+
   return (
     <div
       className={`group relative rounded-nav-item px-3 py-2 text-[12.5px] font-medium text-white transition-opacity ${
-        isRunActive ? "animate-glowPulse" : ""
+        isRunActive ? "animate-glowPulse" : lockIn || rowPulse ? "animate-countLockIn" : ""
       }`}
       style={{
         background: "#818cf8",
@@ -82,22 +133,31 @@ export function CommandNode({ data }: NodeProps<CommandNodeData>) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <Handle
-        key={pulseKey}
-        type="source"
-        position={Position.Right}
-        isConnectable={connectable}
-        onMouseEnter={() => connectable && setPulseKey((k) => k + 1)}
+      {data.runHalo && (
+        <span
+          aria-hidden
+          data-run-halo={data.runHalo}
+          className={`pointer-events-none absolute -inset-[6px] rounded-[13px] border-2 transition-colors duration-100 ${
+            data.runHalo === "selected" ? "border-brand-accent" : "border-white/50"
+          }`}
+        />
+      )}
+      <NodeHandle
+        role="source"
+        connectable={connectable}
         className={connectable ? "!bg-command animate-pulse" : "!bg-transparent !border !border-white/40"}
       />
 
       <span className="pr-4">{data.label}</span>
+
+      {data.badge && <NodeTokenBadge {...data.badge} label={data.label} />}
 
       {/* Unlinked-command chip (design §5 O) — warning, never danger. */}
       {data.unlinked && (
         <Tooltip content="This command references an agent with backticks — use @name or drag an edge to show the link.">
           <button
             type="button"
+            data-no-node-drag
             onClick={(e) => {
               e.stopPropagation();
               data.onEditBody?.();

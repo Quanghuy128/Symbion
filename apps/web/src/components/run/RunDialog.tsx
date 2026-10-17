@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CanonicalArtifact } from "@symbion/core";
+import { useRouter } from "next/navigation";
+import { extractAgentMentions, type CanonicalArtifact } from "@symbion/core";
 import type { PreflightCheck, RunPreflightResult } from "@symbion/rpc-types";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ export function RunDialog({
   onPublish,
   publishDialogClosedSignal,
 }: RunDialogProps) {
+  const router = useRouter();
   const preflight = useRunStore((s) => s.preflight);
   const startRun = useRunStore((s) => s.startRun);
 
@@ -115,14 +117,22 @@ export function RunDialog({
     setStarting(true);
     setError(null);
     try {
-      const res = await startRun({
-        projectId,
-        artifactId: command.id,
-        requirement: requirement.trim(),
-        model: showModel && model.trim().length > 0 ? model.trim() : undefined,
-        nonce,
-        ackFirstRun: needsAck ? true : undefined,
-      });
+      // P2: the agent names reachable from THIS command (by @mention) — the
+      // same set the daemon resolves independently at startRun time (STATE
+      // §13.1) — passed to the store so its fold-rollup can attribute agent
+      // buckets without a second graph traversal at attach() time.
+      const agentSubagentNames = new Set(extractAgentMentions(command.body));
+      const res = await startRun(
+        {
+          projectId,
+          artifactId: command.id,
+          requirement: requirement.trim(),
+          model: showModel && model.trim().length > 0 ? model.trim() : undefined,
+          nonce,
+          ackFirstRun: needsAck ? true : undefined,
+        },
+        agentSubagentNames
+      );
       onStarted(res.runId);
       onClose();
     } catch (err) {
@@ -202,7 +212,19 @@ export function RunDialog({
 
         {result !== "loading" && result.permissionSummary.sentence && (
           <p className="rounded-panel border border-border-hairline bg-bg-panel p-2 text-xs text-text-body">
-            ⓘ {result.permissionSummary.sentence}
+            ⓘ {result.permissionSummary.sentence}{" "}
+            {/* F-P3-1 (P3): the consent line's [change] link — the design doc's
+             *  R2 wireframe (§3.2) always specified this, but P1/P2 never
+             *  built the placeholder (unlike RunSummarySection's inert
+             *  [Adjust ceilings], which WAS built on schedule). Navigates to
+             *  the same Settings→Execution destination R7's editor lives at. */}
+            <button
+              type="button"
+              className="underline decoration-dotted hover:text-text-strong"
+              onClick={() => router.push(`/settings?project=${encodeURIComponent(projectId)}#execution`)}
+            >
+              [change]
+            </button>
           </p>
         )}
 

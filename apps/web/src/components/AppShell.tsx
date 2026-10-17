@@ -10,6 +10,7 @@ import { ImportDialog } from "./ImportDialog";
 import { ProjectView } from "./ProjectView";
 import { Toaster } from "./ui/toast";
 import { RunBar } from "./run/RunBar";
+import { RunCommandPalette } from "./run/RunCommandPalette";
 
 /** S1 — App shell: sidebar + main area. Single SPA-ish shell, all state client-side. */
 export function AppShell() {
@@ -22,6 +23,25 @@ export function AppShell() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Global ⌘K/Ctrl+K listener (F8, STATE §18.1) — opens RunCommandPalette
+  // from anywhere in the app. Avoids hijacking Cmd+K while a text field is
+  // focused elsewhere (the standard command-palette convention).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        const target = e.target as HTMLElement | null;
+        const isInputFocused =
+          !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+        if (isInputFocused) return;
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Open a project from the rail. loadProject rejects for "ghost projects"
   // (folder still listed but `.symbion/store.json` is gone) — previously the
@@ -111,6 +131,7 @@ export function AppShell() {
 
       <CreateProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
+      <RunCommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <Toaster />
     </div>
   );

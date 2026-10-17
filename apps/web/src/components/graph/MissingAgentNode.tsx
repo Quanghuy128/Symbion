@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Handle, Position, type NodeProps } from "reactflow";
+import { NodeHandle } from "./NodeHandle";
 
 export interface MissingAgentNodeData {
   label: string;
@@ -12,6 +12,13 @@ export interface MissingAgentNodeData {
   onCreateAgent?: (name: string) => void;
   /** disable the create action when daemon is down (design §5 R). */
   daemonConnected?: boolean;
+  /** plain data-bag index signature (unchanged shape from the xyflow-era
+   *  `NodeProps<Node<T>>` requirement). */
+  [key: string]: unknown;
+}
+
+export interface MissingAgentNodeProps {
+  data: MissingAgentNodeData;
 }
 
 /**
@@ -19,7 +26,7 @@ export interface MissingAgentNodeData {
  * NOT a connect target (isConnectable=false, E5). Hover reveals "＋ Create this agent"
  * which turns the phantom into a real agent draft (P7).
  */
-export function MissingAgentNode({ data }: NodeProps<MissingAgentNodeData>) {
+export function MissingAgentNode({ data }: MissingAgentNodeProps) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -29,12 +36,13 @@ export function MissingAgentNode({ data }: NodeProps<MissingAgentNodeData>) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <Handle type="target" position={Position.Left} isConnectable={false} className="!bg-danger" />
+      <NodeHandle role="target" connectable={false} className="!bg-danger" />
       <span>{data.label}</span>
 
       {hovered && (
         <button
           type="button"
+          data-no-node-drag
           disabled={!data.daemonConnected}
           onClick={(e) => {
             e.stopPropagation();

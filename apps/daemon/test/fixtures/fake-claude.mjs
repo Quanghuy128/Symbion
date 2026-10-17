@@ -17,9 +17,14 @@
  *  FAKE_CLAUDE_MODE=spawn-child    -> spawns a grandchild that hangs, writes its pid
  *                                     to FAKE_CLAUDE_CHILD_PID_OUT, then hangs.
  *  FAKE_CLAUDE_MODE=huge           -> emits an assistant event with a 100 KB tool_use input.
+ *  FAKE_CLAUDE_MODE=write-files    -> (P2, run-gitNumstat.test.ts) modifies one tracked file
+ *                                     and creates one new untracked file in cwd, THEN streams
+ *                                     the fixture and exits 0 (simulates an agent's real writes
+ *                                     for the gitNumstat integration test).
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { join } from "node:path";
 
 const argv = process.argv.slice(2);
 
@@ -113,6 +118,22 @@ async function main() {
       parent_tool_use_id: null,
     });
     process.stdout.write(line + "\n");
+    process.exit(0);
+    return;
+  }
+
+  if (mode === "write-files") {
+    // Modify a tracked file (append a line) + create one new untracked file —
+    // deliberately touching REAL files under cwd (the test's scratch project
+    // root, never the real Symbion repo) so run-gitNumstat.test.ts can assert
+    // on finalize()'s gitNumstat() output.
+    try {
+      appendFileSync(join(process.cwd(), "README.md"), "\nmodified by fake-claude write-files mode\n");
+    } catch {
+      /* README.md may not exist in a given test project — non-fatal */
+    }
+    writeFileSync(join(process.cwd(), "new-file-from-agent.txt"), "hello from the agent\n");
+    await streamLines(readFixtureLines());
     process.exit(0);
     return;
   }

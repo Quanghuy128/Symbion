@@ -3,7 +3,7 @@
  *
  * This module is PURE (no fs/net/Node imports — AC-RUN-11). It owns the
  * provider-agnostic `RunEvent` discriminated union plus the persisted wrapper
- * and the shared view/timeline/run shapes that the daemon persists and the web
+ * and the shared view/run shapes that the daemon persists and the web
  * UI renders. The daemon assigns `seq` (monotonic from 1) — it is the single
  * ordering + dedup key across SSE, events.jsonl, and getRunEvents.
  */
@@ -22,9 +22,35 @@ export interface FourWay {
   cacheWrite: number;
 }
 
+/** Whitelisted scalar fields of a tool_use input (workflow-agent-run D-1),
+ *  read from the FULL input before truncation. Strings capped at
+ *  TOOL_FIELD_CAP. Never contains `prompt` (no large-content duplication). */
+export type ToolFields = Record<string, string | number | boolean>;
+
+/** Per-string cap for `ToolFields` values (D-1). */
+export const TOOL_FIELD_CAP = 300;
+
+/** The `tool_result` content part — produced from `type:"user"` lines (D-1). */
+export interface ToolResultPart {
+  kind: "tool_result";
+  toolUseId?: string;
+  resultPreview: string;
+  /** present (true) iff the CLI marked the result `is_error: true`. */
+  isError?: true;
+  /** present (true) iff the result is an async launch acknowledgement
+   *  (`tool_use_result.isAsync` / `status === "async_launched"`) — NOT a completion. */
+  async?: true;
+  /** set ONLY by `upgradeLegacyEvent` when a pre-upgrade raw line was cut by
+   *  RAW_CAP and the result text is not recoverable (D-3). Never persisted. */
+  legacyTruncated?: true;
+}
+
 /** A single content part of an assistant `message` event. Previews truncated. */
 export type ContentPart =
   | { kind: "text"; textPreview: string }
+  /** D-1: assistant `thinking` block (capped at PREVIEW_CAP, signature dropped);
+   *  `redacted_thinking` yields `textPreview: ""`. */
+  | { kind: "thinking"; textPreview: string }
   | {
       kind: "tool_use";
       toolUseId: string;
@@ -32,8 +58,12 @@ export type ContentPart =
       inputPreview: string;
       /** present iff this is a Task dispatch that names a subagent. */
       subagentType?: string;
+      /** D-1: present iff `input.run_in_background === true` (computed pre-truncation). */
+      background?: true;
+      /** D-1: whitelisted scalar input fields (computed pre-truncation). */
+      fields?: ToolFields;
     }
-  | { kind: "tool_result"; toolUseId?: string; resultPreview: string };
+  | ToolResultPart;
 
 /** One entry from `result.modelUsage` (hidden background models included). */
 export interface ModelUsageEntry {
@@ -60,6 +90,11 @@ export type RunEvent =
       model: string;
       usage: FourWay;
       parts: ContentPart[];
+      /** P2 (real fixture, STATE §13): the CLI reports the dispatched
+       *  subagent's name as a TOP-LEVEL field on the assistant event itself
+       *  (sibling of parent_tool_use_id) for messages produced INSIDE that
+       *  dispatch — present only on non-main-actor messages in practice. */
+      topLevelSubagentType?: string;
     }
   | {
       kind: "result";
@@ -83,6 +118,28 @@ export type RunEvent =
       kind: "parse-error";
       /** raw line retained, truncated to RAW_CAP. */
       rawTruncated: string;
+    }
+  /** D-1: a `type:"user"` line — tool results flowing back to the agent that
+   *  owns `parentToolUseId` (null = main agent). `parts` is `[]` when the
+   *  content carried no tool_result (e.g. a replayed prompt). */
+  | {
+      kind: "tool-results";
+      parentToolUseId: string | null;
+      parts: ToolResultPart[];
+    }
+  /** D-1: a `type:"system"` line whose subtype starts with `task_`
+   *  (task_started / task_updated / task_notification / …). */
+  | {
+      kind: "task";
+      subtype: string;
+      taskId: string;
+      toolUseId?: string;
+      status?: string;
+      taskType?: string;
+      subagentType?: string;
+      description?: string;
+      promptPreview?: string;
+      summary?: string;
     };
 
 /** The discriminant literals of RunEvent — useful for tests/assertions. */
@@ -173,20 +230,6 @@ export interface RunListItem {
   durationMs: number | null;
   freshTokens: number | null;
   costUsd: number | null;
-}
-
-/** One rendered timeline row (derive.ts projects these in P2). */
-export interface TimelineRow {
-  seq: number;
-  atMs: number;
-  icon: string;
-  label: string;
-  actor?: string;
-  tokenDelta?: number;
-  depth: 0 | 1;
-  expandable?: { tool: string; input: string; stepTokens: FourWay };
-  raw?: boolean;
-  unattributed?: boolean;
 }
 
 /** The compact live snapshot the RunBar / status strip render (design §4). */

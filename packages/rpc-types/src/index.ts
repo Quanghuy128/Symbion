@@ -25,7 +25,6 @@ import type {
   RunSummary,
   TargetId,
   TemplateListItem,
-  TimelineRow,
 } from "@symbion/core";
 
 export interface PingParams {}
@@ -799,5 +798,4 @@ export type {
   RunSummary,
   TargetId,
   TemplateListItem,
-  TimelineRow,
 };

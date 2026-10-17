@@ -8,7 +8,8 @@ export interface GraphNodeProps {
   width: number;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
-  onClick?: () => void;
+  /** receives the node's viewport rect (workflow-agent-run: anchors the instance picker). */
+  onClick?: (anchorRect: DOMRect) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   /** free-node-dragging: true while THIS node is the one being live-dragged
    *  (ephemeral cursor-following overlay, same pattern `dragConnect.cursor`
@@ -60,7 +61,7 @@ export function GraphNode({
         // node-click-never-bubbles-to-pane behavior explicitly (regression
         // caught by GraphCanvas.test.tsx's T-5.3).
         e.stopPropagation();
-        onClick?.();
+        onClick?.((e.currentTarget as HTMLElement).getBoundingClientRect());
       }}
       onContextMenu={
         onContextMenu

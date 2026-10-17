@@ -2,13 +2,14 @@
  * derive — pure projections from a folded RunState into the UI-facing view
  * models (P2, STATE §13.1 derive.ts). PURE — no Node imports (AC-RUN-11).
  *
- * `timelineRows` and `runSummary` are pure functions over
- * (events, RunState[, meta]) — no streaming/incremental-diff optimization
- * (A12/NEW-5, a deliberate deferral pending a demonstrated perf problem).
+ * `runSummary` is a pure function over (RunState, meta). The old
+ * timeline-rows projection was absorbed into `agentTree.ts`'s incremental
+ * fold (workflow-agent-run S5 — the root agent's transcript IS the old
+ * timeline, AC-9).
  */
 import { estimateCostUsd, reconcileToTotal } from "./pricing.js";
 import { freshOf, rollup, type RunState } from "./aggregate.js";
-import type { FileChange, FourWay, PersistedRunEvent, RunEvent, RunInfo, TimelineRow } from "./events.js";
+import type { FileChange, FourWay, PersistedRunEvent, RunInfo } from "./events.js";
 
 const MAIN_ACTOR = "main";
 
@@ -19,130 +20,6 @@ const BACKGROUND_RECONCILE_TOLERANCE = 1;
 
 function zeroFourWay(): FourWay {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-}
-
-/**
- * timelineRows — pure projection of the full persisted event list (+ the
- * folded state, for actor/dispatch lookups) into rendered timeline rows
- * (design §5's row grammar: time · glyph · label(actor) · +Δtok, dispatch
- * cards, actor-suffixed depth:1 rows under their dispatch).
- */
-export function timelineRows(events: PersistedRunEvent[], state: RunState): TimelineRow[] {
-  const rows: TimelineRow[] = [];
-  const firstTs = events[0]?.ts ?? 0;
-  // dispatch toolUseId -> subagentType/actor label, discovered as we walk
-  // (mirrors state.dispatches, but we also want ANY dispatch even if its
-  // subagentType wasn't recognized by the graph — the label still names it).
-  const seenDispatchLabel = new Map<string, string>();
-
-  for (const persisted of events) {
-    const { seq, ts, ev } = persisted;
-    const atMs = ts - firstTs;
-
-    if (ev.kind === "init") {
-      rows.push({ seq, atMs, icon: "⚙", label: `init session · ${ev.model}`, depth: 0 });
-      continue;
-    }
-
-    if (ev.kind === "message") {
-      const actorKey = ev.parentToolUseId ?? MAIN_ACTOR;
-      const depth: 0 | 1 = actorKey === MAIN_ACTOR ? 0 : 1;
-      const actorSuffix =
-        actorKey !== MAIN_ACTOR
-          ? ` (${seenDispatchLabel.get(actorKey) ?? ev.topLevelSubagentType ?? actorKey})`
-          : "";
-      const fresh = freshOf(ev.usage);
-
-      for (const part of ev.parts) {
-        if (part.kind === "text") {
-          if (part.textPreview.trim().length === 0) continue;
-          rows.push({
-            seq,
-            atMs,
-            icon: "💬",
-            label: `${part.textPreview}${actorSuffix}`,
-            actor: actorKey,
-            tokenDelta: fresh,
-            depth,
-          });
-        } else if (part.kind === "tool_use") {
-          const isDispatch = part.tool === "Task" || part.tool === "Agent";
-          const subagentLabel = part.subagentType ?? ev.topLevelSubagentType;
-          if (isDispatch) {
-            const label = `Task → ${subagentLabel ?? "subagent"}`;
-            if (subagentLabel) seenDispatchLabel.set(part.toolUseId, subagentLabel);
-            rows.push({
-              seq,
-              atMs,
-              icon: "🤖",
-              label,
-              actor: actorKey,
-              depth: 0,
-              expandable: { tool: part.tool, input: part.inputPreview, stepTokens: ev.usage },
-            });
-          } else {
-            rows.push({
-              seq,
-              atMs,
-              icon: "⚙",
-              label: `${part.tool}${actorSuffix}`,
-              actor: actorKey,
-              tokenDelta: fresh,
-              depth,
-              expandable: { tool: part.tool, input: part.inputPreview, stepTokens: ev.usage },
-            });
-          }
-        } else if (part.kind === "tool_result") {
-          rows.push({
-            seq,
-            atMs,
-            icon: "↩",
-            label: `result${actorSuffix}`,
-            actor: actorKey,
-            depth,
-          });
-        }
-      }
-      continue;
-    }
-
-    if (ev.kind === "result") {
-      // Terminal settle rows — one per actor bucket that closed. derive only
-      // computes these for the TERMINAL batch (a streaming "just settled" row
-      // mid-run is a useRunStore-derived transition comparing successive
-      // rollup() snapshots, not something this pure function needs to know).
-      for (const [actorKey, actor] of state.actors) {
-        if (actorKey === MAIN_ACTOR) continue;
-        const label = seenDispatchLabel.get(actorKey) ?? state.dispatches.get(actorKey)?.subagentType ?? actorKey;
-        rows.push({
-          seq,
-          atMs,
-          icon: "✓",
-          label: `${label} settled  Σ ${freshOf(actor.usage)}`,
-          actor: actorKey,
-          depth: 1,
-        });
-      }
-      rows.push({
-        seq,
-        atMs,
-        icon: ev.isError ? "✗" : "✓",
-        label: `result · ${ev.subtype}${ev.isError ? " (error)" : ""}`,
-        depth: 0,
-      });
-      continue;
-    }
-
-    if (ev.kind === "unknown") {
-      rows.push({ seq, atMs, icon: "?", label: `unknown(${ev.type})`, depth: 0, raw: true });
-      continue;
-    }
-
-    // parse-error
-    rows.push({ seq, atMs, icon: "⚠", label: "parse-error", depth: 0, raw: true });
-  }
-
-  return rows;
 }
 
 export interface RunSummary {

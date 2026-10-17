@@ -36,6 +36,10 @@ export * from "./run/pricing.js";
 export * from "./run/aggregate.js";
 export * from "./run/derive.js";
 export * from "./run/retention.js";
+export * from "./run/toolInput.js";
+export * from "./run/legacyEvents.js";
+export * from "./run/summarizeToolCall.js";
+export * from "./run/agentTree.js";
 
 export * from "./generate/description.js";
 export * from "./generate/bodyPrompt.js";

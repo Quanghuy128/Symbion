@@ -15,3 +15,4 @@ apps/cli/*.tgz
 apps/cli/README.md
 apps/cli/LICENSE
 .playwright-mcp/
+apps/daemon/test/fixtures/fixture-big-*.ndjson

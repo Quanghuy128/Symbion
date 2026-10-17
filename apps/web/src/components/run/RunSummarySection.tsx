@@ -9,8 +9,11 @@ import { TokenBreakdownCard } from "./TokenBreakdownCard";
 export interface RunSummarySectionProps {
   summary: RunSummary;
   onRerun: () => void;
-  onViewFeed: () => void;
+  /** workflow-agent-run: "← Agents" — pops back to the Agents panel. */
+  onBack: () => void;
   onClose: () => void;
+  /** optional: a cost-by-node row opens that agent's detail (label = row label). */
+  onOpenAgent?: (label: string) => void;
   /** P3 (F7, STATE §18.1): the project this run belongs to — destination for
    *  the [Adjust ceilings] link (`/settings?project=<id>#execution`). Absent
    *  in any context that predates F7's wiring keeps the link inert (never a
@@ -38,7 +41,7 @@ function fmtDuration(ms: number | null): string {
  * table, FILES CHANGED via git, FINAL MESSAGE, STDERR tail (failed only),
  * [Adjust ceilings]/[change] links rendered INERT (F7 — P3 wires them).
  */
-export function RunSummarySection({ summary, onRerun, onViewFeed, onClose, projectId }: RunSummarySectionProps) {
+export function RunSummarySection({ summary, onRerun, onBack, onClose, projectId, onOpenAgent }: RunSummarySectionProps) {
   const router = useRouter();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [finalExpanded, setFinalExpanded] = useState(false);
@@ -60,11 +63,11 @@ export function RunSummarySection({ summary, onRerun, onViewFeed, onClose, proje
 
   return (
     <div className="flex h-full flex-col overflow-auto p-3 text-[11px]">
-      <div className="mb-2 flex items-center justify-between">
-        <span className={`font-semibold ${headerColor}`}>SUMMARY — {headerLabel}</span>
-        <button type="button" className="text-text-muted hover:text-text-body" onClick={onViewFeed}>
-          [Feed]
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button type="button" className="shrink-0 text-text-muted hover:text-text-body" onClick={onBack}>
+          ← Agents
         </button>
+        <span className={`truncate font-semibold ${headerColor}`}>Summary — {headerLabel}</span>
       </div>
 
       <p className="mb-1 text-text-body">{fmtDuration(summary.durationMs)} · started {new Date(summary.startedAt).toLocaleTimeString()}</p>
@@ -82,8 +85,12 @@ export function RunSummarySection({ summary, onRerun, onViewFeed, onClose, proje
                 className={`flex w-full items-center justify-between rounded-sm px-1 py-0.5 hover:bg-bg-panel ${row.unrecognized ? "text-warning" : "text-text-body"}`}
                 onMouseEnter={() => setExpandedRow(key)}
                 onMouseLeave={() => setExpandedRow((k) => (k === key ? null : k))}
+                onClick={onOpenAgent && !row.unrecognized ? () => onOpenAgent(row.label) : undefined}
               >
-                <span>{row.unrecognized ? "⚠ unrecognized subagent" : row.label}</span>
+                <span>
+                  {row.unrecognized ? "⚠ unrecognized subagent" : row.label}
+                  {onOpenAgent && !row.unrecognized && <span className="text-text-faint"> ›</span>}
+                </span>
                 <span className="tabular-nums">
                   {fmtTok(row.ownFresh)} / {fmtTok(row.totalFresh)} · {fmtCost(row.costUsd)}
                 </span>

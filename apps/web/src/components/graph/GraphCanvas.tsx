@@ -57,7 +57,8 @@ export interface GraphCanvasProps {
   onConnectAttempt: (sourceId: string, targetId: string) => void;
   isValidConnection: (sourceId: string, targetId: string) => boolean;
   onNodeHover: (id: string | null) => void;
-  onNodeClick?: (id: string) => void;
+  /** `anchorRect` = the clicked node's viewport rect (instance picker anchor). */
+  onNodeClick?: (id: string, anchorRect: DOMRect) => void;
   onEdgeClick: (id: string) => void;
   onPaneClick: () => void;
   onPaneContextMenu: (x: number, y: number) => void;
@@ -291,7 +292,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
               isBeingDragged={isBeingDragged}
               onMouseEnter={disabled ? undefined : () => onNodeHover(n.id)}
               onMouseLeave={disabled ? undefined : () => onNodeHover(null)}
-              onClick={onNodeClick ? () => onNodeClick(n.id) : undefined}
+              onClick={onNodeClick ? (rect) => onNodeClick(n.id, rect) : undefined}
             >
               <NodeInteractionBoundary
                 onStartConnect={(clientX, clientY) => startDrag(n.id, clientX, clientY)}

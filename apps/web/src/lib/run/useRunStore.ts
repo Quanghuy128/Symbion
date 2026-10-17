@@ -9,9 +9,14 @@
  * aggregation layer on top of the SAME event stream: folds every
  * PersistedRunEvent through `core.fold` (the SAME reducer the daemon uses for
  * its own token-cap check, A2/A11 — numbers cannot drift), derives
- * `nodeRunData` (roll-up per node), `timeline` (Feed tab rows), `summary`
- * (Summary tab, terminal-only), and `degraded`. Nothing here touches the SSE
- * wire protocol, the seq-dedup contract, or the poll-fallback logic P1 shipped.
+ * `nodeRunData` (roll-up per node), `summary` (Summary view, terminal-only),
+ * and `degraded`. Nothing here touches the SSE wire protocol, the seq-dedup
+ * contract, or the poll-fallback logic P1 shipped.
+ *
+ * workflow-agent-run S6: the old full-recompute timeline is replaced by
+ * `agentTree` — an INCREMENTAL `core.foldAgentTreeBatch` over each accepted
+ * batch (same single seq-dedup gate as foldState). The view projection
+ * (`core.selectAgentView`) is done by the consumer (DependencyGraph).
  */
 import { create } from "zustand";
 import {
@@ -19,11 +24,12 @@ import {
   initRunState,
   rollup,
   runSummary as coreRunSummary,
-  timelineRows as coreTimelineRows,
+  foldAgentTreeBatch,
+  initAgentTree,
+  type AgentTreeState,
   type FourWay,
   type RunState,
   type RunSummary,
-  type TimelineRow,
 } from "@symbion/core";
 import type {
   GetRunEventsParams,
@@ -87,13 +93,15 @@ interface RunStoreState {
   /** the folded reducer state (core.RunState) — SAME core.fold as the daemon
    *  (A2/A11); the store NEVER does token math itself. */
   foldState: RunState;
-  /** every persisted event seen so far — kept for derive.timelineRows/runSummary
-   *  (a full recompute per batch, A12 — deliberately NOT an incremental diff). */
+  /** every persisted event seen so far — kept for runSummary + the Raw view. */
   allEvents: PersistedRunEvent[];
   /** per-node roll-up, keyed by the AGENT NAME for agent nodes, "main" for
    *  the executing command (DependencyGraph maps "main" -> the active artifact id). */
   nodeRunData: Map<string, NodeRunData>;
-  timeline: TimelineRow[];
+  /** workflow-agent-run S6: the incremental agent-tree fold (core.foldAgentTreeBatch). */
+  agentTree: AgentTreeState;
+  /** size of the last accepted live batch (motion gate: animate only ≤5). */
+  lastBatchSize: number;
   summary?: RunSummary;
   /** true once state.parseErrors > 0 (mid-run) OR the terminal F6 reconcile-
    *  mismatch check fires (only known at terminal, via `summary.degraded`). */
@@ -110,7 +118,10 @@ interface RunStoreState {
   historyLoading: boolean;
   historyRun: RunInfo | null;
   historyNodeRunData: Map<string, NodeRunData>;
-  historyTimeline: TimelineRow[];
+  /** S6: the replayed run's folded token state + agent tree + raw events. */
+  historyFoldState: RunState;
+  historyAgentTree: AgentTreeState;
+  historyEvents: PersistedRunEvent[];
   historySummary?: RunSummary;
   /** ER-10 (§18.3 item 1): a danger toast + partial-summary offer when
    *  reconciliation marks the previously-tracked run failed(daemon-restarted)
@@ -238,7 +249,9 @@ function clearTrackedRun(projectId: string): void {
   }
 }
 
-function eventToTail(ev: PersistedRunEvent): RawTailLine {
+/** One raw-log line per persisted event (the Raw view's body). Exhaustive over
+ *  every RunEvent kind — a new kind is a compile error here, never a blank line. */
+export function eventToTail(ev: PersistedRunEvent): RawTailLine {
   let text: string;
   const e = ev.ev;
   switch (e.kind) {
@@ -247,13 +260,18 @@ function eventToTail(ev: PersistedRunEvent): RawTailLine {
       break;
     case "message":
       text = e.parts
-        .map((p) =>
-          p.kind === "text"
-            ? p.textPreview
-            : p.kind === "tool_use"
-              ? `⚙ ${p.tool}${p.subagentType ? ` → ${p.subagentType}` : ""}`
-              : "result"
-        )
+        .map((p) => {
+          switch (p.kind) {
+            case "text":
+              return p.textPreview;
+            case "thinking":
+              return "· thinking";
+            case "tool_use":
+              return `⚙ ${p.tool}${p.subagentType ? ` → ${p.subagentType}` : ""}${p.background ? " (background)" : ""}`;
+            case "tool_result":
+              return "result";
+          }
+        })
         .join(" ");
       break;
     case "result":
@@ -264,6 +282,15 @@ function eventToTail(ev: PersistedRunEvent): RawTailLine {
       break;
     case "parse-error":
       text = `parse-error`;
+      break;
+    case "tool-results":
+      text =
+        e.parts.length === 0
+          ? "user (no tool results)"
+          : e.parts.map((p) => `↩ result${p.isError ? " (error)" : ""}${p.async ? " (async launched)" : ""}`).join(" ");
+      break;
+    case "task":
+      text = `task · ${e.subtype}${e.status ? ` · ${e.status}` : ""}${e.description ? ` · ${e.description}` : ""}`;
       break;
   }
   return { seq: ev.seq, ts: ev.ts, kind: ev.ev.kind, text };
@@ -281,7 +308,8 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
   foldState: initRunState(),
   allEvents: [],
   nodeRunData: new Map(),
-  timeline: [],
+  agentTree: initAgentTree(),
+  lastBatchSize: 0,
   summary: undefined,
   degraded: false,
   degradedReason: null,
@@ -290,7 +318,9 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
   historyLoading: false,
   historyRun: null,
   historyNodeRunData: new Map(),
-  historyTimeline: [],
+  historyFoldState: initRunState(),
+  historyAgentTree: initAgentTree(),
+  historyEvents: [],
   historySummary: undefined,
   reconciledNotice: null,
   pendingExecuteArtifactId: null,
@@ -336,7 +366,8 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       foldState: initRunState(),
       allEvents: [],
       nodeRunData: new Map(),
-      timeline: [],
+      agentTree: initAgentTree(),
+      lastBatchSize: 0,
       summary: undefined,
       degraded: false,
       degradedReason: null,
@@ -370,7 +401,17 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       lastSeq: afterSeq,
       agentSubagentNames: agentSubagentNames ?? get().agentSubagentNames,
       ...(resetAggregation
-        ? { foldState: initRunState(), allEvents: [], nodeRunData: new Map(), timeline: [], summary: undefined, degraded: false, degradedReason: null }
+        ? {
+            foldState: initRunState(),
+            allEvents: [],
+            rawTail: [],
+            nodeRunData: new Map(),
+            agentTree: initAgentTree(),
+            lastBatchSize: 0,
+            summary: undefined,
+            degraded: false,
+            degradedReason: null,
+          }
         : {}),
     });
     armPollFallback(set, get, projectId, runId);
@@ -498,7 +539,8 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       foldState: initRunState(),
       allEvents: [],
       nodeRunData: new Map(),
-      timeline: [],
+      agentTree: initAgentTree(),
+      lastBatchSize: 0,
       summary: undefined,
       degraded: false,
       degradedReason: null,
@@ -506,7 +548,16 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
   },
 
   async openHistoryRun(projectId, runId, agentSubagentNames) {
-    set({ historyRunId: runId, historyLoading: true, historyRun: null, historyNodeRunData: new Map(), historyTimeline: [], historySummary: undefined });
+    set({
+      historyRunId: runId,
+      historyLoading: true,
+      historyRun: null,
+      historyNodeRunData: new Map(),
+      historyFoldState: initRunState(),
+      historyAgentTree: initAgentTree(),
+      historyEvents: [],
+      historySummary: undefined,
+    });
     const names = agentSubagentNames ?? get().agentSubagentNames;
     let allEvents: PersistedRunEvent[] = [];
     let latestRun: RunInfo | null = null;
@@ -519,6 +570,7 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
         runId,
         afterSeq,
       });
+      if (get().historyRunId !== runId) return; // superseded mid-paging (review fix #6)
       allEvents = allEvents.concat(result.events);
       latestRun = result.run;
       if (result.events.length > 0) {
@@ -529,6 +581,8 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       // (shouldn't happen per its own contract), avoid an infinite loop.
       if (result.events.length === 0) break;
     }
+    // Review fix #6: a newer openHistoryRun / exitHistory superseded this one.
+    if (get().historyRunId !== runId) return;
     if (!latestRun) {
       // Run not found / no events at all — leave history state cleared.
       set({ historyLoading: false });
@@ -556,16 +610,21 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
         breakdown: agentBreakdown(foldState, name),
       });
     }
-    const historyTimeline = coreTimelineRows(allEvents, foldState);
+    // S6: the SAME incremental fold the live path uses, run once over the
+    // whole replay (I1: replay == live).
+    const historyAgentTree = foldAgentTreeBatch(initAgentTree(), allEvents);
     const filesChanged = latestRun.filesChanged ?? "unavailable";
     const historySummary = coreRunSummary(foldState, { run: latestRun, agentSubagentNames: names, events: allEvents }, filesChanged);
+    if (get().historyRunId !== runId) return; // stale request (review fix #6)
     set({
       projectId,
       historyRunId: runId,
       historyLoading: false,
       historyRun: latestRun,
       historyNodeRunData,
-      historyTimeline,
+      historyFoldState: foldState,
+      historyAgentTree,
+      historyEvents: allEvents,
       historySummary,
     });
   },
@@ -576,7 +635,9 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
       historyLoading: false,
       historyRun: null,
       historyNodeRunData: new Map(),
-      historyTimeline: [],
+      historyFoldState: initRunState(),
+      historyAgentTree: initAgentTree(),
+      historyEvents: [],
       historySummary: undefined,
     });
   },
@@ -703,7 +764,10 @@ function applyEvents(
     foldState,
     allEvents,
     nodeRunData,
-    timeline: coreTimelineRows(allEvents, foldState),
+    // S6: incremental — O(batch) + one copy-on-write per touched agent (the
+    // old full timeline recompute over allEvents was the O(n)-per-batch path).
+    agentTree: foldAgentTreeBatch(state.agentTree, newEvents),
+    lastBatchSize: newEvents.length,
     ...(midRunDegraded && !state.degraded ? { degraded: true, degradedReason: "parse-error" as const } : {}),
   });
 }

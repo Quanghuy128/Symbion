@@ -10,7 +10,8 @@ export interface CancelControlProps {
 }
 
 /**
- * CancelControl — the inline two-step cancel (design §3.8). Click → confirm
+ * CancelControl — the inline two-step cancel (design §3.8; workflow-agent-run
+ * relabels it "■ Stop run" — the ONLY stop, AC-8). Click → confirm
  * prompt (5s auto-revert or click-away reverts) → Stop run. Never a modal;
  * destructive is click-only (Esc never cancels a run — design §5).
  */
@@ -30,14 +31,14 @@ export function CancelControl({ onConfirm, cancelling }: CancelControlProps) {
   if (!confirming) {
     return (
       <Button type="button" variant="outline" className="h-7 px-2 text-xs" onClick={() => setConfirming(true)}>
-        ■ Cancel
+        ■ Stop run
       </Button>
     );
   }
 
   return (
     <span className="flex items-center gap-2 text-xs">
-      <span className="text-text-body">Stop this run? Files already written stay written.</span>
+      <span className="text-text-body">Stops the whole run, including all subagents. Files already written stay written.</span>
       <Button
         type="button"
         variant="destructive"

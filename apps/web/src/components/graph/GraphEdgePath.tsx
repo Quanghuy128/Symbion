@@ -25,6 +25,9 @@ export interface AnimatedEdgeData {
    *  "settled" = that dispatch's actor bucket closed — flow stops, stroke
    *  stays tinted 60% until run end. */
   runFlow?: "off" | "flowing" | "settled";
+  /** workflow-agent-run: the edge into the agent hovered/selected in the
+   *  Agents panel — brighter stroke (no layout change). */
+  runLinked?: boolean;
   [key: string]: unknown;
 }
 
@@ -70,9 +73,10 @@ export function GraphEdgePath({ id, sourcePoint, targetPoint, data, interaction 
       : isFlowing || isSettled
         ? "#22d3ee"
         : "#565c68";
-  const color = data?.highlighted ? "#c7d2fe" : baseColor;
-  const strokeWidth = data?.highlighted || isFlowing ? 2.5 : 1.5;
-  const opacity = data?.dimmed ? 0.35 : isSettled ? 0.6 : drawn ? 1 : 0;
+  const runLinked = data?.runLinked === true;
+  const color = data?.highlighted ? "#c7d2fe" : runLinked ? "#a5f3fc" : baseColor;
+  const strokeWidth = data?.highlighted || isFlowing || runLinked ? 2.5 : 1.5;
+  const opacity = runLinked ? 1 : data?.dimmed ? 0.35 : isSettled ? 0.6 : drawn ? 1 : 0;
 
   const interactive = Boolean(data?.interactive);
 

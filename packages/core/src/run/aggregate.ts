@@ -160,6 +160,12 @@ export function fold(state: RunState, persisted: PersistedRunEvent): RunState {
       next.parseErrors = state.parseErrors + 1;
       break;
     }
+    // workflow-agent-run D-1: recognized, token-free kinds. Explicit no-ops —
+    // they carry no usage and are NOT counted in `unknownEvents` (they were
+    // `unknown` before D-1; tokens/actors/dispatches are unaffected either way).
+    case "tool-results":
+    case "task":
+      break;
   }
 
   return next;

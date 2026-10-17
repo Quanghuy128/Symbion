@@ -7,8 +7,11 @@ import {
   parseAgentBlock,
   removeAgentRef,
   upsertAgentRef,
+  selectAgentView,
   type AgentRef,
+  type AgentViewContext,
   type CanonicalArtifact,
+  type RunStatus,
 } from "@symbion/core";
 import { mergeLayoutPositions, type LayoutOverrideEntry } from "@symbion/core";
 import { CommandNode } from "./graph/CommandNode";
@@ -34,7 +37,8 @@ import { EdgeRelationModal } from "./graph/EdgeRelationModal";
 import { CopyRunCommandDialog } from "./CopyRunCommandDialog";
 import { RunDialog } from "./run/RunDialog";
 import { MissionStatusStrip } from "./run/MissionStatusStrip";
-import { RunTimelinePanel, type TimelineMode } from "./run/RunTimelinePanel";
+import { AgentsPanel } from "./run/agents/AgentsPanel";
+import { AgentInstancePicker } from "./run/agents/AgentInstancePicker";
 import { RunHistoryPopover } from "./run/RunHistoryPopover";
 import { PastRunBanner } from "./run/PastRunBanner";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
@@ -199,20 +203,28 @@ export function DependencyGraph({
   const run = useRunStore((s) => s.run);
   const elapsedMs = useRunStore((s) => s.elapsedMs);
   const connection = useRunStore((s) => s.connection);
-  const rawTail = useRunStore((s) => s.rawTail);
   const activeArtifactId = useRunStore((s) => s.activeArtifactId);
   const cancelRunAction = useRunStore((s) => s.cancelRun);
   const attachIfActive = useRunStore((s) => s.attachIfActive);
   const setAgentSubagentNames = useRunStore((s) => s.setAgentSubagentNames);
   // P2: aggregation-derived state (folded via core.fold, never computed here).
   const nodeRunData = useRunStore((s) => s.nodeRunData);
-  const timeline = useRunStore((s) => s.timeline);
+  // workflow-agent-run S10: the incremental agent tree + its token source.
+  const foldState = useRunStore((s) => s.foldState);
+  const agentTree = useRunStore((s) => s.agentTree);
+  const allEvents = useRunStore((s) => s.allEvents);
+  const lastBatchSize = useRunStore((s) => s.lastBatchSize);
   const summary = useRunStore((s) => s.summary);
   const degraded = useRunStore((s) => s.degraded);
   const degradedReason = useRunStore((s) => s.degradedReason);
   const [runDialogFor, setRunDialogFor] = useState<CanonicalArtifact | null>(null);
-  const [panelMode, setPanelMode] = useState<TimelineMode>("feed");
-  const [panelFilterId, setPanelFilterId] = useState<string | null>(null);
+  // Agents panel ↔ graph linking (design §5 / G1 / G2): the panel reports the
+  // agent whose detail is open (persistent halo) and the hovered tree row
+  // (soft halo); a graph node click sends an open request back to the panel.
+  const [selectedRunAgentId, setSelectedRunAgentId] = useState<string | null>(null);
+  const [hoveredRunAgentId, setHoveredRunAgentId] = useState<string | null>(null);
+  const [agentOpenRequest, setAgentOpenRequest] = useState<{ agentId: string; nonce: number } | null>(null);
+  const [instancePicker, setInstancePicker] = useState<{ agentName: string; ids: string[]; rect: DOMRect } | null>(null);
   const [pulseNodeId, setPulseNodeId] = useState<string | null>(null);
   const [pulseKey, setPulseKey] = useState(0);
 
@@ -221,7 +233,9 @@ export function DependencyGraph({
   const historyLoading = useRunStore((s) => s.historyLoading);
   const historyRun = useRunStore((s) => s.historyRun);
   const historyNodeRunData = useRunStore((s) => s.historyNodeRunData);
-  const historyTimeline = useRunStore((s) => s.historyTimeline);
+  const historyFoldState = useRunStore((s) => s.historyFoldState);
+  const historyAgentTree = useRunStore((s) => s.historyAgentTree);
+  const historyEvents = useRunStore((s) => s.historyEvents);
   const historySummary = useRunStore((s) => s.historySummary);
   const openHistoryRun = useRunStore((s) => s.openHistoryRun);
   const exitHistory = useRunStore((s) => s.exitHistory);
@@ -279,22 +293,9 @@ export function DependencyGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, missionActive]);
 
-  // Auto-morph the panel to Summary on terminal transition, unless the user is
-  // mid-scroll (approximated here by "already looking at Feed/Raw" — a full
-  // scroll-position check lives inside RunTimelinePanel's own follow/pause
-  // state, which is intentionally NOT overridden by this effect once the user
-  // has taken an action; this effect only fires ONCE per run's terminal edge).
-  const wasMissionActiveRef = useRef(false);
-  useEffect(() => {
-    if (missionActive) {
-      wasMissionActiveRef.current = true;
-      return;
-    }
-    if (wasMissionActiveRef.current && summary) {
-      wasMissionActiveRef.current = false;
-      setPanelMode("summary");
-    }
-  }, [missionActive, summary]);
+  // workflow-agent-run (design Q3): the old auto-switch-to-Summary on the
+  // terminal edge is intentionally GONE — the tree shows the Outcome card and
+  // an open detail shows the inline "Run finished" strip instead.
 
   // --- ephemeral UI state (E10) ---
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -627,6 +628,14 @@ export function DependencyGraph({
   // gated separately below by `missionActive` alone (history rings are always
   // final/static, never pulsing — design's "no pulse/flow" contract).
   const missionLike = missionActive || viewingHistory;
+  // QA fix F1: the Agents panel is ALSO shown for a just-ended run with a
+  // summary. Panel<->graph linking (agent names, halos, node click) follows
+  // the PANEL, while the graph's run overlay (dim/glow/dispatch/participant)
+  // stays tied to `missionLike` exactly as before.
+  const panelShown = Boolean(
+    missionActive || (run && TERMINAL_RUN_STATUSES.has(run.status) && summary) || viewingHistory
+  );
+  const panelLinkLike = panelShown;
 
   // Run-engine participant set (design §3.4/§4): the executing command + its
   // reachable agents (by @mention) glow/stay full-opacity; everything else
@@ -636,6 +645,95 @@ export function DependencyGraph({
     const activeCommand = commands.find((c) => c.id === effectiveActiveArtifactId);
     return activeCommand ? new Set(extractAgentMentions(activeCommand.body)) : new Set<string>();
   }, [missionLike, effectiveActiveArtifactId, commands]);
+
+  // Agent names for the panel (graphKey mapping) — derived from the effective
+  // command's @mentions whenever the panel is shown, incl. the terminal state.
+  const panelAgentNames = useMemo(() => {
+    if (!panelLinkLike || !effectiveActiveArtifactId) return new Set<string>();
+    const cmd = commands.find((c) => c.id === effectiveActiveArtifactId);
+    return cmd ? new Set(extractAgentMentions(cmd.body)) : new Set<string>();
+  }, [panelLinkLike, effectiveActiveArtifactId, commands]);
+
+  // workflow-agent-run S10: the agent view — a pure projection of the store's
+  // incremental tree + the SAME folded token state the badges use (D-5).
+  const shownRun = viewingHistory ? historyRun : run;
+  const agentCtx = useMemo<AgentViewContext | null>(() => {
+    if (!shownRun) {
+      // History fetch in flight (no run.json yet): an empty placeholder view
+      // so the panel can show its S8 skeleton instead of nothing.
+      return viewingHistory && historyLoading
+        ? {
+            runStatus: "starting",
+            runStartedAtMs: null,
+            runEndedAtMs: null,
+            commandName: "…",
+            requirement: "",
+            model: null,
+            agentNames: panelAgentNames,
+          }
+        : null;
+    }
+    const started = Date.parse(shownRun.startedAt);
+    const ended = shownRun.endedAt ? Date.parse(shownRun.endedAt) : NaN;
+    return {
+      runStatus: shownRun.status as RunStatus,
+      runStartedAtMs: Number.isFinite(started) ? started : null,
+      runEndedAtMs: Number.isFinite(ended) ? ended : null,
+      commandName: shownRun.commandName,
+      requirement: shownRun.requirement,
+      model: shownRun.modelOverride,
+      agentNames: panelAgentNames,
+    };
+  }, [shownRun, panelAgentNames, viewingHistory, historyLoading]);
+  const shownTree = viewingHistory ? historyAgentTree : agentTree;
+  const shownFold = viewingHistory ? historyFoldState : foldState;
+  const agentView = useMemo(
+    () => (agentCtx ? selectAgentView(shownTree, shownFold, agentCtx) : null),
+    [shownTree, shownFold, agentCtx]
+  );
+
+  /** runtime agent instance -> its graph node id (root -> the command node). */
+  const graphNodeIdForAgent = useCallback(
+    (agentId: string | null): string | null => {
+      if (!agentId || !agentView) return null;
+      const a = agentView.agentsById.get(agentId);
+      if (!a) return null;
+      if (a.kind === "root") return effectiveActiveArtifactId;
+      return a.graphKey ? (agentByName.get(a.graphKey)?.id ?? null) : null;
+    },
+    [agentView, effectiveActiveArtifactId, agentByName]
+  );
+  const selectedHaloNodeId = panelLinkLike ? graphNodeIdForAgent(selectedRunAgentId) : null;
+  const hoveredHaloNodeId = panelLinkLike ? graphNodeIdForAgent(hoveredRunAgentId) : null;
+
+  // Leaving mission/history clears the linking state.
+  useEffect(() => {
+    if (!panelLinkLike) {
+      setSelectedRunAgentId(null);
+      setHoveredRunAgentId(null);
+      setInstancePicker(null);
+    }
+  }, [panelLinkLike]);
+
+  const openRunAgent = useCallback((agentId: string) => {
+    setInstancePicker(null);
+    setAgentOpenRequest((prev) => ({ agentId, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
+  const onPanelSelectAgent = useCallback(
+    (agentId: string | null) => {
+      setSelectedRunAgentId(agentId);
+      if (!agentId || !agentView) return;
+      // existing one-shot node pulse when a detail opens
+      const a = agentView.agentsById.get(agentId);
+      const key = a?.kind === "root" ? "main" : a?.graphKey ?? null;
+      if (key) {
+        setPulseNodeId(key);
+        setPulseKey((k) => k + 1);
+      }
+    },
+    [agentView]
+  );
 
   const { baseNodes, baseEdges, missingAgentMentions } = useMemo(() => {
     // Phase (a) BUILD SHAPE — same data-bag construction as before; `position`
@@ -883,21 +981,31 @@ export function DependencyGraph({
       baseNodes.map((n) => {
         if (missionLike) {
           const participant = (n.data as { runParticipant?: boolean }).runParticipant ?? true;
-          return { ...n, data: { ...n.data, highlighted: false, dimmed: !participant } };
+          const runHalo = n.id === selectedHaloNodeId ? "selected" : n.id === hoveredHaloNodeId ? "hover" : undefined;
+          return { ...n, data: { ...n.data, highlighted: false, dimmed: !participant, runHalo } };
         }
-        if (!hoveredId) return n;
+        // Terminal-with-summary: authoring behaviour is unchanged (no dimming);
+        // only the panel-link halo (F1) is added.
+        const haloOnly = n.id === selectedHaloNodeId ? "selected" : n.id === hoveredHaloNodeId ? "hover" : undefined;
+        if (!hoveredId) return haloOnly ? { ...n, data: { ...n.data, runHalo: haloOnly } } : n;
         const connected =
           n.id === hoveredId ||
           baseEdges.some(
             (e) => (e.source === hoveredId && e.target === n.id) || (e.target === hoveredId && e.source === n.id)
           );
-        return { ...n, data: { ...n.data, highlighted: n.id === hoveredId, dimmed: !connected } };
+        return { ...n, data: { ...n.data, highlighted: n.id === hoveredId, dimmed: !connected, runHalo: haloOnly } };
       }),
-    [baseNodes, baseEdges, hoveredId, missionLike]
+    [baseNodes, baseEdges, hoveredId, missionLike, selectedHaloNodeId, hoveredHaloNodeId]
   );
 
   const edges = useMemo(() => {
+    const linkedTargets = new Set([hoveredHaloNodeId, selectedHaloNodeId].filter((x): x is string => Boolean(x)));
     const decorated = baseEdges.map((e) => {
+      const runLinked = panelLinkLike && e.source === effectiveActiveArtifactId && linkedTargets.has(e.target);
+      const withLink = (edge: typeof e) => (runLinked ? { ...edge, data: { ...edge.data, runLinked: true } } : edge);
+      return withLink(decorateEdge(e));
+    });
+    function decorateEdge(e: (typeof baseEdges)[number]) {
       // Mission mode (P1 glow-only, design §2 R3): edges lose their authoring
       // interactivity (+/× toolbar) and adopt the participant dim, matching
       // the node treatment above. Dash-flow animation is P2 (design §3.5).
@@ -942,7 +1050,7 @@ export function DependencyGraph({
       if (!hoveredId) return selected ? { ...e, data: { ...e.data, selected } } : e;
       const connected = e.source === hoveredId || e.target === hoveredId;
       return { ...e, data: { ...e.data, highlighted: connected, dimmed: !connected, selected } };
-    });
+    }
     // Ephemeral ghost edge during a pending save (Q) — local only, never in store.
     if (pendingConnection && !authoringSuspended) {
       decorated.push({
@@ -966,6 +1074,10 @@ export function DependencyGraph({
     agents,
     authoringSuspended,
     run,
+    missionLike,
+    panelLinkLike,
+    hoveredHaloNodeId,
+    selectedHaloNodeId,
   ]);
 
   const confirmTarget = confirmDeleteId ? artifactById.get(confirmDeleteId) : null;
@@ -1038,8 +1150,11 @@ export function DependencyGraph({
       )}
 
       <div
-        style={{ height: 480 }}
-        className="relative flex rounded-panel border border-border-hairline bg-bg-panel"
+        style={panelShown ? undefined : { height: 480 }}
+        className={`relative flex rounded-panel border border-border-hairline bg-bg-panel ${
+          // design Q2: the mission layout grows to the viewport height while a run is shown
+          panelShown ? "h-[calc(100vh-200px)] min-h-[480px]" : ""
+        }`}
       >
         <div className="relative flex-1">
           <GraphToolbar
@@ -1092,18 +1207,23 @@ export function DependencyGraph({
               setSelectedEdgeId(id);
             }}
             onNodeClick={
-              missionLike
-                ? (id) => {
-                    // P2/P3 (design §3.4): node click filters the Feed/History
-                    // panel to that actor. Command node maps to the "main"
-                    // actor key; agent nodes filter by their own name (the
-                    // rollup key) — sources from effectiveActiveArtifactId so
-                    // this works identically while browsing history.
-                    const isCommandNode = id === effectiveActiveArtifactId;
+              panelLinkLike
+                ? (id, anchorRect) => {
+                    // workflow-agent-run (design §5 / G2): a node click opens
+                    // the agent's detail in the Agents panel — "drilling in IS
+                    // the filter". Command node -> root; agent node N -> its
+                    // instance (1), the instance picker (2+), or a toast (0).
+                    if (!agentView) return;
+                    if (id === effectiveActiveArtifactId) {
+                      openRunAgent(agentView.root.id);
+                      return;
+                    }
                     const agentMatch = agents.find((a) => a.id === id);
-                    const key = isCommandNode ? "main" : (agentMatch?.name ?? null);
-                    if (!key) return;
-                    setPanelFilterId((prev) => (prev === key ? null : key));
+                    if (!agentMatch) return;
+                    const ids = [...(agentView.instancesByType.get(agentMatch.name) ?? [])];
+                    if (ids.length === 0) showToast(`\`${agentMatch.name}\` did not run in this run.`);
+                    else if (ids.length === 1) openRunAgent(ids[0]!);
+                    else setInstancePicker({ agentName: agentMatch.name, ids, rect: anchorRect });
                   }
                 : undefined
             }
@@ -1145,40 +1265,29 @@ export function DependencyGraph({
           )}
         </div>
 
-        {/* Timeline panel (P2: Feed/Raw/Summary tabs — design §3.4/§4/§5;
-            RunLogTail's content lives on unchanged as the Raw tab's body).
-            P3: while viewing history, sources from historyTimeline/
-            historySummary instead — same panel, different input map. */}
-        {(missionActive || (run && TERMINAL_RUN_STATUSES.has(run.status) && summary) || viewingHistory) && (
-          <div className="w-[320px] shrink-0 border-l border-border-hairline">
-            <RunTimelinePanel
-              rows={viewingHistory ? historyTimeline : timeline}
-              rawLines={rawTail}
-              mode={viewingHistory ? (panelMode === "feed" ? "history" : panelMode) : panelMode}
-              onModeChange={setPanelMode}
+        {/* Agents panel (workflow-agent-run — replaces the old timeline panel at the
+            same mount point; design Q1: 360px fixed). Live runs and history
+            share ONE component; history sources from the history* slice. */}
+        {panelShown && agentView && agentCtx && (shownRun || historyLoading) && (
+          <div className="flex w-[360px] shrink-0 flex-col border-l border-border-hairline">
+            <AgentsPanel
+              view={agentView}
+              runId={shownRun?.runId ?? historyRunId}
+              runStatus={agentCtx.runStatus}
+              live={missionActive && !viewingHistory}
+              connectionLive={connection === "live"}
+              readOnly={viewingHistory}
+              loading={viewingHistory ? historyLoading : connection === "reconnecting" && agentView.eventCount === 0 && run?.status !== "starting"}
+              events={viewingHistory ? historyEvents : allEvents}
+              runStartedAtMs={agentCtx.runStartedAtMs}
+              runInfo={shownRun ?? null}
               summary={viewingHistory ? historySummary : summary}
-              waiting={!viewingHistory && rawTail.length === 0}
-              degraded={viewingHistory ? false : degraded}
-              degradedReason={viewingHistory ? null : degradedReason}
+              degradedReason={viewingHistory ? null : degraded ? degradedReason : null}
+              batchSize={viewingHistory ? Number.POSITIVE_INFINITY : lastBatchSize}
+              openRequest={agentOpenRequest}
+              onSelectAgent={onPanelSelectAgent}
+              onHoverAgent={setHoveredRunAgentId}
               projectId={projectId}
-              historyMode={viewingHistory}
-              filterOptions={[
-                {
-                  id: "main",
-                  label: effectiveActiveArtifactId
-                    ? `/${commandById.get(effectiveActiveArtifactId)?.name ?? "command"}`
-                    : "command",
-                },
-                ...[...runParticipantAgentNames].map((name) => ({ id: name, label: name })),
-              ]}
-              filterNodeId={panelFilterId}
-              onFilter={setPanelFilterId}
-              onRowClick={(actor) => {
-                if (!actor) return;
-                const nodeKey = actor === "main" ? "main" : actor;
-                setPulseNodeId(nodeKey);
-                setPulseKey((k) => k + 1);
-              }}
               onRerun={() => {
                 const cmd = effectiveActiveArtifactId ? commandById.get(effectiveActiveArtifactId) : undefined;
                 if (cmd) {
@@ -1186,11 +1295,24 @@ export function DependencyGraph({
                   setRunDialogFor(cmd);
                 }
               }}
-              onClose={() => setPanelMode(viewingHistory ? "history" : "feed")}
+              onClose={() => {
+                if (viewingHistory) exitHistory();
+              }}
             />
           </div>
         )}
       </div>
+
+      {instancePicker && agentView && (
+        <AgentInstancePicker
+          anchorRect={instancePicker.rect}
+          agentName={instancePicker.agentName}
+          instances={instancePicker.ids.map((i) => agentView.agentsById.get(i)).filter((x): x is NonNullable<typeof x> => Boolean(x))}
+          nowMs={Date.now()}
+          onPick={openRunAgent}
+          onClose={() => setInstancePicker(null)}
+        />
+      )}
 
       {modalTarget && (
         <EdgeRelationModal

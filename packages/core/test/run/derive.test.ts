@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseLine } from "../../src/run/parseStreamJson.js";
 import { fold, initRunState, type RunState } from "../../src/run/aggregate.js";
-import { runSummary, timelineRows } from "../../src/run/derive.js";
+import { runSummary } from "../../src/run/derive.js";
 import type { PersistedRunEvent, RunInfo } from "../../src/run/events.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -59,28 +59,8 @@ function baseRunInfo(overrides?: Partial<RunInfo>): RunInfo {
   };
 }
 
-describe("derive.timelineRows (§1.5)", () => {
-  it("#1 dispatch row precedes actor-suffixed subagent rows; rows carry seq + tokenDelta", () => {
-    const { state, events } = foldFixture("fixture-subagent.ndjson");
-    const rows = timelineRows(events, state);
-    const dispatchIdx = rows.findIndex((r) => r.label.startsWith("Task →"));
-    expect(dispatchIdx).toBeGreaterThanOrEqual(0);
-    const subagentRowIdx = rows.findIndex((r, i) => i > dispatchIdx && r.depth === 1);
-    expect(subagentRowIdx).toBeGreaterThan(dispatchIdx);
-    expect(rows.every((r) => typeof r.seq === "number")).toBe(true);
-  });
-
-  it("#5 dispatch row appears BEFORE any row whose actor matches the dispatch's parentToolUseId bucket; subagent rows carry depth 1", () => {
-    const { state, events } = foldFixture("fixture-subagent.ndjson");
-    const rows = timelineRows(events, state);
-    const depth1Rows = rows.filter((r) => r.depth === 1);
-    expect(depth1Rows.length).toBeGreaterThan(0);
-    const dispatchSeq = rows.find((r) => r.label.startsWith("Task →"))!.seq;
-    for (const row of depth1Rows) {
-      expect(row.seq).toBeGreaterThanOrEqual(dispatchSeq);
-    }
-  });
-});
+// The old timeline-rows tests #1 / #5 were migrated to agentTree.test.ts U-T19
+// (workflow-agent-run S5 — the timeline projection was absorbed into the agent-tree fold).
 
 describe("derive.runSummary (§1.5 / §6.3)", () => {
   it("#2 runSummary statuses: stopReason timed-out / exitCode 1 failed / unrecognized bucket flagged", () => {

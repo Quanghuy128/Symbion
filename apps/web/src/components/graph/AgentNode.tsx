@@ -29,6 +29,10 @@ export interface AgentNodeData {
   /** P2: bumped by DependencyGraph on a timeline feed-row click for this
    *  agent's actor — re-keying replays the one-shot pulse once. */
   runPulseKey?: number;
+  /** workflow-agent-run (design §5 / G1): run-panel selection halo, drawn as
+   *  a SECOND ring OUTSIDE the status ring so selection never hides status.
+   *  "hover" = soft white, "selected" = brand-accent. */
+  runHalo?: "hover" | "selected";
   /** plain data-bag index signature (unchanged shape from the xyflow-era
    *  `NodeProps<Node<T>>` requirement). */
   [key: string]: unknown;
@@ -98,6 +102,15 @@ export function AgentNode({ data }: AgentNodeProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {data.runHalo && (
+        <span
+          aria-hidden
+          data-run-halo={data.runHalo}
+          className={`pointer-events-none absolute -inset-[6px] rounded-[13px] border-2 transition-colors duration-100 ${
+            data.runHalo === "selected" ? "border-brand-accent" : "border-white/50"
+          }`}
+        />
+      )}
       <NodeHandle
         role="target"
         connectable={connectable}

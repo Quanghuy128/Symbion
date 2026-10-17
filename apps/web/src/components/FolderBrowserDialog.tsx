@@ -91,6 +91,22 @@ export function FolderBrowserDialog({ open, initialPath, onPick, onClose }: Fold
           {listing?.path ?? currentPath ?? "Loading…"}
         </p>
 
+        {listing?.roots && listing.roots.length > 0 && (
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Drives and locations">
+            {listing.roots.map((root) => (
+              <button
+                key={root.path}
+                type="button"
+                aria-pressed={listing.path.toLowerCase().startsWith(root.path.toLowerCase().replace(/[\/]+$/, ""))}
+                className="rounded-pill border border-line-strong px-2.5 py-1 font-mono text-code-sm text-ink-2 hover:bg-surface-hover aria-pressed:border-mint aria-pressed:text-ink"
+                onClick={() => navigateTo(root.path)}
+              >
+                {root.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {error && <p className="text-caption text-danger-text">{error}</p>}
 
         <div className="space-y-1 rounded-lg border border-line-strong p-1">

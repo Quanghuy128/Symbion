@@ -78,6 +78,13 @@ export interface ListDirEntry {
   /** true if a permission/stat error means we know nothing more than the readdir name (not navigable). */
   unreadable: boolean;
 }
+/** A top-level location the picker can jump to: a Windows drive, a WSL distro, or a mounted volume. */
+export interface ListDirRoot {
+  /** display label, e.g. "D:" or "WSL: Ubuntu". */
+  name: string;
+  /** absolute path to pass back to listDir. */
+  path: string;
+}
 export interface ListDirResult {
   /** resolved absolute path that was actually listed (after symlink/realpath resolution of `path` itself). */
   path: string;
@@ -87,6 +94,8 @@ export interface ListDirResult {
   entries: ListDirEntry[];
   /** true if `path` itself could be stat'd but readdir failed (e.g. permission denied) — entries is []. */
   denied: boolean;
+  /** top-level locations (all drives, WSL distros, /mnt/* volumes) so the picker can leave the current drive. */
+  roots?: ListDirRoot[];
 }
 
 export interface MakeDirParams {

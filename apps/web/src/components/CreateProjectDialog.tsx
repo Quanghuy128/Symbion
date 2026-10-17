@@ -328,7 +328,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
             <div className="mt-1 flex items-center gap-2 text-caption text-ink-muted">
               {validation.reason === "unc-unsupported" ? (
                 <span className="text-danger-text">
-                  ⚠ UNC paths (\\server\share\...) are not supported yet. Use a drive path, e.g.
+                  ⚠ Network paths (\\server\share\...) are not supported yet. Use a drive path or a WSL path, e.g.
                   C:\Users\me\code\my-service
                 </span>
               ) : validation.exists ? (

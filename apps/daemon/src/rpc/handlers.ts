@@ -58,7 +58,7 @@ import {
   type ProviderId as SecretsProviderId,
 } from "../llm/secrets.js";
 import { RpcError } from "./rpcError.js";
-import { isUncPath } from "./pathStyle.js";
+import { isUncPath, isWslUncPath } from "./pathStyle.js";
 import { runManager } from "../run/runManager.js";
 import { runPreflight as computePreflight } from "../run/preflight.js";
 import { buildArgv, resolveClaudeBin } from "../run/cliDriver.js";
@@ -304,7 +304,7 @@ export const handlers = {
   validatePath(params: contract.ValidatePathParams): contract.ValidatePathResult {
     const { path } = params;
 
-    if (isUncPath(path)) {
+    if (isUncPath(path) && !isWslUncPath(path)) {
       return {
         exists: false,
         isDir: false,

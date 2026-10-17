@@ -19,6 +19,17 @@ export function isUncPath(p: string): boolean {
   return UNC_RE.test(p);
 }
 
+/**
+ * Local WSL distro share: \\wsl.localhost\<distro>\... or the legacy \\wsl$\<distro>\...
+ * These are served by the local WSL 9P bridge, so they behave like a local drive
+ * (unlike remote \\server\share paths, which stay unsupported).
+ */
+const WSL_UNC_RE = /^\\\\wsl(?:\.localhost|\$)[\\/][^\\/]+/i;
+
+export function isWslUncPath(p: string): boolean {
+  return WSL_UNC_RE.test(p);
+}
+
 /** True for ANY Windows-style absolute shape (drive-letter OR UNC) — used to decide
  *  "should this be treated as absolute" before any node:path call, since node:path's
  *  own isAbsolute() is POSIX-mode and blind to both shapes on a Linux/WSL process. */

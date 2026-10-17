@@ -16,11 +16,66 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, isAbsolute } from "node:path";
+import { execFileSync } from "node:child_process";
+import { homedir, platform } from "node:os";
+import { dirname, isAbsolute, join } from "node:path";
 import { RpcError } from "../rpc/rpcError.js";
 import { splitAnySeparator } from "../rpc/pathStyle.js";
-import type { ListDirEntry, ListDirResult, MakeDirResult } from "../rpc/contract.js";
+import type { ListDirEntry, ListDirResult, ListDirRoot, MakeDirResult } from "../rpc/contract.js";
+
+/** WSL distro names on a Windows host (`wsl.exe -l -q` prints UTF-16LE). Best effort; [] on any failure. */
+function listWslDistros(): string[] {
+  try {
+    const out = execFileSync("wsl.exe", ["-l", "-q"], { timeout: 2500, windowsHide: true });
+    return out
+      .toString("utf16le")
+      .replace(/\u0000/g, "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Top-level locations so the picker is not stuck on the current drive: every
+ * existing drive letter (+ WSL distros) on Windows, /mnt/* volumes on Linux/WSL,
+ * /Volumes/* on macOS. Never throws.
+ */
+export function listRoots(): ListDirRoot[] {
+  const roots: ListDirRoot[] = [];
+  try {
+    if (platform() === "win32") {
+      for (let c = 65; c <= 90; c++) {
+        const letter = String.fromCharCode(c);
+        const drive = `${letter}:\\`;
+        try {
+          if (existsSync(drive)) roots.push({ name: `${letter}:`, path: drive });
+        } catch {
+          // unreadable / disconnected drive — skip
+        }
+      }
+      for (const distro of listWslDistros()) {
+        roots.push({ name: `WSL: ${distro}`, path: `\\\\wsl.localhost\\${distro}` });
+      }
+    } else {
+      roots.push({ name: "/", path: "/" });
+      for (const base of ["/mnt", "/Volumes"]) {
+        try {
+          for (const d of readdirSync(base, { withFileTypes: true })) {
+            if (d.isDirectory() || d.isSymbolicLink()) roots.push({ name: `${base}/${d.name}`, path: `${base}/${d.name}` });
+          }
+        } catch {
+          // base not present
+        }
+      }
+    }
+  } catch {
+    // best effort
+  }
+  return roots;
+}
 
 /**
  * listDir — read-only directory PICKER listing (subdirectories only, never files).
@@ -53,13 +108,14 @@ export function listDir(inputPath?: unknown): ListDirResult {
     throw new RpcError("invalid-path", "Path does not exist or is not a directory.");
   }
 
+  const roots = listRoots();
   const parentCandidate = dirname(resolved);
   const parentPath = parentCandidate === resolved ? undefined : parentCandidate;
 
   try {
     accessSync(resolved, constants.R_OK);
   } catch {
-    return { path: resolved, parentPath, entries: [], denied: true };
+    return { path: resolved, parentPath, entries: [], denied: true, roots };
   }
 
   let dirents;
@@ -68,12 +124,12 @@ export function listDir(inputPath?: unknown): ListDirResult {
   } catch {
     // readdir itself failed despite passing accessSync (e.g. a race, or an ACL
     // accessSync doesn't fully model) — treat the same as a denied listing.
-    return { path: resolved, parentPath, entries: [], denied: true };
+    return { path: resolved, parentPath, entries: [], denied: true, roots };
   }
 
   const entries: ListDirEntry[] = [];
   for (const dirent of dirents) {
-    const entryPath = `${resolved === "/" ? "" : resolved}/${dirent.name}`;
+    const entryPath = join(resolved, dirent.name);
 
     if (dirent.isSymbolicLink()) {
       // Only include a symlink if its resolved target is itself a directory.
@@ -102,7 +158,7 @@ export function listDir(inputPath?: unknown): ListDirResult {
 
   entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
-  return { path: resolved, parentPath, entries, denied: false };
+  return { path: resolved, parentPath, entries, denied: false, roots };
 }
 
 /**

@@ -6,6 +6,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/c
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ImportReviewStep } from "@/components/ImportReviewStep";
+import { FolderBrowserDialog } from "@/components/FolderBrowserDialog";
 import { FileTreePicker, type PickedEntry, type PickedRole } from "@/components/FileTreePicker";
 import { applyPickedRole, basenameOf, surfaceImportOutcome } from "@/components/importPickerShared";
 import { callRpc } from "@/lib/rpc/client";
@@ -25,6 +26,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
   const [projectName, setProjectName] = useState("");
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   // Manual-file-picker state (transient — discarded on close, PLAN §6). Owned
   // here, same rule as `selected`. Keyed by relPath.
@@ -40,8 +42,15 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
   const loadProjects = useArtifactStore((s) => s.loadProjects);
   const showToast = useArtifactStore((s) => s.showToast);
 
-  async function handleScan() {
-    const result = await callRpc<{ path: string }, ScanClaudeDirResult>("scanClaudeDir", { path });
+  async function handleScan(scanPath: string = path) {
+    setError(null);
+    let result: ScanClaudeDirResult;
+    try {
+      result = await callRpc<{ path: string }, ScanClaudeDirResult>("scanClaudeDir", { path: scanPath.trim() });
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
     setScanned(result.parsed);
     setSelected(new Set([...result.parsed.agents, ...result.parsed.commands].map((a) => a.id)));
     // reset any prior manual-pick state on a fresh scan.
@@ -118,7 +127,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
       // old "project was created but import failed, open it to retry" copy is gone
       // — a failure now means nothing was left behind.
       const result = await createProjectAndImport({
-        name: projectName || path.split("/").filter(Boolean).pop() || "imported",
+        name: projectName || path.split(/[\/]+/).filter(Boolean).pop() || "imported",
         path,
         selectedIds: [...Array.from(selected), ...pickedIds],
         scanned: all,
@@ -143,8 +152,11 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
 
       <DialogBody className="space-y-3">
         <div className="flex gap-2">
-          <Input placeholder="/home/me/code/geochat" value={path} onChange={(e) => setPath(e.target.value)} />
-          <Button variant="outline" onClick={handleScan}>
+          <Input placeholder="/home/me/code/geochat  or  D:\code\geochat" value={path} onChange={(e) => setPath(e.target.value)} />
+          <Button variant="outline" onClick={() => setBrowserOpen(true)}>
+            Browse…
+          </Button>
+          <Button variant="outline" onClick={() => handleScan()}>
             Scan
           </Button>
         </div>
@@ -175,6 +187,17 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
           Import {totalSelected} selected
         </Button>
       </DialogFooter>
+
+      <FolderBrowserDialog
+        open={browserOpen}
+        initialPath={path.trim().length > 0 ? path.trim() : undefined}
+        onPick={(p) => {
+          setPath(p);
+          setBrowserOpen(false);
+          void handleScan(p);
+        }}
+        onClose={() => setBrowserOpen(false)}
+      />
     </Dialog>
   );
 }

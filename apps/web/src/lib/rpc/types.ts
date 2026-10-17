@@ -15,6 +15,7 @@ export type {
   ListDirParams,
   ListDirEntry,
   ListDirResult,
+  ListDirRoot,
   MakeDirParams,
   MakeDirResult,
   ListProjectsParams,

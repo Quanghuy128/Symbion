@@ -8,11 +8,10 @@ import { DegradedTelemetryChip, type DegradedReason } from "../DegradedTelemetry
 import { RunSummarySection } from "../RunSummarySection";
 import { AgentTree, flattenTree } from "./AgentTree";
 import { BackgroundGroup, UnattributedGroup } from "./AgentGroups";
-import { AgentDetailView, type BreadcrumbSegment } from "./AgentDetailView";
+import { AgentDetailView, type BreadcrumbSegment, type TranscriptListHandle } from "./AgentDetailView";
 import { RawEventLog } from "./RawEventLog";
 import { RunOutcomeCard } from "./RunOutcomeCard";
 import { RunFinishedStrip } from "./RunFinishedStrip";
-import type { TranscriptListHandle } from "./TranscriptList";
 
 const TERMINAL: ReadonlySet<RunStatus> = new Set<RunStatus>(["completed", "failed", "cancelled", "timedOut"]);
 
@@ -346,7 +345,6 @@ export function AgentsPanel({
         spawnedByLabel={parent ? agentLabel(parent) : null}
         live={live}
         readOnly={readOnly}
-        animate={animate}
         cancelling={cancelling}
         pulsesLive={animLive}
         nowMs={nowMs}
@@ -354,6 +352,9 @@ export function AgentsPanel({
         onBack={backToTree}
         onNavigate={(id) => pushAgent(id)}
         onRaw={agent.kind === "root" ? () => setStack((s) => [...s, { kind: "raw" }]) : undefined}
+        onRerun={agent.kind === "root" && terminal ? onRerun : undefined}
+        filesChanged={agent.kind === "root" ? filesChanged : undefined}
+        costUsd={agent.kind === "root" ? summary?.totals.costUsd : undefined}
         finishedStrip={
           finishedStrip ? <RunFinishedStrip status={runStatus} onViewSummary={viewSummary} onDismiss={() => setFinishedStrip(false)} /> : null
         }

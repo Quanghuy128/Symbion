@@ -89,10 +89,11 @@ describe("AgentsPanel stack + keys (W-15)", () => {
     expect(p.onSelectAgent).toHaveBeenLastCalledWith(A);
 
     // expand a tool row, Esc collapses it but stays in the detail
-    fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]!);
-    expect(screen.getByTestId("step-preview")).toBeTruthy();
+    const transcript = screen.getByTestId("transcript-scroll");
+    fireEvent.click(within(transcript).getAllByRole("button", { expanded: false })[0]!);
+    expect(within(transcript).getAllByRole("button", { expanded: true }).length).toBeGreaterThan(0);
     fireEvent.keyDown(panel(), { key: "Escape" });
-    expect(screen.queryByTestId("step-preview")).toBeNull();
+    expect(within(transcript).queryAllByRole("button", { expanded: true })).toHaveLength(0);
     expect(detailId()).toBe(A);
     fireEvent.keyDown(panel(), { key: "Escape" });
     expect(detailId()).toBeNull();
@@ -115,7 +116,7 @@ describe("AgentsPanel stack + keys (W-15)", () => {
     render(<AgentsPanel {...props(syntheticView().view)} />);
     fireEvent.click(document.querySelector(`[data-agent-id="root"]`)!);
     expect(detailId()).toBe("root");
-    expect(screen.getByText("Requirement")).toBeTruthy();
+    expect(screen.getByTestId("prompt-bubble")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Open Agent ba "Solutions angle"/ }));
     expect(detailId()).toBe(B);
     fireEvent.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", { name: "/analyze" }));
@@ -129,7 +130,7 @@ describe("AgentsPanel stack + keys (W-15)", () => {
   });
 });
 
-describe("AgentDetailHeader has no stop (W-16 / AC-8)", () => {
+describe("agent detail has no stop (W-16 / AC-8)", () => {
   it("root and subagent details contain no stop/cancel button", () => {
     render(<AgentsPanel {...props(syntheticView().view)} />);
     for (const id of ["root", A]) {
@@ -211,12 +212,59 @@ describe("RawEventLog via ≡ (W-20)", () => {
     const view = deriveAgentTree(events, foldAll(events), ctx("completed"));
     const { container } = render(<AgentsPanel {...props(view, { readOnly: true, live: false, runStatus: "completed", events })} />);
     fireEvent.click(document.querySelector(`[data-agent-id="root"]`)!);
-    fireEvent.click(screen.getByRole("button", { name: "Raw log" }));
+    fireEvent.click(screen.getByRole("button", { name: "View raw events" }));
     expect(screen.getByText("RAW · 1500 events")).toBeTruthy();
     const rendered = container.querySelectorAll("[data-raw-seq]");
     expect(rendered.length).toBeGreaterThan(0);
     expect(rendered.length).toBeLessThanOrEqual(60);
     fireEvent.click(screen.getByRole("button", { name: "← back" }));
     expect(detailId()).toBe("root");
+  });
+});
+
+describe("chronological transcript (agent detail)", () => {
+  it("hides unknown events like rate_limit_event (raw view keeps them); renders text as markdown; Run again at terminal", () => {
+    const base = textEvents(1);
+    const events = [
+      ...base,
+      { seq: 2, ts: T0 + 5, ev: { kind: "unknown" as const, type: "rate_limit_event", rawTruncated: '{"type":"rate_limit_event"}' } },
+      {
+        seq: 3,
+        ts: T0 + 6,
+        ev: {
+          kind: "message" as const,
+          messageId: "m-final",
+          parentToolUseId: null,
+          model: "m",
+          usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+          parts: [{ kind: "text" as const, textPreview: "**Xong** rồi" }],
+        },
+      },
+    ];
+    const view = deriveAgentTree(events, foldAll(events), ctx("completed"));
+    const onRerun = vi.fn();
+    render(<AgentsPanel {...props(view, { readOnly: true, live: false, runStatus: "completed", events, onRerun })} />);
+    fireEvent.click(document.querySelector(`[data-agent-id="root"]`)!);
+    const transcript = screen.getByTestId("transcript-scroll");
+    expect(transcript.textContent).not.toMatch(/rate_limit|unrecognized/);
+    expect(within(transcript).getByText("Xong").tagName).toBe("STRONG");
+    expect(transcript.textContent).not.toContain("**");
+    fireEvent.click(screen.getByRole("button", { name: "Run again" }));
+    expect(onRerun).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "View raw events" }));
+    expect(screen.getByTestId("agents-panel").textContent).toContain("rate_limit_event");
+  });
+});
+
+describe("long transcripts (replaces W-9 / AC-10)", () => {
+  it("2,500 steps render at most 300 blocks; 'Show earlier' reveals 200 more", () => {
+    const events = textEvents(2_500);
+    const view = deriveAgentTree(events, foldAll(events), ctx("completed"));
+    render(<AgentsPanel {...props(view, { readOnly: true, live: false, runStatus: "completed", events })} />);
+    fireEvent.click(document.querySelector(`[data-agent-id="root"]`)!);
+    const count = () => screen.getByTestId("transcript-scroll").querySelectorAll("[data-block-kind]").length;
+    expect(count()).toBe(300);
+    fireEvent.click(screen.getByRole("button", { name: /Show 200 earlier steps/ }));
+    expect(count()).toBe(500);
   });
 });

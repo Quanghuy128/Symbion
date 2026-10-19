@@ -101,4 +101,45 @@ describe("computeLayout", () => {
     expect(positions.size).toBe(nodes.length);
     expect(elapsed).toBeLessThan(200);
   });
+
+  it("places edge-less nodes in two columns: commands left, agents right, row by row", () => {
+    const positions = computeLayout(
+      [
+        { ...node("cmd-1"), column: "left" },
+        { ...node("cmd-2"), column: "left" },
+        { ...node("agent-1"), column: "right" },
+        { ...node("agent-2"), column: "right" },
+      ],
+      []
+    );
+    const c1 = positions.get("cmd-1")!;
+    const c2 = positions.get("cmd-2")!;
+    const a1 = positions.get("agent-1")!;
+    const a2 = positions.get("agent-2")!;
+    expect(c1.x).toBe(c2.x);
+    expect(a1.x).toBe(a2.x);
+    expect(a1.x).toBeGreaterThan(c1.x + 160);
+    expect(c1.y).toBe(a1.y);
+    expect(c2.y).toBe(a2.y);
+    expect(c2.y).toBeGreaterThan(c1.y);
+  });
+
+  it("stacks edge-less nodes below the linked part, aligned to its first column", () => {
+    const positions = computeLayout(
+      [
+        { ...node("cmd-1"), column: "left" },
+        { ...node("agent-1"), column: "right" },
+        { ...node("cmd-lone"), column: "left" },
+        { ...node("agent-lone"), column: "right" },
+      ],
+      [edge("cmd-1", "agent-1")]
+    );
+    const linkedCmd = positions.get("cmd-1")!;
+    const loneCmd = positions.get("cmd-lone")!;
+    const loneAgent = positions.get("agent-lone")!;
+    expect(loneCmd.x).toBe(linkedCmd.x);
+    expect(loneCmd.y).toBeGreaterThan(linkedCmd.y + 40);
+    expect(loneAgent.y).toBe(loneCmd.y);
+    expect(loneAgent.x).toBeGreaterThan(loneCmd.x);
+  });
 });

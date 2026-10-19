@@ -39,7 +39,7 @@ export function GraphLegend({ open, onOpenChange }: GraphLegendProps) {
       ref={ref}
       role="dialog"
       aria-label="Graph legend"
-      className="absolute left-3 top-14 z-30 w-[300px] animate-popIn rounded-lg border border-line-soft bg-surface p-4 text-label shadow-menu"
+      className="absolute right-3 top-11 z-30 w-[300px] animate-popIn rounded-lg border border-line-soft bg-surface p-4 text-label shadow-menu"
     >
       <h3 className="mb-2 text-caption font-semibold uppercase text-ink-muted">Legend</h3>
       <ul className="space-y-2 text-ink">
@@ -58,12 +58,6 @@ export function GraphLegend({ open, onOpenChange }: GraphLegendProps) {
         <li className="flex items-start gap-2">
           <span className="mt-0.5 font-mono text-ink-muted">⋯</span>
           <span>Node menu: Edit · Delete · Copy run.</span>
-        </li>
-        <li className="flex items-start gap-2">
-          <span className="mt-0.5 rounded-pill bg-warning-soft px-1.5 py-0.5 text-overline font-semibold uppercase text-warning">
-            not linked
-          </span>
-          <span>Command references an agent with backticks — use @name to show the link.</span>
         </li>
       </ul>
     </div>

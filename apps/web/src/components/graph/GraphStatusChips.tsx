@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 /**
  * GraphStatusChips — presentational status row above the Graph tab canvas
  * (design doc §3.2, PLAN §6.2 Q2). Pure presentation: data is computed by the
@@ -13,12 +15,14 @@ export interface GraphStatusChipsProps {
   claudeLossy: boolean;
   codexLossy: boolean;
   missingAgentMentions: string[];
+  /** right-aligned slot on the chip row (the graph's run-history chip). */
+  trailing?: ReactNode;
 }
 
-export function GraphStatusChips({ claudeLossy, codexLossy, missingAgentMentions }: GraphStatusChipsProps) {
+export function GraphStatusChips({ claudeLossy, codexLossy, missingAgentMentions, trailing }: GraphStatusChipsProps) {
   return (
     <div className="mb-3 space-y-1.5">
-      <div className="flex flex-wrap items-center gap-3 text-caption font-medium">
+      <div className="flex min-h-7 flex-wrap items-center gap-3 text-caption font-medium">
         <span className={`flex items-center gap-1.5 ${claudeLossy ? "text-warning" : "text-success"}`}>
           <span aria-hidden>{claudeLossy ? "▲" : "●"}</span>
           Claude · {claudeLossy ? "lossy" : "clean"}
@@ -27,6 +31,7 @@ export function GraphStatusChips({ claudeLossy, codexLossy, missingAgentMentions
           <span aria-hidden>{codexLossy ? "▲" : "●"}</span>
           Codex · {codexLossy ? "lossy" : "clean"}
         </span>
+        {trailing && <div className="ml-auto">{trailing}</div>}
       </div>
       {missingAgentMentions.length > 0 && (
         <p className="text-caption text-danger-text">

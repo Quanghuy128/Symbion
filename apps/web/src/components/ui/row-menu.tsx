@@ -50,13 +50,16 @@ export interface RowMenuProps {
   onOpenChange: (open: boolean) => void;
   /** aria-label for the trigger button; defaults to "Options". */
   triggerLabel?: string;
+  /** `bare` = a small icon-only glyph with no box/hover background, for tight
+   *  spots like graph nodes where the boxed button covers content. */
+  triggerVariant?: "button" | "bare";
 }
 
 /**
  * RowMenu — hand-rolled dropdown: useState open/closed + an outside-click
  * listener (no Radix, matching ui/dialog.tsx). Escape closes.
  */
-export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }: RowMenuProps) {
+export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options", triggerVariant = "button" }: RowMenuProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,15 +86,28 @@ export function RowMenu({ items, open, onOpenChange, triggerLabel = "Options" }:
     // items) from starting a node-body-drag when rendered inside a graph node —
     // a harmless no-op attribute for RowMenu's other call sites.
     <div ref={containerRef} className="relative" data-no-node-drag>
-      <IconButton
-        aria-label={triggerLabel}
-        icon={MoreHorizontal}
-        size="sm"
-        tooltip={false}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => onOpenChange(!open)}
-      />
+      {triggerVariant === "bare" ? (
+        <button
+          type="button"
+          aria-label={triggerLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => onOpenChange(!open)}
+          className="flex items-center text-ink-muted hover:text-ink aria-expanded:text-ink"
+        >
+          <MoreHorizontal size={14} strokeWidth={1.8} aria-hidden />
+        </button>
+      ) : (
+        <IconButton
+          aria-label={triggerLabel}
+          icon={MoreHorizontal}
+          size="sm"
+          tooltip={false}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => onOpenChange(!open)}
+        />
+      )}
 
       {open && (
         <div role="menu" className={cn("absolute right-0 top-full mt-1 w-52 animate-popIn", menuSurfaceClass)}>

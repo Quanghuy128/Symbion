@@ -129,7 +129,7 @@ export function AgentNode({ data }: AgentNodeProps) {
       {data.badge && <NodeTokenBadge {...data.badge} label={data.label} />}
 
       {(hovered || menuOpen) && (
-        <div className="absolute -right-1 -top-1 z-10">
+        <div className="absolute right-1.5 top-1 z-10">
           <NodeMenu
             kind="agent"
             open={menuOpen}

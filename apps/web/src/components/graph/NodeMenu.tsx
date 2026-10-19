@@ -59,5 +59,5 @@ export function NodeMenu({
           { label: "Delete", danger: true, disabled: deleteDisabled, onSelect: onDelete },
         ];
 
-  return <RowMenu open={open} onOpenChange={onOpenChange} items={items} />;
+  return <RowMenu open={open} onOpenChange={onOpenChange} items={items} triggerVariant="bare" />;
 }

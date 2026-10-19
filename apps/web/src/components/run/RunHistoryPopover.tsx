@@ -5,6 +5,8 @@ import type { RunListItem } from "@symbion/rpc-types";
 import { useRunStore } from "@/lib/run/useRunStore";
 
 export interface RunHistoryPopoverProps {
+  /** positioning classes; defaults to the top-left canvas overlay spot. */
+  className?: string;
   projectId: string;
   onSelect: (runId: string) => void;
   onClose: () => void;
@@ -55,7 +57,7 @@ function fmtRelative(iso: string): string {
  * returns every persisted run newest-first). One row per run: glyph / command
  * / duration / fresh-tok / $ / relative time. No delete/search in v1 (locked).
  */
-export function RunHistoryPopover({ projectId, onSelect, onClose }: RunHistoryPopoverProps) {
+export function RunHistoryPopover({ projectId, onSelect, onClose, className = "left-3 top-12" }: RunHistoryPopoverProps) {
   const [runs, setRuns] = useState<RunListItem[] | "loading">("loading");
   const [activeRunId, setActiveRunId] = useState<string | undefined>(undefined);
   const ref = useRef<HTMLDivElement>(null);
@@ -97,7 +99,7 @@ export function RunHistoryPopover({ projectId, onSelect, onClose }: RunHistoryPo
       ref={ref}
       role="dialog"
       aria-label="Run history"
-      className="absolute left-3 top-12 z-30 w-[360px] animate-popIn rounded-lg border border-line-soft bg-surface p-2 shadow-menu"
+      className={`absolute ${className} z-30 w-[360px] animate-popIn rounded-lg border border-line-soft bg-surface p-2 shadow-menu`}
     >
       <p className="mb-1 px-1 text-caption font-semibold text-ink-muted">RUNS (last 50)</p>
 

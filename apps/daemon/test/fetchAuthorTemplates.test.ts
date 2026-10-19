@@ -185,7 +185,8 @@ describe("fetchAuthorTemplatesFromGithub (templates-authors)", () => {
       files: {
         "agents/a.md": () => textResponse("not frontmatter at all"),
         "agents/b.md": () => textResponse("not frontmatter at all"),
-        "commands/c.md": () => textResponse("not frontmatter at all"),
+        // an EMPTY command is still skipped; a non-empty one without frontmatter now loads (see D21)
+        "commands/c.md": () => textResponse(""),
         "skills/d/SKILL.md": () => textResponse("not frontmatter at all"),
       },
     });
@@ -251,5 +252,24 @@ describe("fetchAuthorTemplates RPC handler (templates-authors)", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("D21: a command with NO frontmatter (plain markdown prompt, as Claude Code allows) loads with a description derived from its heading; agents/skills without frontmatter are still skipped", async () => {
+    const fetchMock = makeFetchMock({
+      tree: () => jsonResponse({ tree: SMALL_TREE, truncated: false }),
+      files: {
+        "agents/a.md": () => textResponse("# not an agent file"),
+        "agents/b.md": () => textResponse(SYNTHETIC_AGENT),
+        "commands/c.md": () => textResponse("# /rank - Triage Scraped Jobs into a Ranked Shortlist\n\nYou are batch-scoring jobs.\n"),
+        "skills/d/SKILL.md": () => textResponse(SYNTHETIC_SKILL),
+      },
+    });
+    const outcome = await fetchAuthorTemplatesFromGithub(ECC_AUTHOR, fetchMock);
+    expect(outcome.status).toBe("success");
+    if (outcome.status !== "success") return;
+    const cmd = outcome.items.find((i) => i.kind === "command");
+    expect(cmd?.description).toBe("Triage Scraped Jobs into a Ranked Shortlist");
+    expect(cmd?.raw).toContain("You are batch-scoring jobs.");
+    expect(outcome.skipped.map((x) => x.relPath)).toEqual(["agents/a.md"]);
   });
 });

@@ -4,6 +4,14 @@ import { create } from "zustand";
 import type { CanonicalArtifact, ProjectStore } from "@symbion/core";
 import { callRpc, DaemonRpcError } from "../rpc/client";
 import type {
+  AddTemplateSourceParams,
+  AddTemplateSourceResult,
+  InspectTemplateSourceUrlParams,
+  InspectTemplateSourceUrlResult,
+  ListTemplateSourcesParams,
+  ListTemplateSourcesResult,
+  RemoveTemplateSourceParams,
+  RemoveTemplateSourceResult,
   ApplyTemplateParams,
   ApplyTemplateResult,
   CreateProjectAndImportParams,
@@ -106,6 +114,11 @@ interface ArtifactStoreState {
    *  "no currentProject mutation" shape (this RPC doesn't touch any project
    *  at all). */
   fetchAuthorTemplates: (params: FetchAuthorTemplatesParams) => Promise<FetchAuthorTemplatesResult>;
+  /** templates-repo-url: thin RPC wrappers (no caching, no store mutation). */
+  inspectTemplateSourceUrl: (params: InspectTemplateSourceUrlParams) => Promise<InspectTemplateSourceUrlResult>;
+  addTemplateSource: (params: AddTemplateSourceParams) => Promise<AddTemplateSourceResult>;
+  listTemplateSources: () => Promise<ListTemplateSourcesResult>;
+  removeTemplateSource: (params: RemoveTemplateSourceParams) => Promise<RemoveTemplateSourceResult>;
   /** @deprecated kept only as a thin wrapper for any lingering direct callers;
    *  prefer reportConnectionOk/reportConnectionError, which correctly derive
    *  daemonReachable/sessionValid instead of guessing a single boolean. */
@@ -244,6 +257,22 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => ({
 
   async fetchAuthorTemplates(params) {
     return callRpc<FetchAuthorTemplatesParams, FetchAuthorTemplatesResult>("fetchAuthorTemplates", params);
+  },
+
+  async inspectTemplateSourceUrl(params) {
+    return callRpc<InspectTemplateSourceUrlParams, InspectTemplateSourceUrlResult>("inspectTemplateSourceUrl", params);
+  },
+
+  async addTemplateSource(params) {
+    return callRpc<AddTemplateSourceParams, AddTemplateSourceResult>("addTemplateSource", params);
+  },
+
+  async listTemplateSources() {
+    return callRpc<ListTemplateSourcesParams, ListTemplateSourcesResult>("listTemplateSources", {});
+  },
+
+  async removeTemplateSource(params) {
+    return callRpc<RemoveTemplateSourceParams, RemoveTemplateSourceResult>("removeTemplateSource", params);
   },
 
   setDaemonConnected(connected) {

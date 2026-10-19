@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AUTHOR_REGISTRY } from "@symbion/core";
 import { DaemonRpcError, initDaemonSession } from "@/lib/rpc/client";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
-import type { FetchAuthorTemplatesOutcome } from "@/lib/rpc/types";
+import type { FetchAuthorTemplatesOutcome, UserTemplateSourceSummary } from "@/lib/rpc/types";
+import { Button } from "./ui/button";
+import { AddTemplateSourceDialog } from "./AddTemplateSourceDialog";
+import { TemplateSourceHeader } from "./TemplateSourceHeader";
 import { Sidebar } from "./shell/Sidebar";
 import { Toaster } from "./ui/toast";
 import { AuthorTabs } from "./AuthorTabs";
@@ -25,8 +28,10 @@ type AuthorFetchState =
   | { status: "loading" }
   | (FetchAuthorTemplatesOutcome & { status: "success" | "error" });
 
-const GITHUB_AUTHORS = AUTHOR_REGISTRY.filter((a) => a.kind === "github");
-const AUTHOR_TABS = AUTHOR_REGISTRY.map((a) => ({ id: a.id, label: a.displayName }));
+const BUILTIN_GITHUB_AUTHOR_IDS = AUTHOR_REGISTRY.filter((a) => a.kind === "github").map((a) => a.id);
+const BUILTIN_TABS = AUTHOR_REGISTRY.map((a) => ({ id: a.id, label: a.displayName, unverified: false }));
+/** raw files that hit GitHub's per-file 429 before the extra "retry later" line is shown. */
+const RATE_LIMIT_NOTICE_THRESHOLD = 10;
 
 /**
  * TemplatesView — the /templates route's interactive content. Symbion's
@@ -44,6 +49,58 @@ export function TemplatesView() {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateListItem | null>(null);
   const [selectedAuthorId, setSelectedAuthorId] = useState<string>("symbion");
   const [authorCache, setAuthorCache] = useState<Record<string, AuthorFetchState>>({});
+  const daemonConnected = useArtifactStore((s) => s.daemonConnected);
+  const listTemplateSources = useArtifactStore((s) => s.listTemplateSources);
+  const removeTemplateSource = useArtifactStore((s) => s.removeTemplateSource);
+  const showToast = useArtifactStore((s) => s.showToast);
+  const [userSources, setUserSources] = useState<UserTemplateSourceSummary[]>([]);
+  const [invalidSourceCount, setInvalidSourceCount] = useState(0);
+  const [maxSources, setMaxSources] = useState(20);
+  const [showAdd, setShowAdd] = useState(false);
+
+  const authorTabs = useMemo(
+    () => [...BUILTIN_TABS, ...userSources.map((u) => ({ id: u.id, label: u.displayName, unverified: true }))],
+    [userSources]
+  );
+  const githubAuthorIds = useMemo(
+    () => new Set([...BUILTIN_GITHUB_AUTHOR_IDS, ...userSources.map((u) => u.id)]),
+    [userSources]
+  );
+  // Latest known tab ids, readable from async continuations (late fetch results for removed ids are dropped).
+  const knownIdsRef = useRef<Set<string>>(new Set(BUILTIN_TABS.map((t) => t.id)));
+  knownIdsRef.current = new Set(authorTabs.map((t) => t.id));
+
+  const refreshSources = useCallback(async (): Promise<UserTemplateSourceSummary[] | null> => {
+    try {
+      const res = await listTemplateSources();
+      setUserSources(res.sources);
+      setInvalidSourceCount(res.invalidCount);
+      setMaxSources(res.maxSources);
+      // the list is authoritative: drop cache entries of sources that no longer exist
+      setAuthorCache((prev) => {
+        const keep = new Set([...BUILTIN_GITHUB_AUTHOR_IDS, ...res.sources.map((u) => u.id)]);
+        const next: Record<string, AuthorFetchState> = {};
+        for (const [k, v] of Object.entries(prev)) if (keep.has(k)) next[k] = v;
+        return next;
+      });
+      return res.sources;
+    } catch {
+      return null; // keep what we have; built-in tabs never depend on this
+    }
+  }, [listTemplateSources]);
+
+  // Load on mount and every time the daemon (re)connects.
+  useEffect(() => {
+    if (daemonConnected) void refreshSources();
+  }, [daemonConnected, refreshSources]);
+
+  // A selected source that vanished (removed here or elsewhere) -> back to Symbion.
+  useEffect(() => {
+    if (selectedAuthorId !== "symbion" && !authorTabs.some((t) => t.id === selectedAuthorId)) {
+      // only once the list has had a chance to load, so a deep-linked selection is not dropped early
+      setSelectedAuthorId("symbion");
+    }
+  }, [authorTabs, selectedAuthorId]);
 
   const manifest = useMemo(() => loadTemplateManifest(), []);
 
@@ -75,8 +132,10 @@ export function TemplatesView() {
     setAuthorCache((prev) => ({ ...prev, [authorId]: { status: "loading" } }));
     try {
       const result = await fetchAuthorTemplates({ authorId });
+      if (!knownIdsRef.current.has(authorId)) return; // source removed meanwhile: drop the late result
       setAuthorCache((prev) => ({ ...prev, [authorId]: result.outcome }));
     } catch (err) {
+      if (!knownIdsRef.current.has(authorId)) return;
       const message = err instanceof DaemonRpcError ? err.message : "Unknown error while loading templates.";
       setAuthorCache((prev) => ({
         ...prev,
@@ -96,19 +155,66 @@ export function TemplatesView() {
     }
   }
 
-  function handleRetry(authorId: string) {
+  async function handleRetry(authorId: string) {
+    // A saved source may have been removed/edited elsewhere: re-list first, then fetch only if it still exists.
+    if (!BUILTIN_GITHUB_AUTHOR_IDS.includes(authorId)) {
+      const fresh = await refreshSources();
+      if (fresh && !fresh.some((u) => u.id === authorId)) return;
+      knownIdsRef.current.add(authorId);
+    }
     void runFetch(authorId);
   }
 
-  const isGithubAuthor = GITHUB_AUTHORS.some((a) => a.id === selectedAuthorId);
+  async function handleRemove(source: UserTemplateSourceSummary) {
+    try {
+      await removeTemplateSource({ id: source.id });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not remove the source.", "error");
+      void refreshSources(); // reveal whether the removal actually landed
+      return;
+    }
+    setUserSources((prev) => prev.filter((u) => u.id !== source.id));
+    setAuthorCache((prev) => {
+      const next = { ...prev };
+      delete next[source.id];
+      return next;
+    });
+    setSelectedAuthorId("symbion");
+    showToast(`Removed '${source.displayName}'`, "success");
+  }
+
+  async function handleAdded(source: UserTemplateSourceSummary) {
+    setShowAdd(false);
+    knownIdsRef.current.add(source.id);
+    setUserSources((prev) => (prev.some((u) => u.id === source.id) ? prev : [...prev, source]));
+    setSelectedAuthorId(source.id);
+    void refreshSources();
+    void runFetch(source.id);
+    showToast(`Added '${source.displayName}'`, "success");
+  }
+
+  function handleOpenExisting(id: string) {
+    if (authorTabs.some((t) => t.id === id)) handleSelectAuthor(id);
+  }
+
+  const isGithubAuthor = githubAuthorIds.has(selectedAuthorId);
   const currentState: AuthorFetchState = isGithubAuthor
     ? authorCache[selectedAuthorId] ?? { status: "idle" }
     : { status: "success", items: manifest.items, skipped: manifest.skipped };
 
   const currentAuthorMeta = AUTHOR_REGISTRY.find((a) => a.id === selectedAuthorId);
-  const currentAuthorLabel = currentAuthorMeta?.displayName ?? selectedAuthorId;
-  const currentRepoIdentifier =
-    currentAuthorMeta?.kind === "github" ? `github.com/${currentAuthorMeta.repoLabel}` : undefined;
+  const currentUserSource = userSources.find((u) => u.id === selectedAuthorId);
+  const currentAuthorLabel = currentUserSource?.displayName ?? currentAuthorMeta?.displayName ?? selectedAuthorId;
+  const currentRepoLabel = currentUserSource
+    ? `${currentUserSource.owner}/${currentUserSource.repo}`
+    : currentAuthorMeta?.kind === "github"
+      ? currentAuthorMeta.repoLabel
+      : undefined;
+  const currentRepoIdentifier = currentRepoLabel ? `github.com/${currentRepoLabel}` : undefined;
+  const successMeta =
+    currentState.status === "success" && "commitSha" in currentState
+      ? { commitSha: currentState.commitSha, truncated: currentState.truncated }
+      : { commitSha: undefined, truncated: undefined };
 
   const items = currentState.status === "success" ? currentState.items : [];
   const skipped = currentState.status === "success" ? currentState.skipped : [];
@@ -136,7 +242,40 @@ export function TemplatesView() {
             </p>
           </div>
 
-          <AuthorTabs authors={AUTHOR_TABS} selectedId={selectedAuthorId} onSelect={handleSelectAuthor} />
+          <div className="flex items-end gap-4">
+            <div className="min-w-0 flex-1">
+              <AuthorTabs authors={authorTabs} selectedId={selectedAuthorId} onSelect={handleSelectAuthor} />
+            </div>
+            <Button
+              variant="outline"
+              disabled={!daemonConnected || userSources.length >= maxSources}
+              title={
+                !daemonConnected
+                  ? "Daemon offline"
+                  : userSources.length >= maxSources
+                    ? `Limit of ${maxSources} sources reached`
+                    : undefined
+              }
+              onClick={() => setShowAdd(true)}
+            >
+              + Add source
+            </Button>
+          </div>
+          {invalidSourceCount > 0 && (
+            <p className="text-caption text-warning">
+              {invalidSourceCount} saved source{invalidSourceCount === 1 ? "" : "s"} could not be read.
+            </p>
+          )}
+
+          {currentUserSource && (
+            <TemplateSourceHeader
+              source={currentUserSource}
+              commitSha={successMeta.commitSha}
+              truncated={successMeta.truncated}
+              daemonConnected={daemonConnected}
+              onRemove={() => handleRemove(currentUserSource)}
+            />
+          )}
 
           {currentState.status === "loading" && (
             <AuthorFetchLoadingState authorLabel={currentAuthorLabel} repoIdentifier={currentRepoIdentifier} />
@@ -147,7 +286,7 @@ export function TemplatesView() {
               kind={currentState.kind}
               message={currentState.message}
               resetAt={currentState.resetAt}
-              onRetry={() => handleRetry(selectedAuthorId)}
+              onRetry={() => void handleRetry(selectedAuthorId)}
             />
           )}
 
@@ -175,12 +314,28 @@ export function TemplatesView() {
               {isGithubAuthor && skipped.length > 0 && (
                 <>
                   <AuthorSkippedSummary items={skipped} />
+                  {skipped.filter((s) => /\b429\b/.test(s.reason)).length >= RATE_LIMIT_NOTICE_THRESHOLD && (
+                    <p className="text-caption text-warning">GitHub is rate-limiting downloads; retry later.</p>
+                  )}
                   {items.length === 0 && (
                     <p className="text-caption text-warning">
-                      ⚠ Loaded, but no valid templates were found in repo {currentAuthorMeta?.kind === "github" ? currentAuthorMeta.repoLabel : currentAuthorLabel}.
+                      ⚠ Loaded, but no valid templates were found in repo {currentRepoLabel ?? currentAuthorLabel}.
                     </p>
                   )}
                 </>
+              )}
+
+              {currentUserSource && items.length === 0 && skipped.length === 0 && (
+                <div className="space-y-2 text-caption text-ink-muted">
+                  <p>
+                    No files matched this source&apos;s folders
+                    {successMeta.commitSha ? ` at commit ${successMeta.commitSha.slice(0, 7)}` : ""}.
+                  </p>
+                  <p>If the repository was reorganised, remove this source and add it again.</p>
+                  <Button variant="outline" onClick={() => void handleRetry(selectedAuthorId)}>
+                    Retry
+                  </Button>
+                </div>
               )}
             </>
           )}
@@ -199,6 +354,14 @@ export function TemplatesView() {
         </div>
       </main>
 
+      {showAdd && (
+        <AddTemplateSourceDialog
+          daemonConnected={daemonConnected}
+          onClose={() => setShowAdd(false)}
+          onAdded={handleAdded}
+          onOpenExisting={handleOpenExisting}
+        />
+      )}
       {selectedTemplate && (
         <TemplatePreviewModal template={selectedTemplate} onClose={() => setSelectedTemplate(null)} />
       )}

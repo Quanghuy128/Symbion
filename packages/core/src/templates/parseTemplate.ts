@@ -29,6 +29,51 @@ export type ParseTemplateResult =
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
 
+const DESCRIPTION_CAP = 160;
+
+/**
+ * deriveCommandDescription — a one-line description for a command that has none,
+ * taken from the body: the first heading (dropping a leading "/name -" so
+ * "# /rank - Triage jobs" reads "Triage jobs"), else the first prose line.
+ * Plain text, capped at DESCRIPTION_CAP chars; never empty.
+ */
+export function deriveCommandDescription(body: string): string {
+  const clean = (s: string) => s.replace(/[`*_]/g, "").replace(/\s+/g, " ").trim();
+  let fenced = false;
+  let heading: string | undefined;
+  let prose: string | undefined;
+  for (const line of body.replace(/\r\n/g, "\n").split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("```")) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced || t.length === 0 || /^[-*_]{3,}$/.test(t)) continue;
+    const h = /^#{1,6}\s+(.+)$/.exec(t);
+    if (h) {
+      heading = clean(h[1]!);
+      break;
+    }
+    prose ??= clean(t.replace(/^[>\-*+]\s+/, ""));
+    if (prose) break;
+  }
+  let text = heading ?? prose ?? "";
+  if (heading) {
+    // "/rank - Triage…" / "/rank: Triage…" -> "Triage…" (keep it whole if nothing follows)
+    const stripped = /^\/[\w:.-]+\s*[-–—:]\s+(.+)$/.exec(text)?.[1];
+    if (stripped) text = stripped;
+  }
+  if (text.length === 0) text = "Command";
+  return text.length > DESCRIPTION_CAP ? `${text.slice(0, DESCRIPTION_CAP - 1).trimEnd()}…` : text;
+}
+
+/** A command whose frontmatter/description is missing: the whole `rawBody` is the prompt, description derived. */
+function commandFromBody(rawBody: string): ParseTemplateResult {
+  const body = rawBody.replace(/\r\n/g, "\n").replace(/\n+$/, "").replace(/^\n+/, "");
+  if (body.trim().length === 0) return { ok: false, reason: "Body (content after frontmatter) is empty." };
+  return { ok: true, parsed: { kind: "command", description: deriveCommandDescription(body), body } };
+}
+
 /**
  * parseTemplateMarkdown — parses ONE bundled template file's raw text
  * (frontmatter + body) into a ParsedTemplateContent. Pure, throws never —
@@ -44,6 +89,9 @@ const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
 export function parseTemplateMarkdown(raw: string, expectedKind: TemplateKind): ParseTemplateResult {
   const match = FRONTMATTER_RE.exec(raw);
   if (!match) {
+    // Claude Code treats a command file as a plain prompt — frontmatter is
+    // optional for commands (agents and skills require it).
+    if (expectedKind === "command") return commandFromBody(raw);
     return { ok: false, reason: "File is missing frontmatter (--- ... ---)." };
   }
   const [, fmRaw, bodyRaw] = match;
@@ -52,7 +100,16 @@ export function parseTemplateMarkdown(raw: string, expectedKind: TemplateKind): 
   try {
     fm = parseFrontmatter(fmRaw ?? "");
   } catch (err) {
+    // A command's `description` is optional in Claude Code (e.g. a file that only
+    // sets `allowed-tools`): derive one from the body instead of skipping it.
+    // Any OTHER frontmatter problem (bad YAML, wrong types) still skips the file.
+    if (expectedKind === "command" && /missing the `description`/.test((err as Error).message)) {
+      return commandFromBody(bodyRaw ?? "");
+    }
     return { ok: false, reason: (err as Error).message };
+  }
+  if (expectedKind === "command" && (!fm.description || fm.description.trim().length === 0)) {
+    return commandFromBody(bodyRaw ?? "");
   }
 
   // Only agent (and skill) templates require frontmatter `name`. Command

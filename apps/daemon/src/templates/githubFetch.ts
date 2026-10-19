@@ -1,36 +1,55 @@
 /**
  * githubFetch.ts — the GitHub tree-listing + bounded-concurrency per-file
  * content fetch + error-mapping layer backing the `fetchAuthorTemplates` RPC
- * (docs/loops/templates-authors-STATE.md PLAN §P2). Built on the same
- * `fetch()` + `AbortController` + try/catch error-mapping convention already
- * established by OllamaProvider (apps/daemon/src/llm/ollamaProvider.ts) — a
- * GitHub-specific sibling, not a generalized "any provider" abstraction.
+ * (docs/loops/templates-authors-STATE.md PLAN §P2; generalised to user-added
+ * sources by docs/loops/templates-repo-url-STATE.md PLAN §8).
  *
- * AC7 / PLAN §P8 finding #5: this module contains ZERO fs.writeFile /
- * fs.promises.writeFile / writeFileSync calls — fetched content is only ever
- * held in memory and returned to the caller.
+ * ALL network access goes through githubHttp.githubGet (host allowlist,
+ * manual redirects, streamed byte caps). URLs are built ONLY by the pure core
+ * builders from the resolved AuthorSource fields — never from client input.
+ *
+ * AC7 / PLAN §P8 finding #5: this module contains ZERO fs write calls —
+ * fetched content is only ever held in memory and returned to the caller.
  */
 import {
+  COMMIT_SHA_RE,
+  githubCommitShaUrl,
+  githubRawFileUrl,
+  githubTreeUrl,
+  isSafeRepoRelPath,
   matchAuthorFolders,
   parseTemplateMarkdown,
-  type AuthorSource,
+  toRepoRelativeFolders,
+  type GithubAuthorSource,
   type GithubTreeEntry,
   type TemplateListItem,
 } from "@symbion/core";
+import { githubGet, type FetchLike, type GithubErrorOutcome } from "./githubHttp.js";
+
+export type { GithubAuthorSource };
+export type { FetchLike };
 
 const TREE_FETCH_TIMEOUT_MS = 10_000;
 const PER_FILE_FETCH_TIMEOUT_MS = 8_000;
 const CONCURRENCY = 8;
-/** Defensive ceiling per PLAN §P8 finding #2 — reject/skip any single file body over this size. */
+/** Defensive ceiling per PLAN §P8 finding #2 — now enforced on streamed BYTES. */
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
+/** Tree JSON cap (PLAN §8.2.3 #7). */
+const MAX_TREE_BYTES = 16 * 1024 * 1024;
+const MAX_COMMIT_SHA_BYTES = 64;
 /** Cap on total candidates fetched per call — prevents unbounded memory on a very large or bloated repo. */
 const MAX_CANDIDATES = 150;
 
-export type GithubAuthorSource = Extract<AuthorSource, { kind: "github" }>;
-
 export type FetchAuthorTemplatesOutcome =
-  | { status: "success"; items: TemplateListItem[]; skipped: Array<{ relPath: string; reason: string }> }
-  | { status: "error"; kind: "network" | "rate-limit" | "not-found"; message: string; resetAt?: number };
+  | {
+      status: "success";
+      items: TemplateListItem[];
+      skipped: Array<{ relPath: string; reason: string }>;
+      commitSha?: string;
+      refLabel?: string;
+      truncated?: boolean;
+    }
+  | GithubErrorOutcome;
 
 interface GithubTreeResponse {
   tree?: GithubTreeEntry[];
@@ -38,24 +57,64 @@ interface GithubTreeResponse {
   [key: string]: unknown;
 }
 
-/** Injectable fetch for tests (same pattern as OllamaProviderOptions.baseUrl) — defaults to global fetch. */
-export type FetchLike = typeof fetch;
+export const REPO_NOT_FOUND = (owner: string, repo: string): string =>
+  `Repository ${owner}/${repo} not found, or it is private (only public repos are supported).`;
 
-async function fetchWithTimeout(
+/**
+ * resolveCommitSha — `GET commits/{ref}` with the sha media type -> the 40-hex
+ * COMMIT sha (the tree response's own `sha` is a TREE sha — PLAN F1).
+ */
+export async function resolveCommitSha(
   fetchImpl: FetchLike,
-  url: string,
-  timeoutMs: number
-): Promise<{ res: Response } | { errored: true; aborted: boolean }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetchImpl(url, { signal: controller.signal });
-    return { res };
-  } catch {
-    return { errored: true, aborted: controller.signal.aborted };
-  } finally {
-    clearTimeout(timer);
+  owner: string,
+  repo: string,
+  ref: string,
+  timeoutMs: number = TREE_FETCH_TIMEOUT_MS
+): Promise<{ ok: true; sha: string } | { ok: false; outcome: GithubErrorOutcome }> {
+  const r = await githubGet(fetchImpl, githubCommitShaUrl(owner, repo, ref), {
+    timeoutMs,
+    accept: "application/vnd.github.sha",
+    maxBytes: MAX_COMMIT_SHA_BYTES,
+    notFoundMessage: REPO_NOT_FOUND(owner, repo),
+    unprocessableMessage: `Branch or tag '${ref}' not found.`,
+  });
+  if (r.kind === "error") return { ok: false, outcome: r.outcome };
+  const sha = r.kind === "ok" ? r.body.trim() : "";
+  if (!COMMIT_SHA_RE.test(sha)) {
+    return { ok: false, outcome: { status: "error", kind: "network", message: "Invalid response from GitHub." } };
   }
+  return { ok: true, sha };
+}
+
+/** fetchTree — recursive tree listing for a branch/tag/commit sha. */
+export async function fetchGithubTree(
+  fetchImpl: FetchLike,
+  owner: string,
+  repo: string,
+  treeish: string,
+  timeoutMs: number,
+  notFoundMessage: string
+): Promise<{ ok: true; tree: GithubTreeEntry[]; truncated: boolean } | { ok: false; outcome: GithubErrorOutcome }> {
+  const r = await githubGet(fetchImpl, githubTreeUrl(owner, repo, treeish), {
+    timeoutMs,
+    maxBytes: MAX_TREE_BYTES,
+    notFoundMessage,
+  });
+  if (r.kind === "error") return { ok: false, outcome: r.outcome };
+  if (r.kind === "too-large") {
+    return { ok: false, outcome: { status: "error", kind: "network", message: "The repository listing is too large." } };
+  }
+  let json: GithubTreeResponse;
+  try {
+    json = JSON.parse(r.body) as GithubTreeResponse;
+  } catch {
+    return { ok: false, outcome: { status: "error", kind: "network", message: "Invalid response from GitHub." } };
+  }
+  if (!json || !Array.isArray(json.tree)) {
+    return { ok: false, outcome: { status: "error", kind: "network", message: "Invalid response from GitHub." } };
+  }
+  // truncated:true is handled by proceeding with the partial tree (PLAN §P2 step 2).
+  return { ok: true, tree: json.tree, truncated: json.truncated === true };
 }
 
 /**
@@ -84,13 +143,17 @@ async function runWithConcurrency<T, R>(items: T[], limit: number, task: (item: 
 
 /**
  * fetchAuthorTemplatesFromGithub — the full fetch pipeline for one
- * GitHub-backed AuthorSource: tree listing -> matchAuthorFolders filter ->
- * bounded-concurrency per-file content fetch -> parseTemplateMarkdown
- * (unmodified, packages/core) -> TemplateListItem[] / skipped[].
+ * GitHub-backed AuthorSource: [commit resolution for user sources] -> tree
+ * listing -> matchAuthorFolders filter -> bounded-concurrency per-file
+ * content fetch -> parseTemplateMarkdown (unmodified, packages/core) ->
+ * TemplateListItem[] / skipped[].
  *
- * Never throws — every failure mode (tree-fetch network/404/403-rate-limit,
- * per-file fetch failure, parse failure, oversized file) resolves to a
- * well-formed FetchAuthorTemplatesOutcome (PLAN §P2 steps 2-6).
+ * User sources (origin "user") are fetched by COMMIT SHA end to end (one
+ * consistent snapshot, no raw-CDN branch staleness); builtin ECC keeps its
+ * by-ref path (1 API call, unchanged).
+ *
+ * Never throws for external failures — every failure mode resolves to a
+ * well-formed FetchAuthorTemplatesOutcome.
  */
 export interface FetchAuthorTemplatesOptions {
   /** injectable for tests only — defaults to the real 10s/8s/8 production values. */
@@ -108,55 +171,38 @@ export async function fetchAuthorTemplatesFromGithub(
   const perFileTimeoutMs = options.perFileTimeoutMs ?? PER_FILE_FETCH_TIMEOUT_MS;
   const concurrency = options.concurrency ?? CONCURRENCY;
 
-  const treeUrl = `https://api.github.com/repos/${author.owner}/${author.repo}/git/trees/${author.ref}?recursive=1`;
-
-  const treeAttempt = await fetchWithTimeout(fetchImpl, treeUrl, treeTimeoutMs);
-  if ("errored" in treeAttempt) {
-    return { status: "error", kind: "network", message: "Cannot connect to GitHub. Check your network connection and try again." };
-  }
-  const res = treeAttempt.res;
-
-  if (res.status === 404) {
-    return {
-      status: "error",
-      kind: "not-found",
-      message: `Repo ${author.owner}/${author.repo} (branch ${author.ref}) not found — it may have been renamed or made private.`,
-    };
+  const isUser = author.origin === "user";
+  let treeish = author.ref;
+  let commitSha: string | undefined;
+  let refLabel: string | undefined;
+  if (isUser) {
+    const commit = await resolveCommitSha(fetchImpl, author.owner, author.repo, author.ref, treeTimeoutMs);
+    if (!commit.ok) return commit.outcome;
+    commitSha = commit.sha;
+    treeish = commit.sha;
+    refLabel = author.ref === "HEAD" ? "default branch" : author.ref;
   }
 
-  if (res.status === 403) {
-    const remaining = res.headers.get("x-ratelimit-remaining");
-    if (remaining === "0") {
-      const resetHeader = res.headers.get("x-ratelimit-reset");
-      const resetAt = resetHeader ? Number(resetHeader) * 1000 : undefined;
-      return {
-        status: "error",
-        kind: "rate-limit",
-        message: "GitHub API rate limit exceeded (unauthenticated mode, 60 requests/hour). Try again later.",
-        ...(resetAt !== undefined && Number.isFinite(resetAt) ? { resetAt } : {}),
-      };
-    }
-    return { status: "error", kind: "network", message: "GitHub rejected the request (403)." };
-  }
+  const treeRes = await fetchGithubTree(
+    fetchImpl,
+    author.owner,
+    author.repo,
+    treeish,
+    treeTimeoutMs,
+    isUser
+      ? REPO_NOT_FOUND(author.owner, author.repo)
+      : `Repo ${author.owner}/${author.repo} (branch ${author.ref}) not found — it may have been renamed or made private.`
+  );
+  if (!treeRes.ok) return treeRes.outcome;
 
-  if (!res.ok) {
-    return { status: "error", kind: "network", message: `GitHub returned HTTP error ${res.status}.` };
-  }
-
-  let json: GithubTreeResponse;
-  try {
-    json = (await res.json()) as GithubTreeResponse;
-  } catch {
-    return { status: "error", kind: "network", message: "Invalid response from GitHub." };
-  }
-
-  if (!Array.isArray(json.tree)) {
-    return { status: "error", kind: "network", message: "Invalid response from GitHub." };
-  }
-  // truncated:true is defensively handled — proceed with the partial tree as-is
-  // (PLAN §P2 step 2's last bullet) rather than erroring outright.
-
-  const allCandidates = matchAuthorFolders(json.tree, author.folders);
+  const allMatches = matchAuthorFolders(treeRes.tree, toRepoRelativeFolders(author.rootPath, author.folders));
+  // Defence in depth against a malicious tree: never build a URL from an unsafe path.
+  const unsafeSkipped: Array<{ relPath: string; reason: string }> = [];
+  const allCandidates = allMatches.filter((c) => {
+    if (isSafeRepoRelPath(c.relPath)) return true;
+    unsafeSkipped.push({ relPath: c.relPath, reason: "Unsafe path" });
+    return false;
+  });
   // Hard cap: if a repo has far more matching files than expected, slice to
   // MAX_CANDIDATES to bound memory and wall-clock time. The extra items are
   // reported as skipped so the UI can surface a warning rather than silently drop them.
@@ -170,36 +216,24 @@ export async function fetchAuthorTemplatesFromGithub(
   const skipped: Array<{ relPath: string; reason: string }> = [];
 
   await runWithConcurrency(candidates, concurrency, async (candidate) => {
-    const rawUrl = `https://raw.githubusercontent.com/${author.owner}/${author.repo}/${author.ref}/${candidate.relPath}`;
-    const fileAttempt = await fetchWithTimeout(fetchImpl, rawUrl, perFileTimeoutMs);
-    if ("errored" in fileAttempt) {
-      skipped.push({ relPath: candidate.relPath, reason: "Network error while downloading the file." });
-      return;
-    }
-    const fileRes = fileAttempt.res;
-    if (!fileRes.ok) {
-      skipped.push({ relPath: candidate.relPath, reason: `Could not download file content (HTTP ${fileRes.status}).` });
-      return;
-    }
-
-    const contentLengthHeader = fileRes.headers.get("content-length");
-    if (contentLengthHeader && Number(contentLengthHeader) > MAX_FILE_BYTES) {
+    const rawUrl = githubRawFileUrl(author.owner, author.repo, treeish, candidate.relPath);
+    const file = await githubGet(fetchImpl, rawUrl, { timeoutMs: perFileTimeoutMs, maxBytes: MAX_FILE_BYTES });
+    if (file.kind === "too-large") {
       skipped.push({ relPath: candidate.relPath, reason: "File too large, skipped." });
       return;
     }
-
-    let raw: string;
-    try {
-      raw = await fileRes.text();
-    } catch {
-      skipped.push({ relPath: candidate.relPath, reason: "Network error while downloading the file." });
-      return;
-    }
-    if (raw.length > MAX_FILE_BYTES) {
-      skipped.push({ relPath: candidate.relPath, reason: "File too large, skipped." });
+    if (file.kind === "error") {
+      if (file.httpStatus === null) {
+        skipped.push({ relPath: candidate.relPath, reason: "Network error while downloading the file." });
+      } else if (file.httpStatus === 429) {
+        skipped.push({ relPath: candidate.relPath, reason: "GitHub is rate-limiting file downloads (HTTP 429)." });
+      } else {
+        skipped.push({ relPath: candidate.relPath, reason: `Could not download file content (HTTP ${file.httpStatus}).` });
+      }
       return;
     }
 
+    const raw = file.body.replace(/\r\n/g, "\n");
     const parsed = parseTemplateMarkdown(raw, candidate.bucket);
     if (!parsed.ok) {
       skipped.push({ relPath: candidate.relPath, reason: parsed.reason });
@@ -223,8 +257,16 @@ export async function fetchAuthorTemplatesFromGithub(
       authorId: author.id,
       authorDisplayName: author.displayName,
       authorRepoLabel: author.repoLabel,
+      authorOrigin: author.origin,
     });
   });
 
-  return { status: "success", items, skipped: [...cappedSkipped, ...skipped] };
+  return {
+    status: "success",
+    items,
+    skipped: [...unsafeSkipped, ...cappedSkipped, ...skipped],
+    ...(commitSha !== undefined ? { commitSha } : {}),
+    ...(refLabel !== undefined ? { refLabel } : {}),
+    truncated: treeRes.truncated,
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTemplateMarkdown } from "../src/templates/parseTemplate.js";
+import { deriveCommandDescription, parseTemplateMarkdown } from "../src/templates/parseTemplate.js";
 
 const VALID_AGENT = `---
 name: code-reviewer
@@ -207,5 +207,50 @@ Example skill body text.
     expect(() => parseTemplateMarkdown(raw, "skill")).not.toThrow();
     const result = parseTemplateMarkdown(raw, "skill");
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("command templates without frontmatter / description (Claude Code allows both)", () => {
+  it("U30: a plain-markdown command (no frontmatter) parses; whole file is the body; description comes from the heading with the '/name -' prefix dropped", () => {
+    const raw = "# /rank - Triage Scraped Jobs into a Ranked Shortlist\n\nYou are batch-scoring jobs.\n\n## Step 0\n";
+    const result = parseTemplateMarkdown(raw, "command");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.parsed.description).toBe("Triage Scraped Jobs into a Ranked Shortlist");
+    expect(result.parsed.body.startsWith("# /rank")).toBe(true);
+    expect(result.parsed.name).toBeUndefined();
+  });
+
+  it("U31: description derivation — heading variants, first prose line, fences skipped, markdown stripped, capped, never empty", () => {
+    expect(deriveCommandDescription("# /setup - Profile Onboarding\n")).toBe("Profile Onboarding");
+    expect(deriveCommandDescription("# /setup: Profile Onboarding")).toBe("Profile Onboarding");
+    expect(deriveCommandDescription("# /setup")).toBe("/setup");
+    expect(deriveCommandDescription("# Plain Heading\ntext")).toBe("Plain Heading");
+    expect(deriveCommandDescription("---\n\nRun the **tests** and `report`.\n")).toBe("Run the tests and report.");
+    expect(deriveCommandDescription("```\ncode\n```\nAfter the fence")).toBe("After the fence");
+    expect(deriveCommandDescription("```\nonly code\n```")).toBe("Command");
+    const long = deriveCommandDescription(`# ${"x".repeat(300)}`);
+    expect(long.length).toBe(160);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  it("U32: a command with frontmatter but no description derives one from the body (e.g. only allowed-tools set)", () => {
+    const result = parseTemplateMarkdown("---\nallowed-tools: Bash(git:*)\n---\n\n# /ship - Ship it\n\nDo the thing.\n", "command");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.parsed.description).toBe("Ship it");
+  });
+
+  it("U33: still skipped — empty command, whitespace-only command, malformed YAML command frontmatter", () => {
+    expect(parseTemplateMarkdown("", "command").ok).toBe(false);
+    expect(parseTemplateMarkdown("  \n\n", "command").ok).toBe(false);
+    expect(parseTemplateMarkdown("---\nallowed-tools: [unterminated\n---\n\nBody\n", "command").ok).toBe(false);
+    expect(parseTemplateMarkdown("---\nallowed-tools: Read\n---\n", "command").ok).toBe(false);
+  });
+
+  it("U34: agents and skills keep their strict rules (frontmatter, name, description)", () => {
+    expect(parseTemplateMarkdown("# just markdown", "agent").ok).toBe(false);
+    expect(parseTemplateMarkdown("# just markdown", "skill").ok).toBe(false);
+    expect(parseTemplateMarkdown("---\nname: x\n---\n\nBody\n", "skill").ok).toBe(false);
   });
 });

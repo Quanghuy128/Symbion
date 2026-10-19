@@ -36,4 +36,8 @@ export interface TemplateListItem {
   authorDisplayName: string;
   /** present iff this item's author source kind === "github", e.g. "affaan-m/ecc". */
   authorRepoLabel?: string;
+  /** "user" = fetched from a user-added (unverified) source. Set by the DAEMON
+   *  only; absent means builtin (back-compat). The web also fail-safes on the
+   *  `u-…` id shape. */
+  authorOrigin?: "builtin" | "user";
 }

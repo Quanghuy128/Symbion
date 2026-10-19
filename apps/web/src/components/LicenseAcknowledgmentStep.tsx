@@ -10,6 +10,8 @@ export interface LicenseAcknowledgmentStepProps {
   onAcknowledgedChange: (value: boolean) => void;
   onBack: () => void;
   onContinue: () => void;
+  /** user-added source — adds an extra "not reviewed" line. Built-ins render exactly as before. */
+  unverified?: boolean;
 }
 
 /**
@@ -26,6 +28,7 @@ export function LicenseAcknowledgmentStep({
   onAcknowledgedChange,
   onBack,
   onContinue,
+  unverified,
 }: LicenseAcknowledgmentStepProps) {
   return (
     <>
@@ -39,6 +42,10 @@ export function LicenseAcknowledgmentStep({
           Symbion only displays this content directly from GitHub and does not store or own the author's content{" "}
           {authorDisplayName}.
         </p>
+
+        {unverified && (
+          <p className="text-caption text-warning">This source is unverified — Symbion has not reviewed it.</p>
+        )}
 
         <label className="flex cursor-pointer items-start gap-2 text-ui">
           <Checkbox

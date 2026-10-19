@@ -111,6 +111,12 @@ export interface GlobalConfig {
   builderDefaultTab: "form" | "markdown";
   /** registry of known projects, so the sidebar can list projects across repos. */
   projects: Array<{ id: string; name: string; path: string }>;
+  /**
+   * templates-repo-url: user-added GitHub template sources. OPTIONAL + additive
+   * (no schemaVersion bump — see PLAN §8.3). UNTRUSTED on read: always pass
+   * through parseStoredTemplateSources before use.
+   */
+  templateSources?: unknown[];
 }
 
 export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {

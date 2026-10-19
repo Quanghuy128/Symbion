@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CommandNode, type CommandNodeData } from "./CommandNode";
 
@@ -28,13 +28,6 @@ describe("CommandNode (post-migration regression)", () => {
     const nodeDiv = screen.getByText("/analyze").closest(".group") as HTMLElement;
     fireEvent.mouseEnter(nodeDiv);
     expect(screen.getByRole("button", { name: "Options" })).toBeTruthy();
-  });
-
-  it("unlinked chip renders when data.unlinked is true and calls onEditBody on click", () => {
-    const onEditBody = vi.fn();
-    render(<CommandNode data={data({ unlinked: true, onEditBody })} />);
-    fireEvent.click(screen.getByText("not linked"));
-    expect(onEditBody).toHaveBeenCalledTimes(1);
   });
 
   it("justAdded ring does not throw / renders without crashing", () => {

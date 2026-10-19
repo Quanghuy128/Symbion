@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NodeHandle } from "./NodeHandle";
 import { NodeMenu } from "./NodeMenu";
-import { Tooltip } from "@/components/ui/tooltip";
 import { NodeTokenBadge, type NodeTokenBadgeProps } from "./NodeTokenBadge";
 import { Kind } from "@/components/ui/kind";
 import { commandRing } from "./nodeRings";
@@ -14,16 +13,12 @@ export interface CommandNodeData {
   dimmed?: boolean;
   /** interactive-graph: gates the source handle (design §5 R: hollow + non-connectable when daemon down). */
   connectable?: boolean;
-  /** design §5 O: command references an agent by backtick but has 0 @name edges (conservative). */
-  unlinked?: boolean;
   /** design §4 I: transient accent ring after a successful add. */
   justAdded?: boolean;
   /** node menu callbacks — supplied by DependencyGraph. */
   onEdit?: () => void;
   onDelete?: () => void;
   onCopyRun?: () => void;
-  /** design §5 O: open the drawer on the unlinked-chip "Sửa body" action. */
-  onEditBody?: () => void;
   /** true while daemon connected — gates the destructive menu item like the list. */
   daemonConnected?: boolean;
 
@@ -60,7 +55,7 @@ export interface CommandNodeProps {
 
 /**
  * CommandNode — /command node (Kind tile carries the kind). Stays dumb: all
- * derived state (highlighted/dimmed/unlinked/justAdded/connectable) is computed
+ * derived state (highlighted/dimmed/justAdded/connectable) is computed
  * in DependencyGraph. Local state is ONLY ephemeral UI (menu open, handle hover).
  */
 export function CommandNode({ data }: CommandNodeProps) {
@@ -151,26 +146,9 @@ export function CommandNode({ data }: CommandNodeProps) {
 
       {data.badge && <NodeTokenBadge {...data.badge} label={data.label} />}
 
-      {/* Unlinked-command chip (design §5 O) — warning, never danger. */}
-      {data.unlinked && (
-        <Tooltip content="This command references an agent with backticks — use @name or drag an edge to show the link.">
-          <button
-            type="button"
-            data-no-node-drag
-            onClick={(e) => {
-              e.stopPropagation();
-              data.onEditBody?.();
-            }}
-            className="ml-1 inline-flex items-center rounded-pill bg-warning-soft px-1.5 py-0.5 text-overline font-semibold uppercase text-warning"
-          >
-            not linked
-          </button>
-        </Tooltip>
-      )}
-
       {/* Hover-revealed ⋯ menu (design §4 D). */}
       {(hovered || menuOpen) && (
-        <div className="absolute -right-1 -top-1 z-10">
+        <div className="absolute right-1.5 top-1 z-10">
           <NodeMenu
             kind="command"
             open={menuOpen}

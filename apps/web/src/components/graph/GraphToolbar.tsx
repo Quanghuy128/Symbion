@@ -17,7 +17,8 @@ export interface GraphToolbarProps {
 }
 
 /**
- * GraphToolbar (design §4 A / surface A) — floating top-left pill:
+ * GraphToolbar (design §4 A / surface A) — floating top-right pill, scaled to
+ * 70% so it covers less of the canvas:
  * `＋ Add ▾` (opens an add dropdown), `⤢ Fit to view` (fitView), `?` (legend).
  */
 export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDisabled }: GraphToolbarProps) {
@@ -41,7 +42,7 @@ export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDi
   }, [addOpen]);
 
   return (
-    <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-pill border border-line-soft bg-surface px-1.5 py-1 shadow-menu">
+    <div className="absolute right-3 top-3 z-10 flex origin-top-right scale-[0.7] items-center gap-1 rounded-pill border border-line-soft bg-surface px-1.5 py-1 shadow-menu">
       <div ref={ref} className="relative">
         <Button
           type="button"
@@ -59,7 +60,7 @@ export function GraphToolbar({ onAdd, onFitView, onToggleLegend, disabled, fitDi
           <ChevronDown size={14} strokeWidth={1.6} aria-hidden />
         </Button>
         {addOpen && (
-          <div role="menu" className={cn("absolute left-0 top-full mt-1 w-44 animate-popIn", menuSurfaceClass)}>
+          <div role="menu" className={cn("absolute right-0 top-full mt-1 w-44 animate-popIn", menuSurfaceClass)}>
             <MenuItem
               label="Add workflow"
               icon={Slash}

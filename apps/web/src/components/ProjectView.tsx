@@ -41,6 +41,9 @@ export function ProjectView({ project }: ProjectViewProps) {
   }, [pendingExecuteArtifactId, pendingOpenHistory, project.artifacts, tab]);
   const [editing, setEditing] = useState<CanonicalArtifact | null>(null);
   const [publishing, setPublishing] = useState(false);
+  // graph tab: the run Agents panel is open → drop the page max-width so the
+  // graph:panel split gets the whole main area.
+  const [runPanelShown, setRunPanelShown] = useState(false);
   const [runCommandFor, setRunCommandFor] = useState<CanonicalArtifact | null>(null);
   // Bumped every time the Publish dialog closes — RunDialog watches this to
   // re-run its preflight (Defect 3 fix, QA J7's "Publish first" auto-unblock).
@@ -221,7 +224,11 @@ export function ProjectView({ project }: ProjectViewProps) {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-content-wide flex-1 overflow-y-auto px-10 py-10">
+      <div
+        className={`mx-auto w-full flex-1 overflow-y-auto py-10 ${
+          tab === "graph" && runPanelShown ? "max-w-none px-6" : "max-w-content-wide px-10"
+        }`}
+      >
         {isEmpty ? (
           <div className="flex h-full items-center justify-center gap-2">
             <Button icon={Plus} onClick={() => setEditing(newArtifact("command"))}>
@@ -239,6 +246,7 @@ export function ProjectView({ project }: ProjectViewProps) {
             projectName={project.name}
             onPublish={() => setPublishing(true)}
             publishDialogClosedSignal={publishClosedSignal}
+            onPanelShownChange={setRunPanelShown}
           />
         ) : (
           <div className="space-y-10">

@@ -60,6 +60,9 @@ export interface DependencyGraphProps {
   /** bumps whenever the (sibling-owned) Publish dialog closes — RunDialog
    *  re-runs its preflight on change (Defect 3 fix / QA J7). */
   publishDialogClosedSignal?: number;
+  /** fires when the Agents panel opens/closes — ProjectView widens the page
+   *  container to full width while it is open (6:4 graph:panel split). */
+  onPanelShownChange?: (shown: boolean) => void;
 }
 
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "timedOut"]);
@@ -192,6 +195,7 @@ export function DependencyGraph({
   projectName,
   onPublish,
   publishDialogClosedSignal,
+  onPanelShownChange,
 }: DependencyGraphProps) {
   const canvasRef = useRef<GraphCanvasHandle>(null);
   const fitView = useCallback(() => canvasRef.current?.fitView(), []);
@@ -427,7 +431,6 @@ export function DependencyGraph({
   const agents = useMemo(() => artifacts.filter((a) => a.kind === "agent"), [artifacts]);
   const commands = useMemo(() => artifacts.filter((a) => a.kind === "command"), [artifacts]);
   const agentByName = useMemo(() => new Map(agents.map((a) => [a.name, a])), [agents]);
-  const agentNames = useMemo(() => new Set(agents.map((a) => a.name)), [agents]);
   const commandById = useMemo(() => new Map(commands.map((c) => [c.id, c])), [commands]);
   const artifactById = useMemo(() => new Map(artifacts.map((a) => [a.id, a])), [artifacts]);
 
@@ -639,6 +642,19 @@ export function DependencyGraph({
   );
   const panelLinkLike = panelShown;
 
+  // The canvas width changes when the panel opens/closes (6:4 split vs the
+  // centered page width) — tell the page, then refit once the new width lands.
+  const prevPanelShownRef = useRef(panelShown);
+  useEffect(() => {
+    onPanelShownChange?.(panelShown);
+    if (prevPanelShownRef.current === panelShown) return;
+    prevPanelShownRef.current = panelShown;
+    const raf = requestAnimationFrame(() => canvasRef.current?.fitView());
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelShown]);
+  useEffect(() => () => onPanelShownChange?.(false), [onPanelShownChange]);
+
   // Run-engine participant set (design §3.4/§4): the executing command + its
   // reachable agents (by @mention) glow/stay full-opacity; everything else
   // dims to 35%. Empty when no run is active — additive, zero-cost otherwise.
@@ -743,12 +759,6 @@ export function DependencyGraph({
     // (PLAN §3). Every other field is untouched.
     const nodes: InternalNode[] = [
       ...commands.map((c) => {
-        // Unlinked heuristic (design §5 O, taste-call §9.14, conservative):
-        // 0 @name mentions AND a backtick token matching an existing agent name.
-        const mentions = extractAgentMentions(c.body);
-        const backtickNames = [...c.body.matchAll(/`([A-Za-z0-9_-]+)`/g)].map((m) => m[1] ?? "");
-        const unlinked = mentions.length === 0 && backtickNames.some((n) => agentNames.has(n));
-
         // Run engine v1 (P1) — additive data-bag only (design §4's CommandNodeData
         // diff): runStatus/runParticipant/onExecute/executeDisabledReason.
         // P3 (STATE §18.1): while viewing history, `isRunning` sources from
@@ -793,10 +803,8 @@ export function DependencyGraph({
             label: `/${c.name}`,
             connectable: daemonConnected && !authoringSuspended,
             daemonConnected,
-            unlinked,
             justAdded: c.id === justAddedId,
             onEdit: authoringSuspended ? undefined : () => onEditArtifact(c),
-            onEditBody: authoringSuspended ? undefined : () => onEditArtifact(c),
             onDelete: authoringSuspended ? undefined : () => requestDelete(c.id),
             onCopyRun: authoringSuspended ? undefined : () => setRunCommandFor(c),
             onExecute: executeDisabledReason ? undefined : () => setRunDialogFor(c),
@@ -910,6 +918,11 @@ export function DependencyGraph({
       ])
     );
 
+    // Unlinked nodes get a two-column default: commands left, agents right.
+    const columnById = new Map(
+      allNodes.map((n) => [n.id, n.type === "command" ? ("left" as const) : ("right" as const)])
+    );
+
     // Phase (b)/(c) LAYOUT+MERGE (free-node-dragging PLAN §5): dagre only
     // ever lays out the UNPINNED subset (ids with no saved override) — a
     // manually-dragged node's position is never recomputed. Edges passed
@@ -925,7 +938,11 @@ export function DependencyGraph({
       overrides: layoutOverrides,
       computeDagre: (unpinnedIds) => {
         const unpinnedSet = new Set(unpinnedIds);
-        const dimensions = unpinnedIds.map((id) => ({ id, ...(dimensionById.get(id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }) }));
+        const dimensions = unpinnedIds.map((id) => ({
+          id,
+          ...(dimensionById.get(id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }),
+          column: columnById.get(id),
+        }));
         const edgePairs = edges
           .filter((e) => unpinnedSet.has(e.source) && unpinnedSet.has(e.target))
           .map((e) => ({ source: e.source, target: e.target }));
@@ -956,7 +973,6 @@ export function DependencyGraph({
     commands,
     agents,
     agentByName,
-    agentNames,
     daemonConnected,
     justAddedId,
     layoutOverrides,
@@ -1090,6 +1106,33 @@ export function DependencyGraph({
         claudeLossy={ADAPTERS.claude.capability.lossy}
         codexLossy={ADAPTERS.codex.capability.lossy}
         missingAgentMentions={missingAgentMentions}
+        trailing={
+          // 🕘 history (design §3.10 R6, STATE §18.1) — hidden at 0 runs (the
+          // empty-state rule: absence is the cleanest empty state).
+          runCount > 0 ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setHistoryPopoverOpen((o) => !o)}
+                className="flex h-7 items-center gap-1.5 rounded-pill border border-line-soft bg-surface px-2.5 text-label text-ink hover:bg-surface-hover"
+              >
+                <History size={14} strokeWidth={1.6} aria-hidden />
+                runs {runCount}
+              </button>
+              {historyPopoverOpen && (
+                <RunHistoryPopover
+                  projectId={projectId}
+                  className="right-0 top-full mt-1"
+                  onSelect={(runId) => {
+                    setHistoryPopoverOpen(false);
+                    void openHistoryRun(projectId, runId);
+                  }}
+                  onClose={() => setHistoryPopoverOpen(false)}
+                />
+              )}
+            </div>
+          ) : null
+        }
       />
 
       {!daemonConnected && <DaemonRibbon onRetry={handleRetry} />}
@@ -1156,7 +1199,7 @@ export function DependencyGraph({
  panelShown ? "h-[calc(100vh-200px)] min-h-[480px]" : ""
  }`}
       >
-        <div className="relative flex-1">
+        <div className={`relative min-w-0 ${panelShown ? "flex-[3]" : "flex-1"}`}>
           <GraphToolbar
             onAdd={handleAdd}
             onFitView={fitView}
@@ -1164,28 +1207,6 @@ export function DependencyGraph({
             disabled={!daemonConnected || authoringSuspended}
             fitDisabled={artifacts.length === 0}
           />
-          {/* 🕘 history (design §3.10 R6, STATE §18.1) — hidden at 0 runs (the
-           *  empty-state rule: absence is the cleanest empty state). */}
-          {runCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setHistoryPopoverOpen((o) => !o)}
-              className="absolute left-3 top-12 z-10 flex h-7 items-center gap-1.5 rounded-pill border border-line-soft bg-surface px-2.5 text-label text-ink shadow-menu hover:bg-surface-hover"
-            >
-              <History size={14} strokeWidth={1.6} aria-hidden />
-              runs {runCount}
-            </button>
-          )}
-          {historyPopoverOpen && (
-            <RunHistoryPopover
-              projectId={projectId}
-              onSelect={(runId) => {
-                setHistoryPopoverOpen(false);
-                void openHistoryRun(projectId, runId);
-              }}
-              onClose={() => setHistoryPopoverOpen(false)}
-            />
-          )}
           <GraphLegend open={legendOpen} onOpenChange={setLegendOpen} />
 
           <GraphCanvas
@@ -1267,10 +1288,11 @@ export function DependencyGraph({
         </div>
 
         {/* Agents panel (workflow-agent-run — replaces the old timeline panel at the
-            same mount point; design Q1: 360px fixed). Live runs and history
-            share ONE component; history sources from the history* slice. */}
+            same mount point). Takes 4 of 10 columns next to the graph's 6
+            (min 360px); live runs and history share ONE component; history
+            sources from the history* slice. */}
         {panelShown && agentView && agentCtx && (shownRun || historyLoading) && (
-          <div className="flex w-[360px] shrink-0 flex-col border-l border-line">
+          <div className="flex min-w-[360px] flex-[2] flex-col border-l border-line">
             <AgentsPanel
               view={agentView}
               runId={shownRun?.runId ?? historyRunId}

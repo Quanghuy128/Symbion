@@ -3,8 +3,14 @@ import { accessSync, constants } from "node:fs";
 import { join } from "node:path";
 import {
   AUTHOR_REGISTRY,
+  MAX_USER_TEMPLATE_SOURCES,
+  USER_SOURCE_ID_RE,
   computeDiff as coreComputeDiff,
   dedupeImportNames,
+  defaultSourceDisplayName,
+  findDuplicateSource,
+  validateSourceDisplayName,
+  validateSourceFolders,
   extractAgentMentions,
   parseClaudeDir,
   renderArtifacts,
@@ -15,8 +21,17 @@ import {
   type ProjectStore,
   type RenderedFile,
   type TargetId,
+  type UserTemplateSource,
 } from "@symbion/core";
 import { fetchAuthorTemplatesFromGithub } from "../templates/githubFetch.js";
+import { inspectGithubSourceUrl } from "../templates/inspectSource.js";
+import { inspectTokens } from "../templates/inspectTokens.js";
+import {
+  addUserSource,
+  listUserSources,
+  removeUserSource,
+  resolveGithubSourceById,
+} from "../templates/userSources.js";
 import {
   createProjectStore,
   loadGlobalConfig,
@@ -70,6 +85,20 @@ import { readLayout, writeLayoutEntry } from "../store/layoutStore.js";
 import type * as contract from "./contract.js";
 
 export { RpcError };
+
+function toSourceSummary(s: UserTemplateSource): contract.UserTemplateSourceSummary {
+  return {
+    id: s.id,
+    displayName: s.displayName,
+    owner: s.owner,
+    repo: s.repo,
+    ref: s.ref,
+    refLabel: s.ref ?? "default branch",
+    rootPath: s.rootPath,
+    folders: s.folders,
+    addedAt: s.addedAt,
+  };
+}
 
 function randomId(): string {
   const hex = () => Math.floor(Math.random() * 16).toString(16);
@@ -686,16 +715,98 @@ export const handlers = {
    * well-formed, expected-to-sometimes-fail result, not a daemon bug.
    */
   async fetchAuthorTemplates(params: contract.FetchAuthorTemplatesParams): Promise<contract.FetchAuthorTemplatesResult> {
-    if (typeof params?.authorId !== "string" || params.authorId.trim().length === 0) {
-      throw new RpcError("invalid-author", "Missing authorId.");
-    }
-    const author = AUTHOR_REGISTRY.find((a) => a.id === params.authorId);
-    if (!author || author.kind !== "github") {
-      throw new RpcError("invalid-author", `Invalid authorId or not a GitHub source: "${params.authorId}".`);
-    }
-
+    // templates-repo-url PLAN §8.2.3 #1: ONLY `params.authorId` is read. The
+    // source (builtin registry entry or re-validated stored user source) is
+    // resolved server-side; any client-sent owner/repo/ref/path/url is ignored.
+    const author = resolveGithubSourceById(params?.authorId);
     const outcome = await fetchAuthorTemplatesFromGithub(author);
     return { outcome };
+  },
+
+  /**
+   * inspectTemplateSourceUrl — templates-repo-url. Validates + inspects a pasted
+   * GitHub link (the only place user-typed text reaches the network, only after
+   * the strict core parser accepted it). Writes NOTHING to disk; mints a
+   * single-use in-memory token consumed by addTemplateSource.
+   */
+  async inspectTemplateSourceUrl(
+    params: contract.InspectTemplateSourceUrlParams
+  ): Promise<contract.InspectTemplateSourceUrlResult> {
+    const outcome = await inspectGithubSourceUrl(params?.url, {
+      fetchImpl: (...args: Parameters<typeof fetch>) => fetch(...args),
+      tokens: inspectTokens,
+      existing: () => listUserSources().sources,
+    });
+    return { outcome };
+  },
+
+  /**
+   * addTemplateSource — token-bound. owner/repo/ref/rootPath come ONLY from the
+   * daemon-held inspect token; zero network calls. Folders must be a subset of
+   * what the daemon itself observed for that token.
+   */
+  async addTemplateSource(params: contract.AddTemplateSourceParams): Promise<contract.AddTemplateSourceResult> {
+    // NOTE: no `await` below — load -> validate -> save runs in one synchronous tick.
+    const binding = inspectTokens.peek(params?.inspectToken);
+    if (!binding) {
+      throw new RpcError("inspect-expired", "The link check expired. Check the link again.");
+    }
+    const rawFolders = params?.folders;
+    if (!Array.isArray(rawFolders) || rawFolders.length === 0) {
+      throw new RpcError("no-folders", "Choose at least one folder for Agents, Commands or Skills.");
+    }
+    const checkedFolders = validateSourceFolders(rawFolders);
+    if (!checkedFolders.ok) throw new RpcError("invalid-folders", checkedFolders.reason);
+    const allowed = new Set<string>([...binding.rootDirPaths, ...binding.detected.map((d) => d.path)]);
+    for (const f of checkedFolders.folders) {
+      if (!allowed.has(f.path)) {
+        throw new RpcError("invalid-folders", "That folder was not found in the repository listing.");
+      }
+    }
+
+    let displayName: string;
+    if (params.displayName === undefined || params.displayName === null) {
+      displayName = defaultSourceDisplayName(binding.owner, binding.repo, binding.ref, binding.rootPath);
+    } else {
+      const n = validateSourceDisplayName(params.displayName);
+      if (!n.ok) throw new RpcError("invalid-display-name", n.reason);
+      displayName = n.value;
+    }
+
+    const saved = addUserSource(({ existing }) => {
+      const dup = findDuplicateSource(
+        { owner: binding.owner, repo: binding.repo, ref: binding.ref, rootPath: binding.rootPath },
+        existing,
+        AUTHOR_REGISTRY
+      );
+      if (dup) {
+        throw new RpcError("duplicate-source", `This source is already added as "${dup.displayName}".`);
+      }
+      return {
+        displayName,
+        owner: binding.owner,
+        repo: binding.repo,
+        ref: binding.ref,
+        rootPath: binding.rootPath,
+        folders: checkedFolders.folders,
+        addedAt: new Date().toISOString(),
+      };
+    });
+    inspectTokens.consume(params.inspectToken);
+    return { source: toSourceSummary(saved) };
+  },
+
+  async listTemplateSources(): Promise<contract.ListTemplateSourcesResult> {
+    const { sources, invalidCount } = listUserSources();
+    return { sources: sources.map(toSourceSummary), invalidCount, maxSources: MAX_USER_TEMPLATE_SOURCES };
+  },
+
+  async removeTemplateSource(params: contract.RemoveTemplateSourceParams): Promise<contract.RemoveTemplateSourceResult> {
+    const id = params?.id;
+    if (typeof id !== "string" || !USER_SOURCE_ID_RE.test(id)) {
+      throw new RpcError("invalid-source", "Only user-added sources can be removed.");
+    }
+    return { removed: removeUserSource(id) };
   },
 
   render(params: contract.RenderParams): contract.RenderResult {

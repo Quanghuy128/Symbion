@@ -23,7 +23,9 @@ import type {
   RunState,
   RunStatus,
   RunSummary,
+  SourceFolder,
   TargetId,
+  TemplateBucket,
   TemplateListItem,
 } from "@symbion/core";
 
@@ -376,10 +378,12 @@ export interface ApplyTemplateResult {
  * GitHub-backed author id (looked up in AUTHOR_REGISTRY server-side, never a
  * client-suppliable owner/repo), fetches that author's repo content LIVE via
  * GitHub's tree API (1 api.github.com call, counts against the 60/hr
- * unauthenticated budget) + per-file raw.githubusercontent.com fetches
+ * unauthenticated budget; user-added sources cost 2: commit sha + tree) + per-file raw.githubusercontent.com fetches
  * (confirmed NOT rate-limited the same way, PLAN §P3). Read-only — makes
  * outbound network calls but never writes to disk (added to the daemon's
- * READ_ONLY_METHODS set alongside listModels/checkProviderStatus).
+ * read-only: it is a plain thrown-error/outcome method with no auth gate of its
+ * own, like listModels/checkProviderStatus — the old READ_ONLY_METHODS set was
+ * removed with the tokenless daemon).
  *
  * Fetched content is held only in daemon/web process memory for the
  * session — never written into Symbion's own source tree (AC7), never
@@ -394,7 +398,17 @@ export interface FetchAuthorTemplatesParams {
 }
 
 export type FetchAuthorTemplatesOutcome =
-  | { status: "success"; items: TemplateListItem[]; skipped: Array<{ relPath: string; reason: string }> }
+  | {
+      status: "success";
+      items: TemplateListItem[];
+      skipped: Array<{ relPath: string; reason: string }>;
+      /** 40-hex COMMIT sha the load was served from (user sources only). */
+      commitSha?: string;
+      /** human label of the followed ref, e.g. "main" or "default branch" (user sources only). */
+      refLabel?: string;
+      /** GitHub reported the recursive tree as truncated (very large repo) — list is partial. */
+      truncated?: boolean;
+    }
   | {
       status: "error";
       kind: "network" | "rate-limit" | "not-found";
@@ -406,6 +420,86 @@ export type FetchAuthorTemplatesOutcome =
 
 export interface FetchAuthorTemplatesResult {
   outcome: FetchAuthorTemplatesOutcome;
+}
+
+/* ------------------------------------------------------------------ *
+ * templates-repo-url: user-added GitHub template sources
+ * (docs/loops/templates-repo-url-STATE.md PLAN §8.2). Validation/client
+ * errors are thrown RpcErrors (400 {code,message}); GitHub/network failures
+ * are well-formed `outcome` unions.
+ * ------------------------------------------------------------------ */
+
+export type { SourceFolder, TemplateBucket };
+
+export interface UserTemplateSourceSummary {
+  /** "u-" + 10 hex, daemon-minted. */
+  id: string;
+  displayName: string;
+  owner: string;
+  repo: string;
+  /** null = follow the repo's default branch (HEAD). */
+  ref: string | null;
+  /** ref ?? "default branch" */
+  refLabel: string;
+  /** "" = repo root */
+  rootPath: string;
+  folders: SourceFolder[];
+  /** ISO */
+  addedAt: string;
+}
+
+export interface InspectTemplateSourceUrlParams {
+  url: string;
+}
+export type InspectTemplateSourceUrlOutcome =
+  | {
+      status: "success";
+      /** opaque, 10-min TTL, daemon-memory only, single-use. */
+      inspectToken: string;
+      owner: string;
+      repo: string;
+      ref: string | null;
+      refLabel: string;
+      rootPath: string;
+      /** 40-hex COMMIT sha (not the tree sha). */
+      commitSha: string;
+      truncated: boolean;
+      /** [] = no standard folder found. */
+      detected: Array<SourceFolder & { count: number }>;
+      /** "." first, then top-level dirs (max 200). */
+      rootDirs: Array<{ path: string; mdFiles: number; skillFiles: number }>;
+      suggestedDisplayName: string;
+      /** already saved, or a built-in (e.g. "ecc"). */
+      duplicateOf?: { id: string; displayName: string };
+    }
+  | { status: "error"; kind: "network" | "rate-limit" | "not-found"; message: string; resetAt?: number };
+export interface InspectTemplateSourceUrlResult {
+  outcome: InspectTemplateSourceUrlOutcome;
+}
+
+/** owner/repo/ref/rootPath are NOT accepted here — they come from the daemon-held inspect token. */
+export interface AddTemplateSourceParams {
+  inspectToken: string;
+  displayName?: string;
+  folders: SourceFolder[];
+}
+export interface AddTemplateSourceResult {
+  source: UserTemplateSourceSummary;
+}
+
+export interface ListTemplateSourcesParams {}
+export interface ListTemplateSourcesResult {
+  sources: UserTemplateSourceSummary[];
+  /** stored entries that failed validation (kept in the file, not listed). */
+  invalidCount: number;
+  maxSources: number;
+}
+
+export interface RemoveTemplateSourceParams {
+  id: string;
+}
+export interface RemoveTemplateSourceResult {
+  removed: boolean;
 }
 
 export interface RenderParams {
@@ -759,6 +853,10 @@ export type RpcMethod =
   | "createProjectAndImport"
   | "applyTemplate"
   | "fetchAuthorTemplates"
+  | "inspectTemplateSourceUrl"
+  | "addTemplateSource"
+  | "listTemplateSources"
+  | "removeTemplateSource"
   | "render"
   | "computeDiff"
   | "write"

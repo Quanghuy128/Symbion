@@ -22,6 +22,10 @@ export * from "./templates/parseTemplate.js";
 export * from "./templates/authorSource.js";
 export * from "./templates/matchAuthorFolders.js";
 export * from "./templates/templateListItem.js";
+export * from "./templates/githubUrl.js";
+export * from "./templates/detectFolders.js";
+export * from "./templates/userSource.js";
+export * from "./templates/toolRisk.js";
 
 export * from "./diff/diff.js";
 export * from "./diff/conflict.js";

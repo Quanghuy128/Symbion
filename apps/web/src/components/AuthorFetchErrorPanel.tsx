@@ -13,7 +13,7 @@ export interface AuthorFetchErrorPanelProps {
 const HEADING_BY_KIND: Record<AuthorFetchErrorPanelProps["kind"], string> = {
   network: "⚠ Could not load templates",
   "rate-limit": "⚠ GitHub API rate limit exceeded",
-  "not-found": "⚠ Could not load templates",
+  "not-found": "⚠ Repository, branch or folder not found",
 };
 
 /** Formats a future epoch-ms timestamp as "HH:MM (còn khoảng N phút)" —

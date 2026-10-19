@@ -37,7 +37,8 @@ export function matchAuthorFolders(
     if (entry.type !== "blob") continue;
 
     for (const folder of folders) {
-      const prefix = `${folder.path}/`;
+      // path "" = the repo root itself (templates-repo-url: "." mapping at the repo root).
+      const prefix = folder.path === "" ? "" : `${folder.path}/`;
       if (!entry.path.startsWith(prefix)) continue;
       const rest = entry.path.slice(prefix.length);
       if (rest.length === 0) continue;

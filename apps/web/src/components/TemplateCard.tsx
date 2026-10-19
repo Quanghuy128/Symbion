@@ -30,7 +30,9 @@ export function TemplateCard({ item, onClick }: TemplateCardProps) {
             {item.kind === "command" ? `/${item.name}` : item.name}
           </span>
         </span>
-        <Badge variant="plain">{KIND_LABEL[item.kind]}</Badge>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <Badge variant="plain">{KIND_LABEL[item.kind]}</Badge>
+        </span>
       </div>
       <p className="line-clamp-2 text-caption text-ink-muted">{item.description}</p>
     </button>

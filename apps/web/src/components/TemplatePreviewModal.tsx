@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { TemplateMarkdownViewer } from "./TemplateMarkdownViewer";
 import { ProjectPickerStep } from "./ProjectPickerStep";
 import { LicenseAcknowledgmentStep } from "./LicenseAcknowledgmentStep";
 import { ApplyResultPanel } from "./ApplyResultPanel";
+import { assessTemplateTools } from "@symbion/core";
+import { ToolRiskPanel } from "./ToolRiskPanel";
+import { isUnverifiedItem } from "@/lib/templates/sourceOrigin";
 import { useArtifactStore } from "@/lib/store/useArtifactStore";
 import type { TemplateListItem } from "@/data/templates/manifest";
 
@@ -53,6 +56,11 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
   const router = useRouter();
 
   const isThirdPartyAuthor = template.authorId !== "symbion";
+  const unverified = isUnverifiedItem(template);
+  const assessment = useMemo(
+    () => (unverified ? assessTemplateTools({ kind: template.kind, tools: template.tools, raw: template.raw }) : null),
+    [unverified, template.kind, template.tools, template.raw]
+  );
 
   useEffect(() => {
     setLicenseAcknowledged(false);
@@ -154,6 +162,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
               <div className="flex items-center gap-2">
                 <DialogTitle>{template.kind === "command" ? `/${template.name}` : template.name}</DialogTitle>
                 <Badge variant="plain">{KIND_LABEL[template.kind]}</Badge>
+                {unverified && <Badge variant="warning">Unverified</Badge>}
               </div>
               <p className="mt-1 text-caption text-ink-muted">{template.description}</p>
               {isThirdPartyAuthor && (
@@ -176,6 +185,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
           </DialogHeader>
 
           <DialogBody className="space-y-2">
+            {unverified && assessment && <ToolRiskPanel kind={template.kind} assessment={assessment} />}
             <TemplateMarkdownViewer content={template.raw} selectAllRef={selectAllRef} />
 
             {template.kind === "skill" && (
@@ -219,6 +229,7 @@ export function TemplatePreviewModal({ template, onClose }: TemplatePreviewModal
             onAcknowledgedChange={setLicenseAcknowledged}
             onBack={() => setStep("preview")}
             onContinue={handleContinueFromLicense}
+            unverified={unverified}
           />
         </>
       )}

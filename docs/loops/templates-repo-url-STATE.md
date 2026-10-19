@@ -574,3 +574,16 @@ Found while trying a real repo (`MadsLorentzen/ai-job-search`): all 12 files und
 - **Tests:** core U30–U34; daemon D21. The existing "all four unparseable" daemon test now uses an empty command file (a non-empty one is valid by design).
 - **UI (user request).** The "Unverified" badge is removed from the source header row and from each template card. It stays on the tab, in the preview modal and in the license step. This narrows **AC5**: user sources are flagged on the tab, preview and license step, not on cards.
 - Full suite: 110 files / 1004 tests green; web and daemon builds pass.
+
+## 12. QA — intentionally skipped (user decision, 2026-10-19)
+
+`/qa` was skipped at the user's request. Residual risk, not verified live:
+- Real-GitHub behaviour: `commits/HEAD` resolution, the 301 for a renamed repo (ECC), slash-containing refs, rate-limit UX. All tests mock `fetch`.
+- Browser journey (chrome-devtools) for add → map folders → apply → remove.
+- One real-repo check was done by hand: the 12 command files of `MadsLorentzen/ai-job-search` parse (section 11).
+
+Review items still open at ship time (section 10): Retry in the add dialog can inspect twice; `updateSettings` merges arbitrary config keys; no aggregate byte budget for fetched files; body-risk warning for Unverified templates is too quiet; a corrupt `config.json` can surface a raw 500. Security review verdict was PASS (no Critical/High), so these were accepted as follow-ups.
+
+## 13. SHIP
+
+Final gate: `npx vitest run` and web/daemon builds green. Shipped through PR from `feat/templates-repo-url`.

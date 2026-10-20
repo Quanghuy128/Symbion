@@ -82,6 +82,26 @@ describe("paste handler (WU2)", () => {
     expect(result.current.chips).toHaveLength(1);
   });
 
+  it("one pasted image exposed by BOTH files and items (distinct File objects, as in Chromium) -> exactly one chip", async () => {
+    const { result } = setup();
+    const e = fakeEvent({
+      files: [pngFile("image.png", 64)],
+      // a fresh File per call, like the browser — identity de-dupe cannot catch this
+      items: [{ kind: "file", type: "image/png", getAsFile: () => pngFile("image.png", 64) }],
+    });
+    act(() => result.current.onPaste(e));
+    await waitFor(() => expect(result.current.chips[0]?.status).toBe("ready"));
+    expect(result.current.chips).toHaveLength(1);
+  });
+
+  it("files empty but items carry the image -> falls back to items (one chip)", async () => {
+    const { result } = setup();
+    const e = fakeEvent({ files: [], items: [{ kind: "file", type: "image/png", getAsFile: () => pngFile("image.png", 64) }] });
+    act(() => result.current.onPaste(e));
+    await waitFor(() => expect(result.current.chips[0]?.status).toBe("ready"));
+    expect(result.current.chips).toHaveLength(1);
+  });
+
   it("mixed text + image (Excel/Word) -> default text paste kept, nothing attached", () => {
     const { result } = setup();
     const f = pngFile();

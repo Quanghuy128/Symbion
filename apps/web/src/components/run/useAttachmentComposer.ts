@@ -137,13 +137,16 @@ export function useAttachmentComposer(opts: { supported: boolean; unsupportedRea
     (e: ReactClipboardEvent) => {
       const cd = e.clipboardData;
       if (!cd) return;
-      const files: File[] = Array.from(cd.files ?? []);
       const items = Array.from(cd.items ?? []);
-      for (const it of items) {
-        if (it.kind === "file") {
-          const f = it.getAsFile();
-          if (f && !files.includes(f)) files.push(f);
-        }
+      // `files` and `items[].getAsFile()` describe the SAME clipboard image, but Chromium
+      // returns a distinct File object from each (so identity de-dupe doesn't work) — use
+      // `files`, and fall back to `items` only when `files` is empty.
+      let files: File[] = Array.from(cd.files ?? []);
+      if (files.length === 0) {
+        files = items.flatMap((it) => {
+          const f = it.kind === "file" ? it.getAsFile() : null;
+          return f ? [f] : [];
+        });
       }
       // Mixed clipboard (Excel/Word: text + a rendered image): keep the default text
       // paste and attach nothing — matches the Claude Code extension (image-only

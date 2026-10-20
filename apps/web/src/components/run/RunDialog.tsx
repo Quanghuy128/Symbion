@@ -15,6 +15,8 @@ import { PreflightStrip } from "./PreflightStrip";
 import { AttachmentChips } from "./AttachmentChips";
 import { useAttachmentComposer } from "./useAttachmentComposer";
 
+const OUTDATED_DAEMON_REASON = "The Symbion daemon is out of date — restart it to enable image attachments.";
+
 export interface RunDialogProps {
   command: CanonicalArtifact;
   projectId: string;
@@ -64,9 +66,18 @@ export function RunDialog({
 
   const attachmentSupport = result !== "loading" ? result.attachmentSupport : undefined;
   const attachmentsSupported = attachmentSupport?.supported === true;
+  // A daemon that predates run-image-paste returns no `attachmentSupport` at all — say so,
+  // rather than letting the composer blame the CLI with its generic fallback message.
+  const unsupportedReason =
+    attachmentSupport?.reason ??
+    (result === "loading"
+      ? "Checking image support…"
+      : attachmentSupport === undefined
+        ? OUTDATED_DAEMON_REASON
+        : undefined);
   const composer = useAttachmentComposer({
     supported: attachmentsSupported,
-    unsupportedReason: attachmentSupport?.reason,
+    unsupportedReason,
   });
   // Stable accessors (the hook returns fresh closures only when it re-renders; refs keep loadPreflight stable).
   const composerRef = useRef(composer);
@@ -98,7 +109,7 @@ export function RunDialog({
         needsFirstRunAck: false,
         invocationEcho: "",
         permissionSummary: { mode: "", cwd: "", ceilings: { wallClockMs: 0, tokenCap: 0 }, sentence: "" },
-        attachmentSupport: { supported: false, minCliVersion: "" },
+        attachmentSupport: { supported: false, minCliVersion: "", reason: "Couldn't check image support — preflight failed." },
       });
     }
   }, [preflight, projectId, command.id]);
@@ -239,7 +250,7 @@ export function RunDialog({
           hint={composer.hint}
           totalBytes={composer.totalBytes}
           supported={attachmentsSupported}
-          unsupportedReason={attachmentSupport?.reason}
+          unsupportedReason={unsupportedReason}
           onPickFiles={(files) => void composer.addFiles(files)}
           onRemove={composer.remove}
         />

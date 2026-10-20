@@ -107,6 +107,23 @@ describe("RunDialog attachments (WU3-WU6)", () => {
     expect(screen.queryAllByTestId("attachment-chip")).toHaveLength(0);
   });
 
+  it("WU5b an outdated daemon (no attachmentSupport) names the daemon, not the CLI", async () => {
+    const { attachmentSupport: _omit, ...legacy } = pre();
+    void _omit;
+    preflight.mockResolvedValue(legacy as RunPreflightResult);
+    renderDialog("go");
+    await waitFor(() => expect(screen.getByText(/daemon is out of date/i)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Attach images/ })).toBeDisabled();
+    expect(screen.queryByText(/CLI can't receive images/)).not.toBeInTheDocument();
+  });
+
+  it("WU5c a failed preflight explains that image support could not be checked", async () => {
+    preflight.mockRejectedValue(new Error("boom"));
+    renderDialog("go");
+    await waitFor(() => expect(screen.getByText(/Couldn't check image support/)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Attach images/ })).toBeDisabled();
+  });
+
   it("WU6 'Run again' pre-fills the text with zero chips", async () => {
     preflight.mockResolvedValue(pre());
     renderDialog("fix header");

@@ -104,6 +104,8 @@ export type {
   ListRunsResult,
   GetRunEventsParams,
   GetRunEventsResult,
+  ReadRunAttachmentParams,
+  ReadRunAttachmentResult,
   RunSseEventsFrame,
   RunSseStateFrame,
   ProjectRunConfig,

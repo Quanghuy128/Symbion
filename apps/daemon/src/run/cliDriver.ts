@@ -9,7 +9,7 @@
  *   <mode> (choices incl. acceptEdits/bypassPermissions/plan) · --model <m> ·
  *   --allowedTools <tools...> (comma/space-separated).
  */
-import { renderRunCommand } from "@symbion/core";
+import { compareVersions, renderRunCommand, validateVersion } from "@symbion/core";
 
 /**
  * resolveClaudeBin — honor SYMBION_CLAUDE_BIN (test substitution of the fake
@@ -27,6 +27,21 @@ export interface BuildArgvInput {
   model?: string;
   permissionMode: string;
   allowedTools: string[];
+  /** "argv" (default, byte-identical to pre-attachment runs): the prompt is the `-p`
+   *  positional. "stdin": the prompt (+ images) arrives as one stream-json user
+   *  message on stdin, so NO positional prompt is given (run-image-paste D5). */
+  inputMode?: "argv" | "stdin";
+}
+
+/** Floor for `--input-format stream-json` image delivery: the lowest version the
+ *  run-image-paste spike (S1) verified end-to-end. Fails closed on "unknown".
+ *  Attachments only; text-only runs unaffected. */
+export const MIN_CLI_VERSION_FOR_ATTACHMENTS = "2.1.187";
+
+export function cliSupportsAttachments(version: string | null | undefined): boolean {
+  if (!version || version === "unknown") return false;
+  const v = `v${version}`;
+  return validateVersion(v) && compareVersions(v, `v${MIN_CLI_VERSION_FOR_ATTACHMENTS}`) >= 0;
 }
 
 /**
@@ -41,15 +56,19 @@ export function buildArgv(input: BuildArgvInput): string[] {
     requirements: input.requirement,
   });
 
-  const argv: string[] = [
-    "-p",
-    prompt,
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--permission-mode",
-    input.permissionMode,
-  ];
+  const argv: string[] =
+    input.inputMode === "stdin"
+      ? [
+          "-p",
+          "--input-format",
+          "stream-json",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--permission-mode",
+          input.permissionMode,
+        ]
+      : ["-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", input.permissionMode];
 
   if (input.model && input.model.trim().length > 0) {
     argv.push("--model", input.model.trim());

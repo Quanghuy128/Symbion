@@ -10,15 +10,18 @@
  * responses — nothing can, within the tokenless model (§6.4 accepted this).
  */
 import { randomBytes } from "node:crypto";
+import { EMPTY_ATTACHMENTS_DIGEST } from "@symbion/core";
 
 export interface NonceBinding {
   projectId: string;
   artifactId: string;
   /** sha256 over {permissionMode, allowedTools, ceilings} — config drift invalidates. */
   configHash: string;
+  /** core.attachmentsDigest of the images the user consented to (EMPTY digest for text-only). */
+  attachmentsDigest?: string;
 }
 
-interface NonceEntry extends NonceBinding {
+interface NonceEntry extends Required<NonceBinding> {
   expiresAt: number;
 }
 
@@ -39,10 +42,14 @@ export class NonceStore {
     this.now = opts?.now ?? Date.now;
   }
 
-  /** Mint a fresh 64-hex nonce bound to {projectId, artifactId, configHash}. */
+  /** Mint a fresh 64-hex nonce bound to {projectId, artifactId, configHash, attachmentsDigest}. */
   mint(binding: NonceBinding): string {
     const nonce = randomBytes(32).toString("hex");
-    this.entries.set(nonce, { ...binding, expiresAt: this.now() + this.ttlMs });
+    this.entries.set(nonce, {
+      ...binding,
+      attachmentsDigest: binding.attachmentsDigest ?? EMPTY_ATTACHMENTS_DIGEST,
+      expiresAt: this.now() + this.ttlMs,
+    });
     return nonce;
   }
 
@@ -60,7 +67,8 @@ export class NonceStore {
     return (
       entry.projectId === binding.projectId &&
       entry.artifactId === binding.artifactId &&
-      entry.configHash === binding.configHash
+      entry.configHash === binding.configHash &&
+      entry.attachmentsDigest === (binding.attachmentsDigest ?? EMPTY_ATTACHMENTS_DIGEST)
     );
   }
 

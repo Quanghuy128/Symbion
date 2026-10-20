@@ -44,7 +44,19 @@ export async function callRpc<TParams, TResult>(method: string, params: TParams)
     body: JSON.stringify({ method, params }),
   });
 
-  const body = await res.json();
+  if (res.status === 413) {
+    throw new DaemonRpcError({
+      code: "payload-too-large",
+      message: "The images are too large to send (limit 20 MB total).",
+    });
+  }
+  let body: { error?: RpcErrorShape };
+  try {
+    body = await res.json();
+  } catch {
+    // connection reset mid-upload / non-JSON reply — never leak a raw SyntaxError.
+    throw new DaemonRpcError({ code: "network", message: "The daemon connection was interrupted. Try again." });
+  }
   if (!res.ok) {
     throw new DaemonRpcError(body.error ?? { code: "unknown", message: "RPC call failed" });
   }

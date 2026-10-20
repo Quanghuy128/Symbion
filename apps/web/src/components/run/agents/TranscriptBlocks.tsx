@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Markdown } from "./Markdown";
+import { PromptAttachments, type PromptAttachmentsProps } from "./PromptAttachments";
 import { TRUNCATION_NOTE } from "./format";
 import { displayToolName, type DiffLine, type TodoItem, type ToolBlock, type ToolBlockStatus, type TranscriptBlock } from "./transcriptBlocks";
 
@@ -126,7 +127,16 @@ function OutputPre({ text, truncated, label }: { text: string; truncated?: boole
   );
 }
 
-export function PromptBubble({ text, truncated }: { text: string; truncated: boolean }) {
+export function PromptBubble({
+  text,
+  truncated,
+  attachments,
+}: {
+  text: string;
+  truncated: boolean;
+  /** root agent only: the run's stored images (run-image-paste D6). */
+  attachments?: PromptAttachmentsProps;
+}) {
   const [open, setOpen] = useState(false);
   const long = text.length > 400 || text.split("\n").length > 6;
   return (
@@ -142,6 +152,7 @@ export function PromptBubble({ text, truncated }: { text: string; truncated: boo
           )}
         </div>
       )}
+      {attachments && attachments.items.length > 0 && <PromptAttachments {...attachments} />}
     </div>
   );
 }
@@ -345,15 +356,18 @@ export const BlockView = memo(function BlockView({
   block,
   streaming,
   onOpenAgent,
+  promptAttachments,
 }: {
   block: TranscriptBlock;
+  /** only passed for the root agent's transcript. */
+  promptAttachments?: PromptAttachmentsProps;
   /** this is the block still being written (unclosed code fences are closed for display). */
   streaming: boolean;
   onOpenAgent: (agentId: string) => void;
 }) {
   switch (block.kind) {
     case "prompt":
-      return <PromptBubble text={block.text} truncated={block.truncated} />;
+      return <PromptBubble text={block.text} truncated={block.truncated} attachments={promptAttachments} />;
     case "thinking":
       return <ThinkingRow text={block.text} durationMs={block.durationMs} />;
     case "text":

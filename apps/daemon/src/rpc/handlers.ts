@@ -14,6 +14,8 @@ import {
   extractAgentMentions,
   parseClaudeDir,
   renderArtifacts,
+  EMPTY_ATTACHMENTS_DIGEST,
+  attachmentsDigest as coreAttachmentsDigest,
   renderRunCommand as coreRenderRunCommand,
   validateAllArtifacts,
   type CanonicalArtifact,
@@ -76,7 +78,12 @@ import { RpcError } from "./rpcError.js";
 import { isUncPath, isWslUncPath } from "./pathStyle.js";
 import { runManager } from "../run/runManager.js";
 import { runPreflight as computePreflight } from "../run/preflight.js";
-import { buildArgv, resolveClaudeBin } from "../run/cliDriver.js";
+import { MIN_CLI_VERSION_FOR_ATTACHMENTS, buildArgv, cliSupportsAttachments, resolveClaudeBin } from "../run/cliDriver.js";
+import {
+  decodeAndValidateAttachments,
+  readAttachment,
+  validatePreflightAttachments,
+} from "../run/attachments.js";
 import { nonceStore } from "../run/nonces.js";
 import { resolveRunConfig, configHash, ackSettingsHash, validateRunConfig } from "../run/runConfig.js";
 import { getRunCliVersion } from "../run/cliVersion.js";
@@ -1135,6 +1142,7 @@ export const handlers = {
     if (typeof projectId !== "string" || typeof artifactId !== "string") {
       throw new RpcError("invalid-params", "runPreflight requires projectId and artifactId.");
     }
+    const attachments = validatePreflightAttachments((params as contract.RunPreflightParams).attachments);
     const path = findProjectPath(projectId);
     // Lazy reconcile on project touch (ER-10 pull-forward): orphaned running → failed.
     reconcile(path, runManager.liveRunIds());
@@ -1145,6 +1153,7 @@ export const handlers = {
       artifactId,
       store,
       hasActiveRun: runManager.hasActive(projectId),
+      attachments,
     });
   },
 
@@ -1167,6 +1176,8 @@ export const handlers = {
     if (model !== undefined && (typeof model !== "string" || !/^[A-Za-z0-9._-]{1,100}$/.test(model))) {
       throw new RpcError("invalid-params", "Invalid model override.");
     }
+    // Pure CPU, BEFORE reserve(): base64/magic/limits re-enforced from the decoded bytes.
+    const attachments = decodeAndValidateAttachments(p.attachments);
 
     const path = findProjectPath(projectId);
     const store = loadProjectStore(path);
@@ -1199,7 +1210,12 @@ export const handlers = {
       if (typeof nonce !== "string" || nonce.length === 0) {
         throw new RpcError("run-consent-required", "A valid consent nonce is required to start a run.");
       }
-      const ok = nonceStore.consume(nonce, { projectId, artifactId, configHash: hash });
+      const ok = nonceStore.consume(nonce, {
+        projectId,
+        artifactId,
+        configHash: hash,
+        attachmentsDigest: attachments ? coreAttachmentsDigest(attachments) : EMPTY_ATTACHMENTS_DIGEST,
+      });
       if (!ok) {
         throw new RpcError("run-consent-required", "Consent nonce is invalid, expired, or does not match.");
       }
@@ -1214,12 +1230,19 @@ export const handlers = {
 
       const bin = resolveClaudeBin();
       const cliVersion = await getRunCliVersion(bin);
+      if (attachments && !cliSupportsAttachments(cliVersion)) {
+        throw new RpcError(
+          "run-attachments-unsupported",
+          `Attached images need claude CLI ${MIN_CLI_VERSION_FOR_ATTACHMENTS} or newer; installed version is ${cliVersion}. Remove the images or update the CLI.`
+        );
+      }
       const argv = buildArgv({
         commandName: artifact.name,
         requirement,
         model,
         permissionMode: config.permissionMode,
         allowedTools: config.allowedTools,
+        inputMode: attachments ? "stdin" : "argv",
       });
 
       // P2: agent names reachable from this artifact (by @mention) — same
@@ -1242,6 +1265,7 @@ export const handlers = {
         ceilings: config.ceilings,
         cliVersion,
         agentSubagentNames,
+        ...(attachments ? { attachments } : {}),
       });
 
       return { runId: run.runId, run };
@@ -1251,6 +1275,23 @@ export const handlers = {
       runManager.releaseReservation(projectId);
       throw err;
     }
+  },
+
+  /**
+   * readRunAttachment — one stored image of a run, by INDEX (the client never
+   * supplies a path). Confined read, re-verified against run.json (sha/size/magic).
+   * POST /rpc on purpose (not a GET image route): keeps the Origin allowlist in force.
+   */
+  readRunAttachment(params: contract.ReadRunAttachmentParams): contract.ReadRunAttachmentResult {
+    const p = params ?? ({} as contract.ReadRunAttachmentParams);
+    if (typeof p.projectId !== "string" || typeof p.runId !== "string") {
+      throw new RpcError("invalid-params", "readRunAttachment requires projectId and runId.");
+    }
+    if (typeof p.index !== "number" || !Number.isInteger(p.index) || p.index < 0 || p.index > 4) {
+      throw new RpcError("invalid-params", "index must be an integer 0..4.");
+    }
+    const path = findProjectPath(p.projectId);
+    return readAttachment(path, p.runId, p.index);
   },
 
   /**

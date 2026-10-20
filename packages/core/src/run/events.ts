@@ -7,6 +7,7 @@
  * UI renders. The daemon assigns `seq` (monotonic from 1) — it is the single
  * ordering + dedup key across SSE, events.jsonl, and getRunEvents.
  */
+import type { RunAttachmentMediaType } from "./attachments.js";
 
 /** Truncation caps — CORE CONSTANTS (PLAN §8.1). Every content-part preview is
  *  capped at PREVIEW_CAP; retained raw (unknown / parse-error) at RAW_CAP. */
@@ -196,6 +197,21 @@ export interface RunInfo {
   lastSeq: number;
   /** terminal-only (P2): frozen totals snapshot for cheap history rows. */
   totals: RunTotals | null;
+  /** images sent with the run (run-image-paste). ABSENT for text-only runs so their
+   *  run.json is byte-identical to before. Metadata only — bytes live in attachments/. */
+  attachments?: RunAttachmentMeta[];
+}
+
+/** One stored attachment's metadata (the bytes are `.symbion/runs/<id>/attachments/<file>`). */
+export interface RunAttachmentMeta {
+  index: number;
+  /** sanitized display name — never used as a path. */
+  name: string;
+  mediaType: RunAttachmentMediaType;
+  size: number;
+  sha256: string;
+  /** generated filename `<n>.<ext>` inside the run's attachments dir. */
+  file: string;
 }
 
 export interface FileChange {
@@ -230,6 +246,8 @@ export interface RunListItem {
   durationMs: number | null;
   freshTokens: number | null;
   costUsd: number | null;
+  /** present iff the run carried images (> 0). */
+  attachmentCount?: number;
 }
 
 /** The compact live snapshot the RunBar / status strip render (design §4). */

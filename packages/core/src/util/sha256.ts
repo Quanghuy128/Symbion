@@ -36,7 +36,11 @@ function toUtf8Bytes(str: string): Uint8Array {
 
 /** Compute SHA-256 of a UTF-8 string; returns lowercase hex digest. */
 export function sha256Hex(input: string): string {
-  const msg = toUtf8Bytes(input);
+  return sha256HexBytes(toUtf8Bytes(input));
+}
+
+/** Compute SHA-256 of raw bytes; returns lowercase hex digest. */
+export function sha256HexBytes(msg: Uint8Array): string {
   const bitLen = msg.length * 8;
 
   // Padding: append 0x80, then zeros, then 64-bit big-endian length, to multiple of 64 bytes.

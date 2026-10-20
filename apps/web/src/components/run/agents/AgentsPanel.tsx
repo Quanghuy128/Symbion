@@ -38,7 +38,7 @@ export interface AgentsPanelProps {
   /** every event of the run being shown — the Raw view (S5). */
   events: readonly PersistedRunEvent[];
   runStartedAtMs: number | null;
-  runInfo: Pick<RunInfo, "exitCode" | "stopReason" | "startedAt" | "endedAt" | "filesChanged" | "lastSeq" | "totals"> | null;
+  runInfo: Pick<RunInfo, "exitCode" | "stopReason" | "startedAt" | "endedAt" | "filesChanged" | "lastSeq" | "totals" | "attachments"> | null;
   summary?: RunSummary;
   degradedReason: DegradedReason | null;
   /** size of the last accepted batch (motion only when ≤5). */
@@ -355,6 +355,11 @@ export function AgentsPanel({
         onRerun={agent.kind === "root" && terminal ? onRerun : undefined}
         filesChanged={agent.kind === "root" ? filesChanged : undefined}
         costUsd={agent.kind === "root" ? summary?.totals.costUsd : undefined}
+        promptAttachments={
+          agent.kind === "root" && projectId && runId && runInfo?.attachments?.length
+            ? { projectId, runId, items: runInfo.attachments }
+            : undefined
+        }
         finishedStrip={
           finishedStrip ? <RunFinishedStrip status={runStatus} onViewSummary={viewSummary} onDismiss={() => setFinishedStrip(false)} /> : null
         }

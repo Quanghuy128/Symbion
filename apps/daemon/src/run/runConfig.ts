@@ -4,7 +4,7 @@
  * both the configHash (nonce binding + first-run-ack keying) and the consent
  * copy — never paraphrased per-surface.
  */
-import { DEFAULT_RUN_CONFIG, sha256Hex, type ProjectRunConfig, type ProjectSettings } from "@symbion/core";
+import { DEFAULT_RUN_CONFIG, formatAttachmentBytes, sha256Hex, type ProjectRunConfig, type ProjectSettings } from "@symbion/core";
 
 export function resolveRunConfig(settings: ProjectSettings): ProjectRunConfig {
   return settings.run ?? { ...DEFAULT_RUN_CONFIG };
@@ -131,5 +131,13 @@ export function buildConsentSentence(cwd: string, config: ProjectRunConfig): str
     `Runs in ${cwd} · mode ${config.permissionMode} — the agent may create and modify files there. ` +
     `Symbion's diff-preview does NOT apply to the agent's writes. ` +
     `Ceilings: ${minutes(config.ceilings.wallClockMs)} min · ${tokenLabel(config.ceilings.tokenCap)} tokens.`
+  );
+}
+
+/** The consent sentence for attached images — states what is sent AND that the bytes are kept at rest. */
+export function buildAttachmentsSentence(count: number, totalBytes: number): string {
+  return (
+    `${count} image${count === 1 ? "" : "s"} (${formatAttachmentBytes(totalBytes)}) will be sent to Claude with this run ` +
+    `and kept in .symbion/runs/<run>/attachments/ until the run is pruned.`
   );
 }

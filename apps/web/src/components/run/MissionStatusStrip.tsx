@@ -44,6 +44,11 @@ export function MissionStatusStrip({ run, elapsedMs, connection, onCancel }: Mis
         <span className="font-semibold text-ink">{label}</span>
         <span className="text-ink">/{run.commandName}</span>
         <span className="max-w-[280px] truncate text-ink-muted">— &quot;{run.requirement}&quot;</span>
+        {run.attachments && run.attachments.length > 0 && (
+          <span className="text-ink-muted">
+            · {run.attachments.length} image{run.attachments.length === 1 ? "" : "s"}
+          </span>
+        )}
         {connection === "reconnecting" && <span className="text-warning">⟳ reconnecting…</span>}
       </span>
       <span className="flex items-center gap-3">

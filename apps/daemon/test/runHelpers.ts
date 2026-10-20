@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,10 +86,32 @@ export async function setupRunEnv(opts?: {
 export async function startTestRun(
   env: RunTestEnv,
   requirement: string,
-  overrides?: { model?: string; ackFirstRun?: boolean; artifactId?: string }
+  overrides?: {
+    model?: string;
+    ackFirstRun?: boolean;
+    artifactId?: string;
+    /** run-image-paste: images as {name, bytes}; metadata goes to preflight, base64 to startRun. */
+    attachments?: { name: string; mediaType: string; bytes: Uint8Array }[];
+  }
 ): Promise<{ runId: string }> {
   const artifactId = overrides?.artifactId ?? "cmd-analyze-id";
-  const pre = await handlers.runPreflight({ projectId: env.projectId, artifactId }, ctx);
+  const atts = overrides?.attachments;
+  const pre = await handlers.runPreflight(
+    {
+      projectId: env.projectId,
+      artifactId,
+      ...(atts
+        ? {
+            attachments: atts.map((a) => ({
+              sha256: createHash("sha256").update(a.bytes).digest("hex"),
+              size: a.bytes.length,
+              mediaType: a.mediaType,
+            })),
+          }
+        : {}),
+    },
+    ctx
+  );
   if (!pre.consentNonce) throw new Error("preflight blocked — no nonce");
   const started = await handlers.startRun(
     {
@@ -98,6 +121,15 @@ export async function startTestRun(
       model: overrides?.model,
       nonce: pre.consentNonce,
       ackFirstRun: overrides?.ackFirstRun ?? true,
+      ...(atts
+        ? {
+            attachments: atts.map((a) => ({
+              name: a.name,
+              mediaType: a.mediaType,
+              data: Buffer.from(a.bytes).toString("base64"),
+            })),
+          }
+        : {}),
     },
     ctx
   );
@@ -133,4 +165,7 @@ export function clearFakeCli(): void {
   delete process.env["FAKE_CLAUDE_DELAY_MS"];
   delete process.env["FAKE_CLAUDE_ARGV_OUT"];
   delete process.env["FAKE_CLAUDE_CHILD_PID_OUT"];
+  delete process.env["FAKE_CLAUDE_STDIN_OUT"];
+  delete process.env["FAKE_CLAUDE_VERSION"];
+  delete process.env["FAKE_CLAUDE_EXIT_CODE"];
 }

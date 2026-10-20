@@ -17,14 +17,33 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { PersistedRunEvent, RunInfo, RunStatus } from "../rpc/contract.js";
 import type { RunState, StopReason } from "@symbion/core";
-import { fold, initRunState, parseLine, rollup, runSummary } from "@symbion/core";
+import {
+  buildStreamJsonUserMessage,
+  fold,
+  initRunState,
+  parseLine,
+  redactBase64Runs,
+  renderRunCommand,
+  rollup,
+  runSummary,
+} from "@symbion/core";
 import { LineBuffer } from "./lineBuffer.js";
 import { RunBroadcaster } from "./sse.js";
 import { appendEvent, closeEventsFd, ensureRunsDir, openEventsFd, prune, readEvents, writeRunJson } from "./runStore.js";
+import { storeAttachments, type ValidatedAttachment } from "./attachments.js";
 import { gitStatus, gitNumstat } from "../git/status.js";
 
 const STDERR_TAIL_LINES = 20;
 const SIGKILL_GRACE_MS = 5_000;
+const STDERR_LINE_CAP = 2_000;
+
+/**
+ * spawnStdioFor — text-only runs keep stdin ignored (byte-identical to before);
+ * a run with attachments pipes stdin to deliver ONE stream-json user message.
+ */
+export function spawnStdioFor(hasAttachments: boolean): ["ignore" | "pipe", "pipe", "pipe"] {
+  return [hasAttachments ? "pipe" : "ignore", "pipe", "pipe"];
+}
 
 export interface ActiveRun {
   runId: string;
@@ -47,6 +66,10 @@ export interface ActiveRun {
    *  runSummary(), matching preflight's own missingReferencedAgents traversal
    *  (no second graph walk). */
   agentSubagentNames: Set<string>;
+  /** attachment runs only: the stdin write failed (e.g. EPIPE) — code/message, no bytes. */
+  stdinError?: string;
+  /** attachment runs only: all bytes were handed to the OS pipe ('finish'). */
+  stdinDone?: boolean;
 }
 
 export interface StartRunInput {
@@ -66,6 +89,9 @@ export interface StartRunInput {
    *  (startRun handler) the same way preflight's missingReferencedAgents is,
    *  reused for the token-cap rollup + terminal runSummary. */
   agentSubagentNames: Set<string>;
+  /** validated images (run-image-paste): stored under the run dir, then delivered
+   *  as one stream-json message on stdin. Absent/empty → the unchanged argv path. */
+  attachments?: ValidatedAttachment[];
 }
 
 /** Sentinel marker used to reserve a project's Map slot BEFORE any async work
@@ -169,13 +195,20 @@ export class RunManager {
     };
 
     ensureRunsDir(input.projectRoot);
+    const attachments = input.attachments && input.attachments.length > 0 ? input.attachments : null;
+    if (attachments) {
+      // Bytes hit disk BEFORE run.json/spawn; a store failure removes the fresh
+      // run dir and throws (the handler releases the reservation). Metadata only
+      // goes on RunInfo — never bytes/base64.
+      run.attachments = storeAttachments(input.projectRoot, runId, attachments);
+    }
     writeRunJson(input.projectRoot, run);
     const eventsFd = openEventsFd(input.projectRoot, runId);
 
     const child = spawn(input.bin, input.argv, {
       cwd: input.projectRoot,
       detached: true, // own process group → cancel can kill the tree via -pgid
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: spawnStdioFor(attachments !== null),
       env: process.env, // verbatim — never inject Symbion's own LLM keys
     });
 
@@ -197,6 +230,27 @@ export class RunManager {
       agentSubagentNames: input.agentSubagentNames,
     };
     this.active.set(input.projectId, activeRun);
+
+    if (attachments) {
+      const stdin = child.stdin;
+      if (stdin) {
+        // Mandatory: without an 'error' listener an EPIPE (CLI exits before reading)
+        // is an unhandled event and crashes the daemon.
+        stdin.on("error", (err: NodeJS.ErrnoException) => {
+          activeRun.stdinError = err.code ?? err.message;
+        });
+        stdin.on("finish", () => {
+          activeRun.stdinDone = true;
+        });
+        // Re-encode from the VALIDATED bytes: what is hashed/stored is what is sent.
+        stdin.end(
+          buildStreamJsonUserMessage({
+            images: attachments.map((a) => ({ mediaType: a.mediaType, base64: a.bytes.toString("base64") })),
+            text: renderRunCommand({ command: input.commandName, requirements: input.requirement }),
+          })
+        );
+      }
+    }
 
     // Transition to running as soon as the child is spawned.
     run.status = "running";
@@ -238,6 +292,17 @@ export class RunManager {
       if (pending) {
         this.pendingTerminal.delete(ar.runId);
         this.finalize(ar, { status: pending.status, exitCode: code, stopReason: pending.stopReason });
+        return;
+      }
+      if (ar.run.attachments && (ar.stdinError !== undefined || !(ar.stdinDone || ar.child.stdin?.writableFinished))) {
+        // The CLI never received the message, so it did not run the user's request
+        // — even exit 0 is not "completed".
+        const tail = ar.stderrTail.length > 0 ? `\n${ar.stderrTail.join("\n")}` : "";
+        this.finalize(ar, {
+          status: "failed",
+          exitCode: code,
+          errorMessage: `The claude CLI exited before it received the attached images (${code ?? signal}).${tail}`,
+        });
         return;
       }
       if (code === 0) {
@@ -287,7 +352,10 @@ export class RunManager {
   }
 
   private pushStderr(ar: ActiveRun, line: string): void {
-    ar.stderrTail.push(line);
+    // Redact base64 runs + cap the line: a CLI that dumps its input on error must
+    // not persist image bytes via run.json.errorMessage (AC-5).
+    const safe = redactBase64Runs(line);
+    ar.stderrTail.push(safe.length > STDERR_LINE_CAP ? `${safe.slice(0, STDERR_LINE_CAP)}…` : safe);
     if (ar.stderrTail.length > STDERR_TAIL_LINES) {
       ar.stderrTail.splice(0, ar.stderrTail.length - STDERR_TAIL_LINES);
     }

@@ -9,6 +9,7 @@
 import {
   closeSync,
   existsSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -19,6 +20,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { selectPruneTargets } from "@symbion/core";
 import type { PersistedRunEvent, RunInfo, RunListItem } from "../rpc/contract.js";
@@ -88,6 +90,64 @@ export function readRunJson(projectRoot: string, runId: string): RunInfo | null 
   }
 }
 
+/** generated attachment filenames only: `<1..5>.<ext>` — never derived from a client name. */
+export const ATTACHMENT_FILE_RE = /^[1-5]\.(png|jpg|gif|webp)$/;
+
+/** `.symbion/runs/<runId>/attachments` (confined). */
+export function attachmentsDirAbs(projectRoot: string, runId: string): string {
+  return resolveConfined(projectRoot, join(RUNS_DIR, assertRunId(runId), "attachments"));
+}
+
+function assertRunId(runId: string): string {
+  if (!RUNID_RE.test(runId)) throw new RpcError("invalid-params", `Invalid runId: ${runId}`);
+  return runId;
+}
+
+/**
+ * writeAttachmentFile — atomic: `wx` temp (no clobber, no follow) → write →
+ * fsync → rename. `file` must be a generated `<n>.<ext>` name.
+ */
+export function writeAttachmentFile(projectRoot: string, runId: string, file: string, bytes: Uint8Array): void {
+  if (!ATTACHMENT_FILE_RE.test(file)) throw new RpcError("invalid-params", "Invalid attachment file name.");
+  const dir = attachmentsDirAbs(projectRoot, runId);
+  mkdirSync(dir, { recursive: true });
+  const target = resolveConfined(projectRoot, join(RUNS_DIR, runId, "attachments", file));
+  const tmp = `${target}.symbion-tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
+  const fd = openSync(tmp, "wx", 0o600);
+  try {
+    writeSync(fd, bytes);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmp, target);
+}
+
+/** readAttachmentFile — confined; refuses symlinks and non-files; returns the raw bytes. */
+export function readAttachmentFile(projectRoot: string, runId: string, file: string): Buffer | null {
+  if (!ATTACHMENT_FILE_RE.test(file)) throw new RpcError("attachment-corrupt", "Invalid attachment file name.");
+  const abs = resolveConfined(projectRoot, join(RUNS_DIR, assertRunId(runId), "attachments", file));
+  let st;
+  try {
+    st = lstatSync(abs);
+  } catch {
+    return null;
+  }
+  if (st.isSymbolicLink() || !st.isFile()) throw new RpcError("path-confinement", "Attachment is not a regular file.");
+  return readFileSync(abs);
+}
+
+/** Remove a run's own (fresh) dir after a failed attachment store. Refuses symlinks. */
+export function removeRunDir(projectRoot: string, runId: string): void {
+  const abs = runDirAbs(projectRoot, runId);
+  try {
+    if (lstatSync(abs).isSymbolicLink()) return;
+  } catch {
+    return;
+  }
+  rmSync(abs, { recursive: true, force: true });
+}
+
 /** Open the events.jsonl append fd for a run (creates the dir if needed). */
 export function openEventsFd(projectRoot: string, runId: string): number {
   const dir = runDirAbs(projectRoot, runId);
@@ -150,6 +210,7 @@ function toListItem(run: RunInfo): RunListItem {
     durationMs,
     freshTokens: run.totals?.fresh ?? null,
     costUsd: run.totals?.costUsd ?? null,
+    ...(run.attachments && run.attachments.length > 0 ? { attachmentCount: run.attachments.length } : {}),
   };
 }
 

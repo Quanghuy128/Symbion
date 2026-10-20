@@ -30,6 +30,7 @@ import {
   type ToolFields,
   type ToolResultPart,
 } from "./events.js";
+import { redactBase64Runs } from "./attachments.js";
 
 // Re-export the caps so callers importing the parser get the constants too
 // (tests + the daemon import them from here).
@@ -39,6 +40,12 @@ export type { RunEvent };
 function capWithMarker(s: string, cap: number): string {
   if (s.length <= cap) return s;
   return `${s.slice(0, cap)}…[truncated ${s.length - cap} chars]`;
+}
+
+/** Retained raw (unknown / parse-error): redact base64 runs BEFORE the cap so a CLI
+ *  echo of an attached image can never be persisted to events.jsonl (run-image-paste AC-5). */
+function capRaw(s: string): string {
+  return capWithMarker(redactBase64Runs(s), RAW_CAP);
 }
 
 function asString(v: unknown): string {
@@ -280,11 +287,11 @@ export function parseLine(line: string): RunEvent {
   try {
     obj = JSON.parse(line);
   } catch {
-    return { kind: "parse-error", rawTruncated: capWithMarker(line, RAW_CAP) };
+    return { kind: "parse-error", rawTruncated: capRaw(line) };
   }
 
   if (!isRecord(obj)) {
-    return { kind: "parse-error", rawTruncated: capWithMarker(line, RAW_CAP) };
+    return { kind: "parse-error", rawTruncated: capRaw(line) };
   }
   return parseStreamJsonRecord(obj, line);
 }
@@ -306,7 +313,7 @@ export function parseStreamJsonRecord(obj: Record<string, unknown>, raw: string)
     } catch {
       /* hostile getter — keep "" */
     }
-    return { kind: "unknown", type, rawTruncated: capWithMarker(String(raw), RAW_CAP) };
+    return { kind: "unknown", type, rawTruncated: capRaw(String(raw)) };
   }
 }
 
@@ -373,5 +380,5 @@ function parseRecordUnsafe(obj: Record<string, unknown>, raw: string): RunEvent 
 
   // Recognized JSON, unrecognized type (e.g. the undocumented rate_limit_event,
   // or system/thinking_tokens).
-  return { kind: "unknown", type, rawTruncated: capWithMarker(raw, RAW_CAP) };
+  return { kind: "unknown", type, rawTruncated: capRaw(raw) };
 }

@@ -7,6 +7,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { JumpToLatestPill } from "./JumpToLatestPill";
 import { LiveDuration } from "./LiveDuration";
 import { BlockErrorBoundary, BlockView, CollapseEpochContext } from "./TranscriptBlocks";
+import type { PromptAttachmentsProps } from "./PromptAttachments";
 import {
   blockIndexOfRow,
   buildTranscriptBlocks,
@@ -65,6 +66,8 @@ export interface AgentDetailViewProps {
   costUsd?: number;
   /** S4c strip, rendered at the bottom when present. */
   finishedStrip?: ReactNode;
+  /** root only: the run's stored images, shown as thumbnails under the opening prompt. */
+  promptAttachments?: PromptAttachmentsProps;
 }
 
 const STATUS: Record<AgentNode["status"], { word: string; dot: string; text: string }> = {
@@ -110,6 +113,7 @@ export const AgentDetailView = forwardRef<TranscriptListHandle, AgentDetailViewP
     filesChanged,
     costUsd,
     finishedStrip,
+    promptAttachments,
   },
   ref
 ) {
@@ -331,7 +335,12 @@ export const AgentDetailView = forwardRef<TranscriptListHandle, AgentDetailViewP
                 <div key={b.id} data-row-id={b.kind === "toolGroup" ? undefined : b.id} data-block-kind={b.kind}>
                   {/* re-keyed as streamed text grows so a failed render can recover */}
                   <BlockErrorBoundary key={b.kind === "text" ? b.markdown.length : 0}>
-                    <BlockView block={b} streaming={streaming && b.id === lastBlockId} onOpenAgent={onNavigate} />
+                    <BlockView
+                      block={b}
+                      streaming={streaming && b.id === lastBlockId}
+                      onOpenAgent={onNavigate}
+                      promptAttachments={isRoot && b.kind === "prompt" ? promptAttachments : undefined}
+                    />
                   </BlockErrorBoundary>
                 </div>
               ))}

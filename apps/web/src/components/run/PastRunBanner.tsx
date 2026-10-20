@@ -56,6 +56,11 @@ export function PastRunBanner({ run, index, onExit, onRerun }: PastRunBannerProp
           {STATUS_LABEL[run.status] ?? run.status}
           {duration ? ` · ${duration}` : ""}
         </span>
+        {run.attachments && run.attachments.length > 0 && (
+          <span className="text-ink">
+            · {run.attachments.length} image{run.attachments.length === 1 ? "" : "s"}
+          </span>
+        )}
         <span className="font-semibold">· read-only</span>
       </span>
       <span className="flex items-center gap-2">

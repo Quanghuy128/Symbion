@@ -75,11 +75,51 @@ function isAllowedHost(headerValue: string | undefined, port: number): boolean {
   return allowed.has(headerValue);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+/**
+ * Hard cap on one RPC body: 30 MiB. Worst legitimate body (20 MiB of images as
+ * base64 ≈ 28.0 MB + a 10,000-char requirement + names) is ≈ 28 MB, so this leaves
+ * ≈ 3.4 MiB of headroom (run-image-paste PLAN §P.3). MiB, not decimal MB.
+ */
+export const MAX_RPC_BODY_BYTES = 30 * 1024 * 1024;
+
+export class PayloadTooLargeError extends Error {
+  constructor() {
+    super("payload-too-large");
+    this.name = "PayloadTooLargeError";
+  }
+}
+
+/**
+ * readBody — collects Buffer chunks (decoded ONCE after concat, so a multi-byte
+ * UTF-8 char split across a chunk boundary is never corrupted) under a hard byte
+ * cap. Over the cap (declared Content-Length OR streamed) → PayloadTooLargeError
+ * and nothing more is retained.
+ */
+export function readBody(req: IncomingMessage, maxBytes: number = MAX_RPC_BODY_BYTES): Promise<string> {
   return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => (data += chunk));
-    req.on("end", () => resolve(data));
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      reject(new PayloadTooLargeError());
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let over = false;
+    req.on("data", (chunk: Buffer | string) => {
+      if (over) return;
+      const buf = typeof chunk === "string" ? Buffer.from(chunk, "utf-8") : chunk;
+      total += buf.length;
+      if (total > maxBytes) {
+        over = true;
+        chunks.length = 0; // stop retaining — discard the rest as it streams
+        reject(new PayloadTooLargeError());
+        return;
+      }
+      chunks.push(buf);
+    });
+    req.on("end", () => {
+      if (!over) resolve(Buffer.concat(chunks).toString("utf-8"));
+    });
     req.on("error", reject);
   });
 }
@@ -143,7 +183,22 @@ export function startServer(opts: DaemonServerOptions): Promise<DaemonServerHand
     let body: { method?: RpcMethod; params?: unknown };
     try {
       body = JSON.parse(await readBody(req));
-    } catch {
+    } catch (err) {
+      if (err instanceof PayloadTooLargeError) {
+        // Respond, then drop the connection: the rest of the oversized upload is
+        // never buffered. The server keeps serving other connections.
+        const payload = JSON.stringify({
+          error: { code: "payload-too-large", message: "Request body is too large (limit 30 MiB)." },
+        });
+        res.writeHead(413, {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+          Connection: "close",
+        });
+        res.on("finish", () => req.destroy());
+        res.end(payload);
+        return;
+      }
       sendJson(res, 400, { error: { code: "bad-json", message: "Invalid JSON." } });
       return;
     }

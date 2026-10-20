@@ -44,10 +44,11 @@ export * from "./run/toolInput.js";
 export * from "./run/legacyEvents.js";
 export * from "./run/summarizeToolCall.js";
 export * from "./run/agentTree.js";
+export * from "./run/attachments.js";
 
 export * from "./generate/description.js";
 export * from "./generate/bodyPrompt.js";
 
 export * from "./graph/layoutOverride.js";
 
-export { sha256Hex } from "./util/sha256.js";
+export { sha256Hex, sha256HexBytes } from "./util/sha256.js";

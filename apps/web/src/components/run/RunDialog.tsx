@@ -12,6 +12,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DaemonRpcError } from "@/lib/rpc/client";
 import { useRunStore } from "@/lib/run/useRunStore";
 import { PreflightStrip } from "./PreflightStrip";
+import { AttachmentChips } from "./AttachmentChips";
+import { useAttachmentComposer } from "./useAttachmentComposer";
+
+const OUTDATED_DAEMON_REASON = "The Symbion daemon is out of date — restart it to enable image attachments.";
 
 export interface RunDialogProps {
   command: CanonicalArtifact;
@@ -56,12 +60,37 @@ export function RunDialog({
   const [result, setResult] = useState<RunPreflightResult | "loading">("loading");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** signature of the image set the held `result`/nonce was minted for (run-image-paste consent binding). */
+  const [consentSig, setConsentSig] = useState("");
+  const refreshReq = useRef(0);
+
+  const attachmentSupport = result !== "loading" ? result.attachmentSupport : undefined;
+  const attachmentsSupported = attachmentSupport?.supported === true;
+  // A daemon that predates run-image-paste returns no `attachmentSupport` at all — say so,
+  // rather than letting the composer blame the CLI with its generic fallback message.
+  const unsupportedReason =
+    attachmentSupport?.reason ??
+    (result === "loading"
+      ? "Checking image support…"
+      : attachmentSupport === undefined
+        ? OUTDATED_DAEMON_REASON
+        : undefined);
+  const composer = useAttachmentComposer({
+    supported: attachmentsSupported,
+    unsupportedReason,
+  });
+  // Stable accessors (the hook returns fresh closures only when it re-renders; refs keep loadPreflight stable).
+  const composerRef = useRef(composer);
+  composerRef.current = composer;
 
   const loadPreflight = useCallback(async () => {
     setResult("loading");
     try {
-      const r = await preflight(projectId, command.id);
+      const atts = composerRef.current.getPreflightAttachments();
+      const sigAtCall = atts.map((a) => `${a.sha256}:${a.size}:${a.mediaType}`).join("|");
+      const r = await preflight(projectId, command.id, atts);
       setResult(r);
+      setConsentSig(sigAtCall);
       // Pre-fill + select the requirement from the last run (design §3.2 L3),
       // once, iff the user hasn't already typed something (never clobber
       // in-progress input on a later re-fetch, e.g. after the inline Publish
@@ -80,6 +109,7 @@ export function RunDialog({
         needsFirstRunAck: false,
         invocationEcho: "",
         permissionSummary: { mode: "", cwd: "", ceilings: { wallClockMs: 0, tokenCap: 0 }, sentence: "" },
+        attachmentSupport: { supported: false, minCliVersion: "", reason: "Couldn't check image support — preflight failed." },
       });
     }
   }, [preflight, projectId, command.id]);
@@ -103,6 +133,29 @@ export function RunDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publishDialogClosedSignal]);
 
+  // Consent refresh: when the settled image set changes, re-run preflight WITH the
+  // image metadata so the nonce is bound to the exact bytes (debounced; the strip keeps
+  // its previous checks — no "loading" flicker — and Execute waits for the new nonce).
+  const sig = composer.signature;
+  useEffect(() => {
+    if (sig === null || result === "loading" || sig === consentSig) return;
+    const t = setTimeout(async () => {
+      const mine = ++refreshReq.current;
+      try {
+        const r = await preflight(projectId, command.id, composerRef.current.getPreflightAttachments());
+        if (mine !== refreshReq.current) return; // a newer change superseded this response
+        setResult(r);
+        setConsentSig(sig);
+      } catch (err) {
+        if (mine !== refreshReq.current) return;
+        setError(err instanceof Error ? err.message : "Preflight failed.");
+      }
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, consentSig, result === "loading"]);
+
+  const preparing = composer.signature === null || composer.signature !== consentSig;
   const blocked = result !== "loading" && result.blocked;
   const needsAck = result !== "loading" && result.needsFirstRunAck;
   const hasWarn = result !== "loading" && result.checks.some((c: PreflightCheck) => c.severity === "warn");
@@ -111,7 +164,7 @@ export function RunDialog({
   const permissionMode = result !== "loading" ? result.permissionSummary.mode : "";
 
   const canExecute =
-    requirement.trim().length > 0 && !blocked && !!nonce && (!needsAck || ackChecked) && !starting;
+    requirement.trim().length > 0 && !blocked && !!nonce && !preparing && (!needsAck || ackChecked) && !starting;
 
   async function handleExecute() {
     if (!canExecute || !nonce) return;
@@ -131,6 +184,7 @@ export function RunDialog({
           model: showModel && model.trim().length > 0 ? model.trim() : undefined,
           nonce,
           ackFirstRun: needsAck ? true : undefined,
+          ...(composer.chips.length > 0 ? { attachments: composer.getSendAttachments() } : {}),
         },
         agentSubagentNames
       );
@@ -158,14 +212,26 @@ export function RunDialog({
   }
 
   return (
-    <Dialog open onClose={onClose} className="w-[560px]">
+    <Dialog open onClose={onClose} className="relative w-[560px]">
       <DialogHeader>
         <DialogTitle>
           Execute /{command.name} — {projectName}
         </DialogTitle>
       </DialogHeader>
 
-      <div className="space-y-3" onKeyDown={onKeyDown}>
+      {composer.dragging && (
+        <div
+          role="presentation"
+          data-testid="attachment-drop-overlay"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={composer.onDrop}
+          className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-mint bg-surface text-ui text-ink"
+        >
+          Drop images to attach
+        </div>
+      )}
+
+      <div className="space-y-3" onKeyDown={onKeyDown} onPaste={composer.onPaste}>
         <div>
           <label className="mb-1 block text-caption text-ink-muted">Requirement ($ARGUMENTS)</label>
           {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
@@ -177,6 +243,17 @@ export function RunDialog({
             onFocus={(e) => e.currentTarget.select()}
           />
         </div>
+
+        <AttachmentChips
+          chips={composer.chips}
+          errors={composer.errors}
+          hint={composer.hint}
+          totalBytes={composer.totalBytes}
+          supported={attachmentsSupported}
+          unsupportedReason={unsupportedReason}
+          onPickFiles={(files) => void composer.addFiles(files)}
+          onRemove={composer.remove}
+        />
 
         <button
           type="button"
@@ -213,7 +290,8 @@ export function RunDialog({
 
         {result !== "loading" && result.permissionSummary.sentence && (
           <p className="rounded-lg border border-line bg-app p-2 text-caption text-ink">
-            ⓘ {result.permissionSummary.sentence}{" "}
+            ⓘ {result.permissionSummary.sentence}
+            {result.permissionSummary.attachmentsSentence ? ` ${result.permissionSummary.attachmentsSentence}` : ""}{" "}
             {/* F-P3-1 (P3): the consent line's [change] link — the design doc's
              *  R2 wireframe (§3.2) always specified this, but P1/P2 never
              *  built the placeholder (unlike RunSummarySection's inert
@@ -252,7 +330,7 @@ export function RunDialog({
           Cancel
         </Button>
         <Button size="lg" icon={starting ? Loader2 : Play} onClick={handleExecute} disabled={!canExecute}>
-          {starting ? "Starting…" : hasWarn && !blocked ? "Execute anyway" : "Execute"}
+          {starting ? "Starting…" : preparing && composer.chips.length > 0 ? "Preparing images…" : hasWarn && !blocked ? "Execute anyway" : "Execute"}
         </Button>
       </DialogFooter>
     </Dialog>

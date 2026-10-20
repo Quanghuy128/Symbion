@@ -11,6 +11,8 @@
  */
 import { execFile } from "node:child_process";
 import {
+  EMPTY_ATTACHMENTS_DIGEST,
+  attachmentsDigest,
   computeDiff as coreComputeDiff,
   extractAgentMentions,
   renderArtifacts,
@@ -18,8 +20,8 @@ import {
   type ProjectStore,
 } from "@symbion/core";
 import type { PreflightCheck, RunPreflightResult } from "../rpc/contract.js";
-import { resolveRunConfig, configHash, ackSettingsHash, buildConsentSentence } from "./runConfig.js";
-import { buildArgv, resolveClaudeBin } from "./cliDriver.js";
+import { resolveRunConfig, configHash, ackSettingsHash, buildConsentSentence, buildAttachmentsSentence } from "./runConfig.js";
+import { MIN_CLI_VERSION_FOR_ATTACHMENTS, buildArgv, cliSupportsAttachments, resolveClaudeBin } from "./cliDriver.js";
 import { readTargetFiles } from "../fs/readTargetFiles.js";
 import { gitStatus } from "../git/status.js";
 import { nonceStore } from "./nonces.js";
@@ -52,6 +54,8 @@ export interface PreflightContext {
   store: ProjectStore;
   /** whether runManager reports an active run for this project (BLOCK, ER-9). */
   hasActiveRun: boolean;
+  /** validated image METADATA (run-image-paste) — binds the nonce to the exact images. */
+  attachments?: { sha256: string; size: number; mediaType: string }[] | null;
 }
 
 export async function runPreflight(ctx: PreflightContext): Promise<RunPreflightResult> {
@@ -133,6 +137,30 @@ export async function runPreflight(ctx: PreflightContext): Promise<RunPreflightR
     checks.push({ id: "git", severity: "ok", label: "git tree clean" });
   }
 
+  // 6. Image support (run-image-paste). Always reported; a BLOCK row only when
+  //    images are actually attached to an unsupported CLI (text-only is unaffected).
+  const attachments = ctx.attachments && ctx.attachments.length > 0 ? ctx.attachments : null;
+  const supported = cli.present && cliSupportsAttachments(cli.version);
+  const attachmentSupport: RunPreflightResult["attachmentSupport"] = {
+    supported,
+    minCliVersion: MIN_CLI_VERSION_FOR_ATTACHMENTS,
+    ...(supported
+      ? {}
+      : {
+          reason: cli.present
+            ? `Images need claude CLI ${MIN_CLI_VERSION_FOR_ATTACHMENTS} or newer (installed: ${cli.version}).`
+            : "Claude Code CLI not found.",
+        }),
+  };
+  if (attachments && !supported) {
+    checks.push({
+      id: "attachments",
+      severity: "block",
+      label: `Images need claude CLI ${MIN_CLI_VERSION_FOR_ATTACHMENTS} or newer (installed: ${cli.version ?? "unknown"}) — remove the images or update the CLI.`,
+      action: { label: "Re-check", kind: "recheck" },
+    });
+  }
+
   const blocked = checks.some((c) => c.severity === "block");
 
   // invocation echo — the exact argv (as a readable command line).
@@ -144,9 +172,14 @@ export async function runPreflight(ctx: PreflightContext): Promise<RunPreflightR
           model: undefined,
           permissionMode: config.permissionMode,
           allowedTools: config.allowedTools,
+          inputMode: attachments ? "stdin" : "argv",
         })
           .map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))
-          .join(" ")}`
+          .join(" ")}${
+          attachments
+            ? ` <<< [${attachments.length} image${attachments.length === 1 ? "" : "s"} + "/${artifact.name} <requirement>"]`
+            : ""
+        }`
       : "";
 
   // configHash (permissionMode+allowedTools+ceilings) binds the nonce; the
@@ -163,6 +196,14 @@ export async function runPreflight(ctx: PreflightContext): Promise<RunPreflightR
     cwd: ctx.projectRoot,
     ceilings: config.ceilings,
     sentence: buildConsentSentence(ctx.projectRoot, config),
+    ...(attachments
+      ? {
+          attachmentsSentence: buildAttachmentsSentence(
+            attachments.length,
+            attachments.reduce((n, a) => n + a.size, 0)
+          ),
+        }
+      : {}),
   };
 
   const result: RunPreflightResult = {
@@ -171,6 +212,7 @@ export async function runPreflight(ctx: PreflightContext): Promise<RunPreflightR
     needsFirstRunAck,
     invocationEcho,
     permissionSummary,
+    attachmentSupport,
   };
 
   // lastRun hint (design R2, L3). RunListItem (from listRuns) doesn't carry
@@ -196,6 +238,7 @@ export async function runPreflight(ctx: PreflightContext): Promise<RunPreflightR
       projectId: ctx.projectId,
       artifactId: ctx.artifactId,
       configHash: hash,
+      attachmentsDigest: attachments ? attachmentsDigest(attachments) : EMPTY_ATTACHMENTS_DIGEST,
     });
   }
 

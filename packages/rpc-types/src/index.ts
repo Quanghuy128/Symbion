@@ -18,6 +18,8 @@ import type {
   ProjectStore,
   PublishResult,
   RenderedFile,
+  RunAttachmentMediaType,
+  RunAttachmentMeta,
   RunInfo,
   RunListItem,
   RunState,
@@ -715,6 +717,8 @@ export interface PreflightCheck {
 export interface RunPreflightParams {
   projectId: string;
   artifactId: string;
+  /** image METADATA only (no bytes) — binds the consent nonce to the exact images. */
+  attachments?: { sha256: string; size: number; mediaType: string }[];
 }
 export interface RunPreflightResult {
   checks: PreflightCheck[];
@@ -730,7 +734,11 @@ export interface RunPreflightResult {
     ceilings: { wallClockMs: number; tokenCap: number };
     /** the full plain-language consent sentence (single source of the disclosure). */
     sentence: string;
+    /** present iff the preflight carried attachments: "N images (X MB) will be sent to Claude…". */
+    attachmentsSentence?: string;
   };
+  /** whether the installed claude CLI can receive images (stdin stream-json). */
+  attachmentSupport: { supported: boolean; minCliVersion: string; reason?: string };
   lastRun?: {
     status: RunStatus;
     durationMs: number | null;
@@ -753,6 +761,8 @@ export interface StartRunParams {
   nonce: string;
   /** when true, the daemon persists firstRunAck (computing the hash itself). */
   ackFirstRun?: boolean;
+  /** images sent with the run; `data` is base64 (transport only — never persisted in run.json). */
+  attachments?: { name: string; mediaType: string; data: string }[];
 }
 export interface StartRunResult {
   runId: string;
@@ -767,6 +777,19 @@ export interface CancelRunResult {
   status: RunStatus;
   /** present iff the process was NOT confirmed dead (ER-6) — surfaced for a manual kill. */
   pid?: number;
+}
+
+export interface ReadRunAttachmentParams {
+  projectId: string;
+  runId: string;
+  /** index into run.json attachments — the client never supplies a path component. */
+  index: number;
+}
+export interface ReadRunAttachmentResult {
+  mediaType: RunAttachmentMediaType;
+  size: number;
+  /** base64 of the stored bytes. */
+  data: string;
 }
 
 export interface ListRunsParams {
@@ -874,6 +897,7 @@ export type RpcMethod =
   | "cancelRun"
   | "listRuns"
   | "getRunEvents"
+  | "readRunAttachment"
   | "getNodeLayout"
   | "setNodeLayout";
 
@@ -898,6 +922,8 @@ export type {
   ProjectStore,
   PublishResult,
   RenderedFile,
+  RunAttachmentMeta,
+  RunAttachmentMediaType,
   RunInfo,
   RunListItem,
   RunState,

@@ -1,5 +1,6 @@
 "use client";
 
+import { Image as ImageIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { RunListItem } from "@symbion/rpc-types";
 import { useRunStore } from "@/lib/run/useRunStore";
@@ -122,6 +123,15 @@ export function RunHistoryPopover({ projectId, onSelect, onClose, className = "l
                   {STATUS_GLYPH[r.status] ?? "◉"}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-ink">/{r.commandName}</span>
+                {r.attachmentCount ? (
+                  <span
+                    className="inline-flex shrink-0 items-center gap-0.5 tabular-nums text-ink-muted"
+                    title={`${r.attachmentCount} image${r.attachmentCount === 1 ? "" : "s"} attached`}
+                  >
+                    <ImageIcon size={12} aria-hidden />
+                    {r.attachmentCount}
+                  </span>
+                ) : null}
                 <span className="shrink-0 tabular-nums text-ink-muted">{fmtDuration(r.durationMs)}</span>
                 <span className="shrink-0 tabular-nums text-ink-muted">{fmtTok(r.freshTokens)}</span>
                 <span className="shrink-0 tabular-nums text-ink-muted">{fmtCost(r.costUsd)}</span>

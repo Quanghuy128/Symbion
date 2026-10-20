@@ -36,7 +36,10 @@ import type {
   GetRunEventsResult,
   ListRunsResult,
   PersistedRunEvent,
+  ReadRunAttachmentParams,
+  ReadRunAttachmentResult,
   RunInfo,
+  RunPreflightParams,
   RunPreflightResult,
   StartRunParams,
   StartRunResult,
@@ -146,7 +149,13 @@ interface RunStoreState {
   consumePendingOpenHistory: () => boolean;
 
   // actions
-  preflight: (projectId: string, artifactId: string) => Promise<RunPreflightResult>;
+  preflight: (
+    projectId: string,
+    artifactId: string,
+    attachments?: RunPreflightParams["attachments"]
+  ) => Promise<RunPreflightResult>;
+  /** one stored attachment's bytes (base64) of a past/active run — confined read via the daemon. */
+  readRunAttachment: (params: ReadRunAttachmentParams) => Promise<ReadRunAttachmentResult>;
   startRun: (params: StartRunParams, agentSubagentNames?: Set<string>) => Promise<StartRunResult>;
   cancelRun: () => Promise<void>;
   /** attach to a run (SSE backfill-then-live). F5-reattach owner. */
@@ -346,11 +355,16 @@ export const useRunStore = create<RunStoreState>((set, get) => ({
     return pending;
   },
 
-  async preflight(projectId, artifactId) {
-    return callRpc<{ projectId: string; artifactId: string }, RunPreflightResult>("runPreflight", {
+  async preflight(projectId, artifactId, attachments) {
+    return callRpc<RunPreflightParams, RunPreflightResult>("runPreflight", {
       projectId,
       artifactId,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     });
+  },
+
+  readRunAttachment(params) {
+    return callRpc<ReadRunAttachmentParams, ReadRunAttachmentResult>("readRunAttachment", params);
   },
 
   async startRun(params, agentSubagentNames) {

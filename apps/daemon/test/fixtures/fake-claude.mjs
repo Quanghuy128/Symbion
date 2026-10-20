@@ -7,6 +7,13 @@
  * verbatim for the injection assertions. Behavior driven by env vars:
  *
  *  --version                       -> prints "2.1.187 (Claude Code)" and exits 0.
+ *  FAKE_CLAUDE_VERSION=<v>         -> --version prints "<v> (Claude Code)" instead ("garbage" prints
+ *                                     "garbage" so the daemon's version parse gives "unknown").
+ *  FAKE_CLAUDE_STDIN_OUT=<path>    -> reads stdin to EOF, writes {"stdinKind","stdin"} JSON there
+ *                                     (stdinKind: fifo|socket|char|file|other; piped = socket/fifo, "char" = /dev/null = ignored).
+ *  FAKE_CLAUDE_MODE=exit-no-read   -> exits at once (FAKE_CLAUDE_EXIT_CODE, default 0) WITHOUT reading
+ *                                     stdin (a >= 1 MiB payload then gets EPIPE in the daemon).
+ *  FAKE_CLAUDE_MODE=stderr-echo-stdin -> reads stdin, echoes it to stderr in 4 KB lines, exits 1.
  *  default                         -> streams FAKE_CLAUDE_FIXTURE line-by-line to
  *                                     stdout with FAKE_CLAUDE_DELAY_MS between lines
  *                                     (default 5), exits 0.
@@ -22,7 +29,7 @@
  *                                     the fixture and exits 0 (simulates an agent's real writes
  *                                     for the gitNumstat integration test).
  */
-import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, fstatSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 
@@ -30,7 +37,10 @@ const argv = process.argv.slice(2);
 
 // --version probe (preflight + startRun cliVersion).
 if (argv.includes("--version")) {
-  process.stdout.write("2.1.187 (Claude Code)\n");
+  const v = process.env.FAKE_CLAUDE_VERSION;
+  if (v === undefined) process.stdout.write("2.1.187 (Claude Code)\n");
+  else if (v === "garbage") process.stdout.write("garbage\n");
+  else process.stdout.write(`${v} (Claude Code)\n`);
   process.exit(0);
 }
 
@@ -66,7 +76,43 @@ async function streamLines(lines) {
   }
 }
 
+function stdinKind() {
+  try {
+    const st = fstatSync(0);
+    if (st.isFIFO()) return "fifo";
+    if (st.isCharacterDevice()) return "char";
+    if (st.isFile()) return "file";
+    if (st.isSocket()) return "socket"; // node spawn stdio:"pipe" is a socketpair on Linux
+  } catch {
+    /* fall through */
+  }
+  return "other";
+}
+
+async function readStdinToEof() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
 async function main() {
+  if (mode === "exit-no-read") {
+    process.exit(Number(process.env.FAKE_CLAUDE_EXIT_CODE ?? "0"));
+    return;
+  }
+
+  const stdinOut = process.env.FAKE_CLAUDE_STDIN_OUT;
+  if (stdinOut || mode === "stderr-echo-stdin") {
+    const kind = stdinKind();
+    const stdin = await readStdinToEof();
+    if (stdinOut) writeFileSync(stdinOut, JSON.stringify({ stdinKind: kind, stdin }));
+    if (mode === "stderr-echo-stdin") {
+      for (let i = 0; i < stdin.length; i += 4096) process.stderr.write(stdin.slice(i, i + 4096) + "\n");
+      process.exit(1);
+      return;
+    }
+  }
+
   if (mode === "hang") {
     // print init then never exit.
     const lines = readFixtureLines();
